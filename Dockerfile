@@ -1,7 +1,4 @@
-FROM chatwoot/chatwoot:v3.11.0
+FROM chatwoot/chatwoot:latest
 
-EXPOSE 3000
-
-CMD rm -f tmp/pids/server.pid && \
-    bundle exec rails db:chatwoot_prepare && \
-    bundle exec rails s -b 0.0.0.0 -p 3000
+# Railway ko force karne ke liye ke woh khud tables banaye aur server chalaye
+CMD bundle exec rails db:schema:load db:seed && bundle exec rails s -b 0.0.0.0 -p 3000
