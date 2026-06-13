@@ -13,6 +13,7 @@ import AppContainer from './Dashboard.vue';
 import Suspended from './suspended/Index.vue';
 import NoAccounts from './noAccounts/Index.vue';
 import OnboardingAccountDetails from './onboarding/Index.vue';
+import chatbotRoutes from './chatbot/chatbot.routes';
 
 export default {
   routes: [
@@ -20,6 +21,7 @@ export default {
       path: frontendURL('accounts/:accountId'),
       component: AppContainer,
       children: [
+        ...chatbotRoutes,
         ...captainRoutes,
         ...inboxRoutes,
         ...conversation.routes,
