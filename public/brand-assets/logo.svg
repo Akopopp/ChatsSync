@@ -2,5 +2,5 @@
   <circle cx="17" cy="16" r="15" fill="#1F93FF"/>
   <path d="M8 25 L5 33 L17 27 Z" fill="#1F93FF"/>
   <circle cx="17" cy="16" r="5.5" fill="#FFFFFF"/>
-  <text x="42" y="24" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="-0.5" fill="#FFFFFF">chatsync</text>
+  <text x="42" y="24" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="-0.5" fill="#1F2D3D">chatsync</text>
 </svg>
