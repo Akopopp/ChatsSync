@@ -1,29 +1,25 @@
+<script setup>
+import { computed } from 'vue';
+import { useMapGetter } from 'dashboard/composables/store';
+
+// Builder app ka URL (aapka deployed chatssync-builder)
+const BUILDER_URL = 'http://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
+
+const accountId = useMapGetter('getCurrentAccountId');
+
+// Account id builder ko bhejo (taake har account apna flow dekhe — 5.6 ke liye taiyaar)
+const builderSrc = computed(
+  () => `${BUILDER_URL}/?account_id=${accountId.value || ''}`
+);
+</script>
+
 <template>
-  <div class="chatbot-container">
+  <div class="flex flex-col w-full h-full bg-n-background">
     <iframe
-      :src="typebotUrl"
-      frameborder="0"
-      width="100%"
-      height="100%"
-      allow="clipboard-read; clipboard-write"
+      :src="builderSrc"
+      class="w-full h-full border-0"
+      title="ChatsSync Chatbot Builder"
+      allow="clipboard-write"
     />
   </div>
 </template>
-
-<script>
-export default {
-  computed: {
-    typebotUrl() {
-      return 'https://typebot.5.75.237.171.sslip.io';
-    },
-  },
-};
-</script>
-
-<style scoped>
-.chatbot-container {
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-}
-</style>
