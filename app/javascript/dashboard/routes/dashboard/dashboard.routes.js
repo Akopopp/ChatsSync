@@ -14,6 +14,7 @@ import Suspended from './suspended/Index.vue';
 import NoAccounts from './noAccounts/Index.vue';
 import OnboardingAccountDetails from './onboarding/Index.vue';
 import chatbotRoutes from './chatbot/chatbot.routes';
+import galleryRoutes from './gallery/gallery.routes';
 
 export default {
   routes: [
@@ -32,6 +33,7 @@ export default {
         ...notificationRoutes,
         ...helpcenterRoutes.routes,
         ...campaignsRoutes.routes,
+        ...galleryRoutes,
       ],
     },
     {
