@@ -24,6 +24,10 @@ ENV NODE_OPTIONS ${NODE_OPTIONS}
 
 ENV BUNDLE_PATH="/gems"
 
+# Limit native compile parallelism (grpc/protobuf) to avoid OOM on low-RAM build hosts
+ENV MAKEFLAGS="-j1"
+ENV GRPC_RUBY_BUILD_PROCS=1
+
 RUN apk update && apk add --no-cache \
   openssl \
   tar \
