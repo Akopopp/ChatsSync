@@ -1,5 +1,5 @@
 <script setup>
-const BUILDER_URL = 'http://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
+const BUILDER_URL = 'https://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
 </script>
 
 <template>
