@@ -1,5 +1,5 @@
 # pre-build stage
-FROM node:24-alpine as node
+FROM node:24-alpine AS node
 FROM ruby:3.4.4-alpine3.21 AS pre-builder
 
 ARG NODE_VERSION="24.13.0"
@@ -10,23 +10,25 @@ ENV PNPM_VERSION=${PNPM_VERSION}
 # ARG default to production settings
 # For development docker-compose file overrides ARGS
 ARG BUNDLE_WITHOUT="development:test"
-ENV BUNDLE_WITHOUT ${BUNDLE_WITHOUT}
+ENV BUNDLE_WITHOUT=${BUNDLE_WITHOUT}
 ENV BUNDLER_VERSION=2.5.16
 
 ARG RAILS_SERVE_STATIC_FILES=true
-ENV RAILS_SERVE_STATIC_FILES ${RAILS_SERVE_STATIC_FILES}
+ENV RAILS_SERVE_STATIC_FILES=${RAILS_SERVE_STATIC_FILES}
 
 ARG RAILS_ENV=production
-ENV RAILS_ENV ${RAILS_ENV}
+ENV RAILS_ENV=${RAILS_ENV}
 
 ARG NODE_OPTIONS="--max-old-space-size=6144 --openssl-legacy-provider"
-ENV NODE_OPTIONS ${NODE_OPTIONS}
+ENV NODE_OPTIONS=${NODE_OPTIONS}
 
 ENV BUNDLE_PATH="/gems"
 
-# Limit native compile parallelism (grpc/protobuf) to avoid OOM on low-RAM build hosts
-ENV MAKEFLAGS="-j1"
-ENV GRPC_RUBY_BUILD_PROCS=1
+# Build parallelism (use all CPU cores). 16GB RAM CX43 handles this fine.
+# Override at build time with --build-arg JOBS=<n> if needed.
+ARG JOBS=8
+ENV MAKEFLAGS="-j${JOBS}"
+ENV GRPC_RUBY_BUILD_PROCS=${JOBS}
 
 RUN apk update && apk add --no-cache \
   openssl \
@@ -71,8 +73,8 @@ RUN bundle config set --local force_ruby_platform true
 
 # Do not install development or test gems in production
 RUN if [ "$RAILS_ENV" = "production" ]; then \
-  bundle config set without 'development test'; bundle install -j 1 -r 3; \
-  else bundle install -j 1 -r 3; \
+  bundle config set without 'development test'; bundle install -j "${JOBS}" -r 3; \
+  else bundle install -j "${JOBS}" -r 3; \
   fi
 
 COPY package.json pnpm-lock.yaml ./
@@ -108,20 +110,20 @@ ENV NODE_VERSION=${NODE_VERSION}
 ENV PNPM_VERSION=${PNPM_VERSION}
 
 ARG BUNDLE_WITHOUT="development:test"
-ENV BUNDLE_WITHOUT ${BUNDLE_WITHOUT}
+ENV BUNDLE_WITHOUT=${BUNDLE_WITHOUT}
 ENV BUNDLER_VERSION=2.5.16
 
 ARG EXECJS_RUNTIME="Disabled"
-ENV EXECJS_RUNTIME ${EXECJS_RUNTIME}
+ENV EXECJS_RUNTIME=${EXECJS_RUNTIME}
 
 ARG RAILS_SERVE_STATIC_FILES=true
-ENV RAILS_SERVE_STATIC_FILES ${RAILS_SERVE_STATIC_FILES}
+ENV RAILS_SERVE_STATIC_FILES=${RAILS_SERVE_STATIC_FILES}
 
 ARG BUNDLE_FORCE_RUBY_PLATFORM=1
-ENV BUNDLE_FORCE_RUBY_PLATFORM ${BUNDLE_FORCE_RUBY_PLATFORM}
+ENV BUNDLE_FORCE_RUBY_PLATFORM=${BUNDLE_FORCE_RUBY_PLATFORM}
 
 ARG RAILS_ENV=production
-ENV RAILS_ENV ${RAILS_ENV}
+ENV RAILS_ENV=${RAILS_ENV}
 ENV BUNDLE_PATH="/gems"
 
 RUN apk update && apk add --no-cache \
