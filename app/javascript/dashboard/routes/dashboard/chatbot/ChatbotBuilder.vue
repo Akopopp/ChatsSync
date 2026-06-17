@@ -1,6 +1,6 @@
 <script setup>
 // Simple, import-free version (build-safe). Account id 5.6 mein jodenge.
-const BUILDER_URL = 'http://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
+const BUILDER_URL = 'https://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
 </script>
 
 <template>
