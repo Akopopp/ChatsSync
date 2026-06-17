@@ -1,7 +1,9 @@
 services:
   chatwoot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     image: 'chatssync-custom:latest'
-    pull_policy: never
     depends_on:
       - postgres
       - redis
