@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, computed } from 'vue';
 
-const BUILDER_URL = 'https://zpzybpz68hsj0wvbpnar61in.5.75.237.171.sslip.io';
+const BUILDER_URL = 'https://builder.chatssync.online';
 
 // Multi-account: pull the current ChatsSync account id from the URL (/accounts/<id>/...)
 // and hand it to the builder, so each account loads ITS OWN chatbots.
