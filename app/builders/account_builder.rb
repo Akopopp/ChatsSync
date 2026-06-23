@@ -47,7 +47,8 @@ class AccountBuilder
     @account = Account.create!(
       name: account_name,
       locale: I18n.locale,
-      custom_attributes: { 'onboarding_step' => 'account_details' }
+      custom_attributes: { 'onboarding_step' => 'account_details' },
+      plan_ends_at: 36.hours.from_now
     )
     Current.account = @account
   end
