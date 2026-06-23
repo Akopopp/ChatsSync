@@ -34,7 +34,9 @@ class AccountDashboard < Administrate::BaseDashboard
     locale: Field::Select.with_options(collection: LANGUAGES_CONFIG.map { |_x, y| y[:iso_639_1_code] }),
     status: Field::Select.with_options(collection: [%w[Active active], %w[Suspended suspended]]),
     account_users: Field::HasMany,
-    custom_attributes: Field::String
+    custom_attributes: Field::String,
+    plan_starts_at: Field::DateTime,
+    plan_ends_at: Field::DateTime
   }.merge(enterprise_attribute_types).freeze
 
   # COLLECTION_ATTRIBUTES
@@ -68,6 +70,8 @@ class AccountDashboard < Administrate::BaseDashboard
     updated_at
     locale
     status
+    plan_starts_at
+    plan_ends_at
     conversations
     account_users
   ] + enterprise_show_page_attributes).freeze
@@ -87,6 +91,8 @@ class AccountDashboard < Administrate::BaseDashboard
     name
     locale
     status
+    plan_starts_at
+    plan_ends_at
   ] + enterprise_form_attributes).freeze
 
   # COLLECTION_FILTERS
