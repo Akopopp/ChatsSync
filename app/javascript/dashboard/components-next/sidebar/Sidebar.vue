@@ -37,6 +37,8 @@ const emit = defineEmits([
 ]);
 
 const { accountScopedRoute, isOnChatwootCloud } = useAccount();
+const currentUserRole = useMapGetter('getCurrentRole');
+const isAdmin = computed(() => currentUserRole.value === 'administrator');
 const store = useStore();
 const searchShortcut = useKbd([`$mod`, 'k']);
 const { t } = useI18n();
@@ -381,12 +383,16 @@ const menuItems = computed(() => {
         },
       ],
     },
-   {
-      name: 'Gallery',
-      label: 'Gallery',
-      icon: 'i-lucide-image',
-      to: accountScopedRoute('gallery_index'),
-    },
+   ...(isAdmin.value
+      ? [
+          {
+            name: 'Gallery',
+            label: 'Gallery',
+            icon: 'i-lucide-image',
+            to: accountScopedRoute('gallery_index'),
+          },
+        ]
+      : []),
     {
       name: 'Contacts',
       label: t('SIDEBAR.CONTACTS'),
@@ -522,12 +528,16 @@ const menuItems = computed(() => {
         },
       ],
     },
-    {
-  name: 'Chatbot',
-  label: 'Chatbot Builder',
-  icon: 'i-lucide-bot',
-  to: accountScopedRoute('chatbot_builder'),
-},
+   ...(isAdmin.value
+      ? [
+          {
+            name: 'Chatbot',
+            label: 'Chatbot Builder',
+            icon: 'i-lucide-bot',
+            to: accountScopedRoute('chatbot_builder'),
+          },
+        ]
+      : []),
     {
       name: 'Settings',
       label: t('SIDEBAR.SETTINGS'),
