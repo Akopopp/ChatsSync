@@ -540,7 +540,7 @@ const menuItems = computed(() => {
             name: 'Templates',
             label: 'Templates',
             icon: 'i-lucide-layout-template',
-            href: `https://builder.chatssync.online/?view=templates&account_id=${accountId.value}`,
+            to: accountScopedRoute('templates_index'),
           },
         ]
       : []),
