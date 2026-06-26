@@ -35,6 +35,7 @@ export default {
         ...helpcenterRoutes.routes,
         ...campaignsRoutes.routes,
         ...galleryRoutes,
+        ...templatesRoutes,
       ],
     },
     {
