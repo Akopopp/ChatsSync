@@ -15,6 +15,7 @@ const props = defineProps({
   label: { type: String, required: true },
   icon: { type: [String, Object, Function], default: null },
   to: { type: Object, default: null },
+  href: { type: String, default: '' },
   activeOn: { type: Array, default: () => [] },
   children: { type: Array, default: undefined },
   getterKeys: { type: Object, default: () => ({}) },
@@ -173,6 +174,9 @@ const handleCollapsedClick = () => {
   if (hasChildren.value && hasAccessibleChildren.value) {
     const firstItem = accessibleItems.value[0];
     router.push(firstItem.to);
+  } else if (props.href) {
+    // External link in collapsed mode
+    window.open(props.href, '_blank', 'noopener,noreferrer');
   }
 };
 
@@ -231,9 +235,12 @@ watch(
         @mouseleave="handleMouseLeave"
       >
         <component
-          :is="to && !hasChildren ? 'router-link' : 'button'"
+          :is="href ? 'a' : to && !hasChildren ? 'router-link' : 'button'"
           ref="triggerRef"
-          :to="to && !hasChildren ? to : undefined"
+          :to="!href && to && !hasChildren ? to : undefined"
+          :href="href || undefined"
+          :target="href ? '_blank' : undefined"
+          :rel="href ? 'noopener noreferrer' : undefined"
           type="button"
           class="flex items-center justify-center size-10 rounded-lg"
           :class="{
@@ -264,6 +271,7 @@ watch(
         :name
         :label
         :to
+        :href
         :getter-keys="getterKeys"
         :is-active="isActive"
         :has-active-child="hasActiveChild"
