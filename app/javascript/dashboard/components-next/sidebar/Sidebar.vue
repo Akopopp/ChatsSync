@@ -56,6 +56,14 @@ const isFeatureEnabledonAccount = useMapGetter(
   'accounts/isFeatureEnabledonAccount'
 );
 
+// Opens the external builder (Templates view) for the current account
+const openTemplatesBuilder = () => {
+  window.open(
+    `https://builder.chatssync.online/?view=templates&account_id=${accountId.value}`,
+    '_blank'
+  );
+};
+
 const hasAdvancedAssignment = computed(() => {
   return isFeatureEnabledonAccount.value(
     accountId.value,
@@ -535,6 +543,12 @@ const menuItems = computed(() => {
             label: 'Chatbot Builder',
             icon: 'i-lucide-bot',
             to: accountScopedRoute('chatbot_builder'),
+          },
+          {
+            name: 'Templates',
+            label: 'Templates',
+            icon: 'i-lucide-layout-template',
+            onClick: openTemplatesBuilder,
           },
         ]
       : []),
