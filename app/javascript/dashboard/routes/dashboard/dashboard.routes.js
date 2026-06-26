@@ -15,6 +15,7 @@ import NoAccounts from './noAccounts/Index.vue';
 import OnboardingAccountDetails from './onboarding/Index.vue';
 import chatbotRoutes from './chatbot/chatbot.routes';
 import galleryRoutes from './gallery/gallery.routes';
+import templatesRoutes from './templates/templates.routes';
 
 export default {
   routes: [
