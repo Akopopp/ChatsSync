@@ -2,9 +2,9 @@
 import { computed } from 'vue';
 import { useMapGetter } from 'dashboard/composables/store.js';
 import Icon from 'next/icon/Icon.vue';
-
 const props = defineProps({
   to: { type: [Object, String], default: '' },
+  href: { type: String, default: '' },
   label: { type: String, default: '' },
   icon: { type: [String, Object], default: '' },
   expandable: { type: Boolean, default: false },
@@ -13,23 +13,25 @@ const props = defineProps({
   hasActiveChild: { type: Boolean, default: false },
   getterKeys: { type: Object, default: () => ({}) },
 });
-
 const emit = defineEmits(['toggle']);
-
 const showBadge = useMapGetter(props.getterKeys.badge);
 const dynamicCount = useMapGetter(props.getterKeys.count);
 const count = computed(() =>
   dynamicCount.value > 99 ? '99+' : dynamicCount.value
 );
+// Decide which element to render: external link (a), internal link (router-link), or div
+const rootTag = computed(() => (props.href ? 'a' : props.to ? 'router-link' : 'div'));
 </script>
-
 <template>
   <component
-    :is="to ? 'router-link' : 'div'"
+    :is="rootTag"
     class="flex items-center gap-2 px-1.5 py-1 rounded-lg h-8 min-w-0"
     role="button"
     draggable="false"
-    :to="to"
+    :to="href ? undefined : to"
+    :href="href || undefined"
+    :target="href ? '_blank' : undefined"
+    :rel="href ? 'noopener noreferrer' : undefined"
     :title="label"
     :class="{
       'text-n-slate-12 bg-n-alpha-2 font-medium': isActive && !hasActiveChild,
