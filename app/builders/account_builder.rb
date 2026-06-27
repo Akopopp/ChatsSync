@@ -32,7 +32,10 @@ class AccountBuilder
   end
 
   def validate_email
-    Account::SignUpEmailValidationService.new(@email).perform
+    # ChatsSync: allow signup with ANY email (Gmail, Outlook, etc.).
+    # The "business email only" restriction is intentionally disabled.
+    # Basic email format is still enforced by the User model on save.
+    true
   end
 
   def validate_user
