@@ -1,16 +1,25 @@
 <script setup>
 import { onMounted, computed } from 'vue';
+import { useStore } from 'vuex';
 
 const BUILDER_URL = 'https://builder.chatssync.online';
+const store = useStore();
 
-// Multi-account: current ChatsSync account id URL se nikaalo (/accounts/<id>/...)
 const accountId = (() => {
   const m = (window.location.pathname || '').match(/\/accounts\/(\d+)/);
   return m ? m[1] : '';
 })();
+
+const csToken = computed(() => {
+  const u = store.getters.getCurrentUser;
+  return (u && u.access_token) || '';
+});
+
 const src = computed(() => {
-  const base = `${BUILDER_URL}/?view=templates`;
-  return accountId ? `${base}&account_id=${accountId}` : base;
+  let u = `${BUILDER_URL}/?view=templates`;
+  if (accountId) u += `&account_id=${accountId}`;
+  if (csToken.value) u += '&token=' + encodeURIComponent(csToken.value);
+  return u;
 });
 
 function collapseNavOnMobile() {
@@ -26,7 +35,7 @@ onMounted(() => { collapseNavOnMobile(); setTimeout(collapseNavOnMobile, 250); }
     <iframe
       :src="src"
       style="width: 100%; height: 100%; border: 0;"
-      title="ChatsSync WhatsApp Templates"
+      title="ChatsSync Templates"
       allow="clipboard-write"
     />
   </div>
