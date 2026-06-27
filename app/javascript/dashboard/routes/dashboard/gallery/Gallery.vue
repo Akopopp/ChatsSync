@@ -1,20 +1,27 @@
 <script setup>
 import { onMounted, computed } from 'vue';
+import { useStore } from 'vuex';
 
 const BUILDER_URL = 'https://builder.chatssync.online';
+const store = useStore();
 
-// Multi-account: pull the current ChatsSync account id from the URL (/accounts/<id>/...)
-// so each account sees ITS OWN media gallery.
 const accountId = (() => {
   const m = (window.location.pathname || '').match(/\/accounts\/(\d+)/);
   return m ? m[1] : '';
 })();
-const src = computed(() => {
-  const base = `${BUILDER_URL}/?view=gallery`;
-  return accountId ? `${base}&account_id=${accountId}` : base;
+
+const csToken = computed(() => {
+  const u = store.getters.getCurrentUser;
+  return (u && u.access_token) || '';
 });
 
-// On mobile, nudge the side nav to collapse so the iframe is fully visible.
+const src = computed(() => {
+  let u = `${BUILDER_URL}/?view=gallery`;
+  if (accountId) u += `&account_id=${accountId}`;
+  if (csToken.value) u += '&token=' + encodeURIComponent(csToken.value);
+  return u;
+});
+
 function collapseNavOnMobile() {
   if (typeof window === 'undefined' || window.innerWidth >= 1024) return;
   try { window.dispatchEvent(new Event('resize')); } catch (e) {}
