@@ -21,10 +21,8 @@ import {
 } from './helper/pushHelper';
 import ReconnectService from 'dashboard/helper/ReconnectService';
 import { useUISettings } from 'dashboard/composables/useUISettings';
-
 export default {
   name: 'App',
-
   components: {
     LoadingState,
     NetworkNotification,
@@ -42,7 +40,6 @@ export default {
     // Use the font size composable (it automatically sets up the watcher)
     const { currentFontSize } = useFontSize();
     const { uiSettings } = useUISettings();
-
     return {
       router,
       store,
@@ -68,7 +65,6 @@ export default {
       return !isOnOnboardingView(this.$route);
     },
   },
-
   watch: {
     currentAccountId: {
       immediate: true,
@@ -120,7 +116,6 @@ export default {
       vueActionCable.init(this.store, pubsubToken);
       this.reconnectService = new ReconnectService(this.store, this.router);
       window.reconnectService = this.reconnectService;
-
       verifyServiceWorkerExistence(registration =>
         registration.pushManager.getSubscription().then(subscription => {
           if (subscription) {
@@ -128,11 +123,38 @@ export default {
           }
         })
       );
+      this.registerFcmToken();
+    },
+    registerFcmToken() {
+      const sendToken = token => {
+        if (!token) return;
+        if (window.__chatssyncFcmSent === token) return;
+        window.__chatssyncFcmSent = token;
+        fetch('/api/v1/notification_subscriptions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            api_access_token: this.currentUser?.access_token || '',
+          },
+          body: JSON.stringify({
+            notification_subscription: {
+              subscription_type: 'fcm',
+              subscription_attributes: { push_token: token },
+            },
+          }),
+        }).catch(() => {});
+      };
+      const existing =
+        window.CHATSSYNC_FCM_TOKEN ||
+        window.localStorage.getItem('chatssync_fcm_token');
+      if (existing) sendToken(existing);
+      window.addEventListener('chatssync-fcm-token', e =>
+        sendToken(e.detail)
+      );
     },
   },
 };
 </script>
-
 <template>
   <div
     v-if="!authUIFlags.isFetching"
@@ -157,10 +179,8 @@ export default {
   </div>
   <LoadingState v-else />
 </template>
-
 <style lang="scss">
 @import './assets/scss/app';
-
 .v-popper--theme-tooltip .v-popper__inner {
   background: black !important;
   font-size: 0.75rem;
@@ -168,7 +188,6 @@ export default {
   border-radius: 6px;
   font-weight: 400;
 }
-
 .v-popper--theme-tooltip .v-popper__arrow-container {
   display: none;
 }
