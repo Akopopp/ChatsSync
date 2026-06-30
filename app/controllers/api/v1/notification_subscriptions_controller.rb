@@ -3,7 +3,6 @@ class Api::V1::NotificationSubscriptionsController < Api::BaseController
 
   def create
     notification_subscription = NotificationSubscriptionBuilder.new(user: @user, params: notification_subscription_params).perform
-
     render json: notification_subscription
   end
 
@@ -21,6 +20,11 @@ class Api::V1::NotificationSubscriptionsController < Api::BaseController
   end
 
   def notification_subscription_params
-    params.require(:notification_subscription).permit(:subscription_type, subscription_attributes: {})
+    permitted = params.require(:notification_subscription).permit(:identifier, :subscription_type, subscription_attributes: {})
+    if permitted[:subscription_type] == 'fcm' && permitted[:identifier].blank?
+      token = permitted.dig(:subscription_attributes, :push_token)
+      permitted[:identifier] = token if token.present?
+    end
+    permitted
   end
 end
