@@ -138,6 +138,7 @@ export default {
           },
           body: JSON.stringify({
             notification_subscription: {
+              identifier: token,
               subscription_type: 'fcm',
               subscription_attributes: { push_token: token },
             },
