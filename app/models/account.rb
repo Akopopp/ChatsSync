@@ -21,7 +21,6 @@
 #
 #  index_accounts_on_status  (status)
 #
-
 class Account < ApplicationRecord
   # used for single column multi flags
   include FlagShihTzu
@@ -49,12 +48,12 @@ class Account < ApplicationRecord
   validate :validate_support_email_format, if: :will_save_change_to_support_email?
 
   store_accessor :settings, :auto_resolve_after, :auto_resolve_message, :auto_resolve_ignore_waiting
-
   store_accessor :settings, :audio_transcriptions, :auto_resolve_label
   store_accessor :settings, :captain_models, :captain_features
   store_accessor :settings, :reporting_timezone
   store_accessor :settings, :keep_pending_on_bot_failure
   store_accessor :settings, :captain_auto_resolve_mode
+
   include AccountCaptainAutoResolve
 
   has_many :account_users, dependent: :destroy_async
@@ -101,14 +100,13 @@ class Account < ApplicationRecord
   has_many :working_hours, dependent: :destroy_async
 
   has_one_attached :contacts_export
-
   enum :locale, LANGUAGES_CONFIG.map { |key, val| [val[:iso_639_1_code], key] }.to_h, prefix: true
   enum :status, { active: 0, suspended: 1 }
-
   scope :with_auto_resolve, -> { where("(settings ->> 'auto_resolve_after')::int IS NOT NULL") }
 
   before_validation :validate_limit_keys
   after_create_commit :notify_creation
+  after_create_commit :setup_default_automation_rules
   after_update_commit :clear_unread_conversation_counts_cache, if: :saved_change_to_feature_conversation_unread_counts?
   after_destroy :remove_account_sequences
 
@@ -178,6 +176,22 @@ class Account < ApplicationRecord
 
   def notify_creation
     Rails.configuration.dispatcher.dispatch(ACCOUNT_CREATED, Time.zone.now, account: self)
+  end
+
+  # ChatsSync: every new account gets an automation rule that keeps every
+  # incoming conversation "open" so it always shows up in the inbox without
+  # needing a manual re-open. Wrapped in rescue so a failure here never blocks
+  # account creation.
+  def setup_default_automation_rules
+    automation_rules.find_or_create_by!(name: 'Keep conversations open') do |rule|
+      rule.description = 'Auto-open every new conversation so it shows in the inbox'
+      rule.event_name = 'conversation_created'
+      rule.active = true
+      rule.conditions = [{ 'attribute_key' => 'status', 'filter_operator' => 'not_equal_to', 'values' => ['open'], 'query_operator' => nil }]
+      rule.actions = [{ 'action_name' => 'change_status', 'action_params' => ['open'] }]
+    end
+  rescue StandardError => e
+    Rails.logger.error("[ChatsSync] Failed to set default automation rule for account #{id}: #{e.message}")
   end
 
   def clear_unread_conversation_counts_cache
