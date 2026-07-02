@@ -15,21 +15,17 @@ import GoogleOAuthButton from '../../../../../components/GoogleOauth/Button.vue'
 import { register } from '../../../../../api/auth';
 
 const MIN_PASSWORD_LENGTH = 6;
-
 const store = useStore();
 const { t } = useI18n();
 const router = useRouter();
-
 const hCaptcha = ref(null);
 const isPasswordFocused = ref(false);
 const isSignupInProgress = ref(false);
-
 const credentials = reactive({
   email: '',
   password: '',
   hCaptchaClientResponse: '',
 });
-
 const rules = {
   credentials: {
     email: {
@@ -43,32 +39,17 @@ const rules = {
     },
   },
 };
-
 const v$ = useVuelidate(rules, { credentials });
-
 const globalConfig = computed(() => store.getters['globalConfig/get']);
-
-const termsLink = computed(() =>
-  t('REGISTER.TERMS_ACCEPT')
-    .replace('https://www.chatwoot.com/terms', globalConfig.value.termsURL)
-    .replace(
-      'https://www.chatwoot.com/privacy-policy',
-      globalConfig.value.privacyURL
-    )
-);
-
 const allowedLoginMethods = computed(
   () => window.chatwootConfig.allowedLoginMethods || ['email']
 );
-
 const showGoogleOAuth = computed(
   () =>
     allowedLoginMethods.value.includes('google_oauth') &&
     Boolean(window.chatwootConfig.googleOAuthClientId)
 );
-
 const isFormValid = computed(() => !v$.value.$invalid);
-
 const performRegistration = async () => {
   isSignupInProgress.value = true;
   try {
@@ -88,7 +69,6 @@ const performRegistration = async () => {
     isSignupInProgress.value = false;
   }
 };
-
 const submit = () => {
   if (isSignupInProgress.value) return;
   v$.value.$touch();
@@ -100,12 +80,10 @@ const submit = () => {
     performRegistration();
   }
 };
-
 const onRecaptchaVerified = token => {
   credentials.hCaptchaClientResponse = token;
   performRegistration();
 };
-
 const onCaptchaError = () => {
   isSignupInProgress.value = false;
   credentials.hCaptchaClientResponse = '';
@@ -180,9 +158,27 @@ const onCaptchaError = () => {
     <GoogleOAuthButton v-if="showGoogleOAuth" class="mt-3">
       {{ $t('REGISTER.OAUTH.GOOGLE_SIGNUP') }}
     </GoogleOAuthButton>
-    <p
-      class="text-sm mt-5 mb-0 text-n-slate-11 [&>a]:text-n-blue-10 [&>a]:font-medium [&>a]:hover:text-n-blue-11"
-      v-html="termsLink"
-    />
+    <p class="text-sm mt-5 mb-0 text-n-slate-11">
+      By creating an account, you agree to our
+      <a
+        href="https://chatssync.online/terms"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-n-blue-10 font-medium hover:text-n-blue-11"
+        >Terms of Service</a
+      >
+      and
+      <a
+        href="https://chatssync.online/privacy"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-n-blue-10 font-medium hover:text-n-blue-11"
+        >Privacy Policy</a
+      >.
+    </p>
+    <p class="text-xs mt-6 mb-0 text-center text-n-slate-10">
+      Powered by
+      <span class="font-semibold text-n-slate-11">Growthify Agency</span>
+    </p>
   </div>
 </template>
