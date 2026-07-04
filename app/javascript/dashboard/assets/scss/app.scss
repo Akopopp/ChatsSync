@@ -41,3 +41,9 @@ div:has(> [class*='--chip-width']),
 .ProseMirror .is-empty::before {
   content: 'Message…' !important;
 }
+/* hint line fix v2 — Chatwoot editor uses .empty-node for the placeholder */
+.ProseMirror p.empty-node::before,
+.ProseMirror .empty-node::before,
+.editor-root .empty-node::before {
+  content: 'Message…' !important;
+}
