@@ -1,1 +1,24 @@
 @import 'woot';
+
+/* ===== ChatsSync: WhatsApp-style compact reply box on mobile ===== */
+@media (max-width: 767px) {
+  /* rich text editor (default composer) - starts small, grows with text, scrolls after ~5 lines */
+  .reply-box .ProseMirror-woot-style,
+  .reply-box .ProseMirror,
+  .reply-box .editor-root {
+    min-height: 38px !important;
+    max-height: 120px !important;
+    overflow-y: auto !important;
+  }
+  /* plain textarea mode (if rich editor is off) */
+  .reply-box textarea {
+    min-height: 38px !important;
+    max-height: 120px !important;
+    overflow-y: auto !important;
+  }
+  /* slightly tighter padding so it feels like WhatsApp */
+  .reply-box .reply-box__top {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+  }
+}
