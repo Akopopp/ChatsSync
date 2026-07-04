@@ -10,9 +10,10 @@ const store = useStore();
 
 const isLoading = ref(false);
 const globalConfig = computed(() => store.getters['globalConfig/get']);
-const isAChatwootInstance = computed(
-  () => globalConfig.value.installationName === 'Chatwoot'
-);
+// ChatsSync white-label fork: hardcoded to false so the Chatwoot heading
+// and testimonial panel never show again, no matter what installationName
+// says in the DB (that value can get reset on redeploys/migrations).
+const isAChatwootInstance = computed(() => false);
 
 onBeforeMount(() => {
   isLoading.value = isAChatwootInstance.value;
