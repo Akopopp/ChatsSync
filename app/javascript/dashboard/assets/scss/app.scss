@@ -21,3 +21,23 @@
     padding-bottom: 4px !important;
   }
 }
+/* ===== ChatsSync: cleaner composer (no tabs, no hint line) ===== */
+
+/* 1) Reply / Private Note toggle — hide everywhere (composer stays in Reply mode) */
+div:has(> [class*='--chip-width']),
+.reply-box [class*='bg-n-alpha-2'][class*='rounded-full'][class*='h-8'][class*='p-1'] {
+  display: none !important;
+}
+
+/* 2) Mobile: hide the whole top row of the composer to reclaim space */
+@media (max-width: 767px) {
+  .reply-box [class*='h-[3.25rem]'] {
+    display: none !important;
+  }
+}
+
+/* 3) Replace the long "Shift + enter..." hint inside the box with a short WhatsApp-style placeholder */
+.ProseMirror p.is-editor-empty:first-child::before,
+.ProseMirror .is-empty::before {
+  content: 'Message…' !important;
+}
