@@ -1,7 +1,7 @@
 # ChatsSync — STAGING
 #
 # Production ki exact copy, sirf teen farak:
-#   1. image ki jagah build: .   → new-ui branch se khud build hota hai
+#   1. sirf build: .  (koi image: nahi) → har deploy pe new-ui se build hoga
 #   2. apna postgres + redis     → production ke database ko chhuta hi nahi
 #   3. SMTP / Firebase nikale    → staging se koi asli email ya push nahi jayega
 #
@@ -12,7 +12,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: 'chatssync-staging:latest'
     depends_on:
       - postgres
       - redis
@@ -61,7 +60,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: 'chatssync-staging:latest'
     depends_on:
       - chatwoot
       - postgres
