@@ -20,13 +20,13 @@ const { variant, orientation, inReplyTo, shouldGroupWithNext } =
 const { t } = useI18n();
 
 const varaintBaseMap = {
-  [MESSAGE_VARIANTS.AGENT]: 'bg-n-solid-blue text-n-slate-12',
+  [MESSAGE_VARIANTS.AGENT]: 'bg-n-solid-sent text-n-slate-12',
   [MESSAGE_VARIANTS.PRIVATE]:
     'bg-n-solid-amber text-n-amber-12 [&_.prosemirror-mention-node]:font-semibold',
-  [MESSAGE_VARIANTS.USER]: 'bg-n-slate-4 text-n-slate-12',
+  [MESSAGE_VARIANTS.USER]: 'bg-n-solid-received text-n-slate-12',
   [MESSAGE_VARIANTS.ACTIVITY]: 'bg-n-alpha-1 text-n-slate-11 text-sm',
-  [MESSAGE_VARIANTS.BOT]: 'bg-n-solid-iris text-n-slate-12',
-  [MESSAGE_VARIANTS.TEMPLATE]: 'bg-n-solid-iris text-n-slate-12',
+  [MESSAGE_VARIANTS.BOT]: 'bg-n-solid-sent text-n-slate-12',
+  [MESSAGE_VARIANTS.TEMPLATE]: 'bg-n-solid-sent text-n-slate-12',
   [MESSAGE_VARIANTS.ERROR]: 'bg-n-ruby-4 text-n-ruby-12',
   [MESSAGE_VARIANTS.EMAIL]: 'w-full',
   [MESSAGE_VARIANTS.UNSUPPORTED]:
@@ -35,9 +35,9 @@ const varaintBaseMap = {
 
 const orientationMap = {
   [ORIENTATION.LEFT]:
-    'left-bubble rounded-xl ltr:rounded-bl-sm rtl:rounded-br-sm',
+    'left-bubble rounded-lg ltr:rounded-tl-none rtl:rounded-tr-none',
   [ORIENTATION.RIGHT]:
-    'right-bubble rounded-xl ltr:rounded-br-sm rtl:rounded-bl-sm',
+    'right-bubble rounded-lg ltr:rounded-tr-none rtl:rounded-tl-none',
   [ORIENTATION.CENTER]: 'rounded-md',
 };
 
