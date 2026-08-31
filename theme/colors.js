@@ -248,6 +248,8 @@ export const colors = {
       'blue-2': 'rgb(var(--solid-blue-2) / <alpha-value>)',
       red: 'rgb(var(--solid-red) / <alpha-value>)',
       iris: 'rgb(var(--solid-iris) / <alpha-value>)',
+      sent: 'rgb(var(--solid-sent) / <alpha-value>)',
+      received: 'rgb(var(--solid-received) / <alpha-value>)',
       purple: 'rgb(var(--solid-purple) / <alpha-value>)',
     },
     alpha: {
