@@ -702,11 +702,11 @@ watch(() => messages.value.length, scrollDown);
       </div>
 
       <div class="cs-comp">
-        <div v-if="isRecording" class="cs-cbar">
-          <span class="cs-ci i-lucide-trash-2" @click="cancelRec" />
-          <span class="cs-dot" :class="{ pz: recState === 'recording-paused' }" />
-          <span class="cs-rt">{{ recTime }}</span>
-          <div class="cs-recwave">
+        <template v-if="isRecording">
+          <!-- waveform poori chaudai ki apni patti mein — yahi shakl
+               pehle chal rahi thi. Bar ke andar dalne se WaveSurfer
+               ko container ki chaudai/height nahi milti thi. -->
+          <div class="cs-recstrip">
             <AudioRecorder
               ref="recorderRef"
               :audio-record-format="audioFormat"
@@ -714,21 +714,32 @@ watch(() => messages.value.length, scrollDown);
               @finish-record="onRecDone"
               @record-pause="recState = 'recording-paused'"
               @record-resume="recState = ''"
-              @record-cancel="isRecording = false"
+              @record-cancel="onRecError"
               @record-error="onRecError"
             />
           </div>
-          <span
-            class="cs-ci"
-            :class="
-              recState === 'recording-paused' ? 'i-lucide-mic' : 'i-lucide-pause'
-            "
-            @click="pauseRec"
-          />
-          <span class="cs-send i-lucide-send" @click="finishRec" />
-        </div>
+          <div class="cs-cbar">
+            <span class="cs-ci i-lucide-trash-2" @click="cancelRec" />
+            <span
+              class="cs-dot"
+              :class="{ pz: recState === 'recording-paused' }"
+            />
+            <span class="cs-rt">{{ recTime }}</span>
+            <span class="cs-sp" />
+            <span
+              class="cs-ci"
+              :class="
+                recState === 'recording-paused'
+                  ? 'i-lucide-mic'
+                  : 'i-lucide-pause'
+              "
+              @click="pauseRec"
+            />
+            <span class="cs-send i-lucide-send" @click="finishRec" />
+          </div>
+        </template>
 
-        <div v-else class="cs-cbar">
+        <div v-if="!isRecording" class="cs-cbar">
           <span class="cs-ci i-lucide-paperclip" @click="pickFile" />
           <input
             ref="fileInput"
@@ -1505,11 +1516,19 @@ watch(() => messages.value.length, scrollDown);
 .cs-sp {
   flex: 1;
 }
-.cs-recwave {
-  flex: 1 1 0;
-  min-width: 0;
+.cs-recstrip {
+  width: 100%;
+  min-height: 42px;
+  padding: 4px 16px 6px;
+  margin-bottom: 6px;
+  background: var(--fld);
+  border-radius: 10px;
   overflow: hidden;
-  margin: 4px 0;
+}
+.cs-recstrip :deep(.cs-wave),
+.cs-recstrip :deep(> div) {
+  width: 100% !important;
+  min-height: 34px;
 }
 .cs-files {
   display: flex;
