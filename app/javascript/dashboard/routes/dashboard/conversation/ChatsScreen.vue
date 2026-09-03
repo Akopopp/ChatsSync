@@ -271,6 +271,9 @@ const showProfile = ref(false);
 const isNote = ref(false);
 const showEmoji = ref(false);
 const showTpl = ref(false);
+const replyTo = ref(null);
+const fwdMsg = ref(null);
+const fwdPick = ref([]);
 
 const EMOJIS = (
   '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
@@ -347,7 +350,7 @@ const doSend = () => {
   const text = draft.value.trim();
   if (!text && !pendingFiles.value.length) return;
   if (!currentChat.value?.id) return;
-  pushMessage({
+  const payload = {
     conversationId: currentChat.value.id,
     message: text,
     private: isNote.value,
@@ -355,10 +358,15 @@ const doSend = () => {
     ccEmails: '',
     bccEmails: '',
     toEmails: '',
-  })
+  };
+  if (replyTo.value?.id) {
+    payload.contentAttributes = { in_reply_to: replyTo.value.id };
+  }
+  pushMessage(payload)
     .then(() => {
       draft.value = '';
       pendingFiles.value = [];
+      replyTo.value = null;
       scrollDown();
     })
     .catch(e => console.error('[ChatsSync] send fail', e));
@@ -563,11 +571,11 @@ const msgAct = name => {
   if (!m) return;
   if (name === 'copy') copyText(plain(m.content || ''));
   else if (name === 'forward') {
-    draft.value = plain(m.content || '');
-    isNote.value = false;
+    fwdMsg.value = m;
+    fwdPick.value = [];
   }
   else if (name === 'reply') {
-    draft.value = `> ${plain(m.content || '').slice(0, 80)}\n`;
+    replyTo.value = m;
   } else if (name === 'note') {
     isNote.value = true;
     draft.value = plain(m.content || '');
@@ -585,6 +593,31 @@ const act2 = name => {
   menu.value.chat = currentChat.value;
   menu.value.open = true;
   act(name);
+};
+
+const doForward = () => {
+  const m = fwdMsg.value;
+  if (!m || !fwdPick.value.length) return;
+  const body = plain(m.content || '');
+  fwdPick.value.forEach(cid => {
+    pushMessage({
+      conversationId: cid,
+      message: body,
+      private: false,
+      files: [],
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+    });
+  });
+  fwdMsg.value = null;
+  fwdPick.value = [];
+};
+
+const toggleFwd = id => {
+  const i = fwdPick.value.indexOf(id);
+  if (i >= 0) fwdPick.value.splice(i, 1);
+  else fwdPick.value.push(id);
 };
 
 const archivedCount = computed(
@@ -863,7 +896,7 @@ watch(() => messages.value.length, scrollDown);
               "
               @click="pauseRec"
             />
-            <span class="cs-send i-lucide-send" @click="finishRec" />
+            <span class="cs-snd2 i-lucide-send" @click="finishRec" />
           </div>
         </template>
 
@@ -910,6 +943,23 @@ watch(() => messages.value.length, scrollDown);
           </div>
         </div>
 
+        <div v-if="replyTo && !isRecording" class="cs-rp">
+          <div class="cs-rpbar" />
+          <div class="cs-rpb">
+            <div class="cs-rpn">
+              {{
+                replyTo.message_type === 1
+                  ? replyTo.sender?.name || 'You'
+                  : contact.name || 'Customer'
+              }}
+            </div>
+            <div class="cs-rpt">
+              {{ plain(replyTo.content || '') || 'Attachment' }}
+            </div>
+          </div>
+          <span class="cs-ci i-lucide-x" @click="replyTo = null" />
+        </div>
+
         <div
           v-if="!isRecording"
           class="cs-cbar"
@@ -951,7 +1001,7 @@ watch(() => messages.value.length, scrollDown);
             class="cs-ci i-lucide-mic"
             @click="startRec"
           />
-          <span v-else class="cs-send i-lucide-send" @click="doSend" />
+          <span v-else class="cs-snd2 i-lucide-send" @click="doSend" />
         </div>
 
         <div v-if="pendingFiles.length" class="cs-files">
@@ -967,6 +1017,43 @@ watch(() => messages.value.length, scrollDown);
       <div>
         <div class="cs-none-t">ChatsSync</div>
         <div class="cs-none-s">Select a chat to start messaging</div>
+      </div>
+    </div>
+
+    <!-- ============ FORWARD ============ -->
+    <div v-if="fwdMsg" class="cs-fw" @click.self="fwdMsg = null">
+      <div class="cs-fwb">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="fwdMsg = null" />
+          <span>Forward message to</span>
+        </div>
+        <div class="cs-fwp">{{ plain(fwdMsg.content || '') || 'Attachment' }}</div>
+        <div class="cs-fwl">
+          <div
+            v-for="c in rows"
+            :key="c.id"
+            class="cs-fwr"
+            :class="{ on: fwdPick.includes(c.id) }"
+            @click="toggleFwd(c.id)"
+          >
+            <div class="cs-fwav" :style="{ background: colorFor(c.id) }">
+              {{ initials(c.meta?.sender?.name) }}
+            </div>
+            <span class="cs-fwn">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+            <span
+              class="cs-fwck"
+              :class="
+                fwdPick.includes(c.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'
+              "
+            />
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">{{ fwdPick.length }} selected</span>
+          <button class="cs-fwbtn" :disabled="!fwdPick.length" @click="doForward">
+            Send
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1908,20 +1995,21 @@ watch(() => messages.value.length, scrollDown);
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 0 14px;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 16px;
   min-height: 46px;
   width: 100%;
 }
 .cs-ci {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
   color: var(--tx2);
   cursor: pointer;
   flex-shrink: 0;
-  margin: 12px 0;
+  margin: 0;
+  align-self: center;
 }
 .cs-ci:hover {
   color: var(--tx);
@@ -1936,14 +2024,17 @@ watch(() => messages.value.length, scrollDown);
   box-shadow: none !important;
   resize: none;
   color: var(--tx);
-  font-size: 14.5px;
+  font-size: 15px;
   font-family: inherit;
-  line-height: 1.4;
-  padding: 12px 0 !important;
+  line-height: 21px;
+  padding: 0 !important;
   margin: 0 !important;
-  min-height: 46px;
-  max-height: 110px;
+  height: 21px;
+  min-height: 21px;
+  max-height: 105px;
   display: block;
+  overflow-y: auto;
+  align-self: center;
 }
 .cs-cin::placeholder {
   color: var(--tx3);
@@ -2198,6 +2289,161 @@ watch(() => messages.value.length, scrollDown);
   margin-top: 8px;
 }
 
+/* send: WhatsApp jaisa plain, gol background nahi */
+.cs-snd2 {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  color: var(--g);
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ===== REPLY PREVIEW ===== */
+.cs-rp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--fld);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 7px;
+}
+.cs-rpbar {
+  width: 4px;
+  align-self: stretch;
+  border-radius: 3px;
+  background: var(--g);
+  flex-shrink: 0;
+}
+.cs-rpb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-rpn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g);
+}
+.cs-rpt {
+  font-size: 13px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* ===== FORWARD ===== */
+.cs-fw {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+}
+.cs-fwb {
+  width: 420px;
+  max-width: 92vw;
+  max-height: 78vh;
+  background: var(--panel);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cs-fwh {
+  height: 58px;
+  background: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.cs-fwp {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--tx3);
+  border-bottom: 1px solid var(--ln2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fwl {
+  flex: 1;
+  overflow-y: auto;
+}
+.cs-fwr {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.cs-fwr:hover {
+  background: var(--hov);
+}
+.cs-fwr.on {
+  background: var(--g-tint);
+}
+.cs-fwav {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.cs-fwn {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fwck {
+  width: 20px;
+  height: 20px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-fwf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ln2);
+  flex-shrink: 0;
+}
+.cs-fwc {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx3);
+}
+.cs-fwbtn {
+  background: var(--g);
+  color: #fff;
+  border: 0;
+  border-radius: 20px;
+  padding: 8px 22px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cs-fwbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ===== CONTEXT MENU ===== */
 .cs-cmenu {
   position: fixed;
@@ -2313,6 +2559,16 @@ watch(() => messages.value.length, scrollDown);
   }
   .cs-aud {
     width: 100%;
+    min-width: 0;
+  }
+  .cs-msg:has(.cs-aud) {
+    max-width: 88%;
+  }
+  .cs-fwb {
+    max-height: 88vh;
+  }
+  .cs-cbar {
+    padding: 9px 13px;
   }
   .cs-comp {
     padding-bottom: env(safe-area-inset-bottom, 9px);
