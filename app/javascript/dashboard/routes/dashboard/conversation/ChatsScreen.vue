@@ -45,6 +45,9 @@ const threadRef = ref(null);
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null });
+const pinned = ref({});
+const muted = ref({});
+const archived = ref({});
 
 /* ---------------- helpers ---------------- */
 const initials = name =>
@@ -147,7 +150,11 @@ const rows = computed(() => {
       return `${n} ${p} ${m}`.toLowerCase().includes(s);
     });
   }
-  return L.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return L.filter(c => !archived.value[c.id]).sort((a, b) => {
+    const p = (pinned.value[b.id] ? 1 : 0) - (pinned.value[a.id] ? 1 : 0);
+    if (p) return p;
+    return (b.timestamp || 0) - (a.timestamp || 0);
+  });
 });
 
 /* API snake_case deti hai, AudioChip camelCase maangta hai */
@@ -349,26 +356,69 @@ const onRecDone = file => {
 };
 
 /* right-click */
+const sub = ref('');
 const openMenu = (e, c) => {
   e.preventDefault();
+  sub.value = '';
   menu.value = { open: true, x: e.clientX, y: e.clientY, chat: c };
 };
 const closeMenu = () => {
   menu.value.open = false;
+  sub.value = '';
 };
-const act = name => {
+
+const convApi = (cid, path) => {
+  const base = `/api/v1/accounts/${accountId.value}/conversations/${cid}`;
+  return fetch(`${base}/${path}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      api_access_token: currentUser.value?.access_token || '',
+    },
+  });
+};
+
+const act = (name, arg) => {
   const c = menu.value.chat;
-  closeMenu();
   if (!c) return;
-  if (name === 'unread') store.dispatch('markMessagesUnread', { id: c.id });
+  closeMenu();
+  const d = (a, p) => store.dispatch(a, p)?.catch?.(() => {});
+
+  if (name === 'unread') d('markMessagesUnread', { id: c.id });
   else if (name === 'resolved')
-    store.dispatch('toggleStatus', { conversationId: c.id, status: 'resolved' });
+    d('toggleStatus', { conversationId: c.id, status: 'resolved' });
   else if (name === 'pending')
-    store.dispatch('toggleStatus', { conversationId: c.id, status: 'pending' });
+    d('toggleStatus', { conversationId: c.id, status: 'pending' });
   else if (name === 'open')
-    store.dispatch('toggleStatus', { conversationId: c.id, status: 'open' });
-  else if (name === 'delete') store.dispatch('deleteConversation', c.id);
+    d('toggleStatus', { conversationId: c.id, status: 'open' });
+  else if (name === 'priority')
+    d('assignPriority', { conversationId: c.id, priority: arg });
+  else if (name === 'mute') {
+    muted.value[c.id] = !muted.value[c.id];
+    d(muted.value[c.id] ? 'muteConversation' : 'unmuteConversation', c.id);
+  } else if (name === 'pin') {
+    pinned.value[c.id] = !pinned.value[c.id];
+    convApi(c.id, pinned.value[c.id] ? 'pin' : 'unpin').catch(() => {});
+  } else if (name === 'archive') {
+    archived.value[c.id] = !archived.value[c.id];
+    convApi(c.id, archived.value[c.id] ? 'archive' : 'unarchive').catch(
+      () => {}
+    );
+  } else if (name === 'copy') {
+    const url = `${window.location.origin}/app/accounts/${accountId.value}/conversations/${c.id}`;
+    navigator.clipboard?.writeText(url);
+  } else if (name === 'block') {
+    d('contacts/update', {
+      id: c.meta?.sender?.id,
+      blocked: !c.meta?.sender?.blocked,
+    });
+  } else if (name === 'delete') d('deleteConversation', c.id);
 };
+
+const archivedCount = computed(
+  () => Object.values(archived.value).filter(Boolean).length
+);
 
 /* ---------------- lifecycle ---------------- */
 onMounted(() => {
@@ -447,6 +497,12 @@ watch(() => messages.value.length, scrollDown);
       </div>
 
       <div class="cs-list">
+        <div v-if="!q" class="cs-arch">
+          <span class="i-lucide-archive" />
+          <span class="cs-arch-t">Archived</span>
+          <span class="cs-arch-c">{{ archivedCount }}</span>
+        </div>
+
         <div
           v-for="c in rows"
           :key="c.id"
@@ -650,6 +706,22 @@ watch(() => messages.value.length, scrollDown);
       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
       @click.stop
     >
+      <div class="cs-mi" @click="act('pin')">
+        <span class="i-lucide-pin" />
+        <span>{{ pinned[menu.chat?.id] ? 'Unpin chat' : 'Pin chat' }}</span>
+      </div>
+      <div class="cs-mi" @click="act('mute')">
+        <span class="i-lucide-bell-off" />
+        <span>
+          {{ muted[menu.chat?.id] ? 'Unmute notifications' : 'Mute notifications' }}
+        </span>
+      </div>
+      <div class="cs-mi" @click="act('archive')">
+        <span class="i-lucide-archive" />
+        <span>
+          {{ archived[menu.chat?.id] ? 'Unarchive chat' : 'Archive chat' }}
+        </span>
+      </div>
       <div class="cs-mi" @click="act('unread')">
         <span class="i-lucide-mail" /><span>Mark as unread</span>
       </div>
@@ -664,6 +736,30 @@ watch(() => messages.value.length, scrollDown);
         <span class="i-lucide-rotate-ccw" /><span>Reopen</span>
       </div>
       <hr />
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'pri' ? '' : 'pri'"
+      >
+        <span class="i-lucide-flag" /><span>Priority</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'pri'" class="cs-sub">
+          <div
+            v-for="p in ['urgent', 'high', 'medium', 'low', 'none']"
+            :key="p"
+            class="cs-mi"
+            @click.stop="act('priority', p === 'none' ? null : p)"
+          >
+            <span>{{ p }}</span>
+          </div>
+        </div>
+      </div>
+      <hr />
+      <div class="cs-mi" @click="act('copy')">
+        <span class="i-lucide-link" /><span>Copy conversation link</span>
+      </div>
+      <div class="cs-mi danger" @click="act('block')">
+        <span class="i-lucide-ban" /><span>Block contact</span>
+      </div>
       <div class="cs-mi danger" @click="act('delete')">
         <span class="i-lucide-trash-2" /><span>Delete conversation</span>
       </div>
@@ -933,6 +1029,55 @@ watch(() => messages.value.length, scrollDown);
   flex-shrink: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
 }
+.cs-arch {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 13px 20px;
+  cursor: pointer;
+  color: var(--tx2);
+}
+.cs-arch:hover {
+  background: var(--hov);
+}
+.cs-arch > span:first-child {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.cs-arch-t {
+  flex: 1;
+  font-size: 15px;
+  color: var(--tx);
+}
+.cs-arch-c {
+  font-size: 12.5px;
+  color: var(--g);
+  font-weight: 500;
+}
+.cs-has-sub {
+  position: relative;
+}
+.cs-arw {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--tx3);
+}
+.cs-sub {
+  position: absolute;
+  left: 100%;
+  top: -7px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  min-width: 150px;
+  z-index: 1;
+}
+.cs-sub .cs-mi {
+  text-transform: capitalize;
+}
 .cs-empty-list {
   padding: 40px 20px;
   text-align: center;
@@ -1016,6 +1161,9 @@ watch(() => messages.value.length, scrollDown);
   flex-direction: column;
   gap: 3px;
   background-color: var(--chat);
+  background-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27352%27%20height%3D%27232%27%20viewBox%3D%270%200%20352%20232%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-opacity%3D%27.05%27%20stroke-width%3D%271.25%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cg%20transform%3D%27translate%2818%2C20%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%200%201%2012%200%206%206%200%200%201-6%206H2l2-3a6%206%200%200%201-4-3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C14%29%27%3E%3Cpath%20d%3D%27M0%200h14v10H4L0%2013z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28108%2C22%29%27%3E%3Cpath%20d%3D%27M6%200l1.8%203.7%204%20.6-2.9%202.8.7%204L6%209.2%202.4%2011l.7-4L.2%204.3l4-.6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28150%2C16%29%27%3E%3Cpath%20d%3D%27M2%202h12v12H2z%20M2%206h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28192%2C20%29%27%3E%3Cpath%20d%3D%27M7%200C3%200%200%203%200%206.5%200%2011%207%2016%207%2016s7-5%207-9.5C14%203%2011%200%207%200z%20M7%204a2.5%202.5%200%201%201%200%205%202.5%202.5%200%200%201%200-5z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28234%2C14%29%27%3E%3Cpath%20d%3D%27M0%208c0-4%203-7%207-7s7%203%207%207-3%207-7%207-7-3-7-7z%20M4%208h6%20M7%205v6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28276%2C20%29%27%3E%3Cpath%20d%3D%27M0%203h16v10H0z%20M0%203l8%206%208-6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28318%2C16%29%27%3E%3Cpath%20d%3D%27M3%200h10v4H3z%20M1%204h14v11H1z%20M6%208h4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2814%2C64%29%27%3E%3Cpath%20d%3D%27M0%2010c3-5%209-5%2012%200%20M6%204a2.5%202.5%200%201%201%200%20.01%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2856%2C58%29%27%3E%3Cpath%20d%3D%27M0%200h13M0%205h9M0%2010h11%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2898%2C62%29%27%3E%3Cpath%20d%3D%27M8%200a8%208%200%201%201%200%2016A8%208%200%200%201%208%200z%20M8%204v4.5l3%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28140%2C60%29%27%3E%3Cpath%20d%3D%27M0%200l11%206-11%206z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28182%2C58%29%27%3E%3Cpath%20d%3D%27M2%200h11l3%204v11H2z%20M13%200v4h3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28224%2C62%29%27%3E%3Cpath%20d%3D%27M0%206h4l4-5v14l-4-5H0z%20M11%204a4%204%200%200%201%200%208%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28266%2C58%29%27%3E%3Cpath%20d%3D%27M1%201h14v10H1z%20M1%2011l5-4%203%202%203-3%203%203%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28308%2C64%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%200%201%206%206c0%204-6%2010-6%2010S0%2010%200%206a6%206%200%200%201%206-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2820%2C106%29%27%3E%3Cpath%20d%3D%27M0%204h5l3-4h4l3%204h1v10H0z%20M8%206a3%203%200%201%201%200%206%203%203%200%200%201%200-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C110%29%27%3E%3Cpath%20d%3D%27M6%200l6%2012H0z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%2C104%29%27%3E%3Cpath%20d%3D%27M0%200h12v12H0z%20M3%203h6v6H3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28146%2C108%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%201%200%2012%200%206%206%200%200%200-12%200z%20M3%206l2%202%204-4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28188%2C104%29%27%3E%3Cpath%20d%3D%27M1%203h14v9H1z%20M4%203V1h8v2%20M4%2012v2h8v-2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28230%2C110%29%27%3E%3Cpath%20d%3D%27M0%2012L6%200l6%2012z%20M4%2012v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28272%2C106%29%27%3E%3Cpath%20d%3D%27M2%202l10%2010M12%202L2%2012%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28314%2C110%29%27%3E%3Cpath%20d%3D%27M0%208h16%20M4%204l-4%204%204%204%20M12%204l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2816%2C150%29%27%3E%3Cpath%20d%3D%27M0%202h14v12H0z%20M3%200v4M11%200v4M0%206h14%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2858%2C154%29%27%3E%3Cpath%20d%3D%27M7%200a7%207%200%201%201%200%2014A7%207%200%200%201%207%200z%20M4%207h6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28100%2C148%29%27%3E%3Cpath%20d%3D%27M0%2010c0-6%205-10%208-10s8%204%208%2010%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28142%2C152%29%27%3E%3Cpath%20d%3D%27M2%200h10v14l-5-4-5%204z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28184%2C150%29%27%3E%3Cpath%20d%3D%27M0%200h14v3H0z%20M2%203v10h10V3%20M6%206v4M8%206v4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28226%2C154%29%27%3E%3Cpath%20d%3D%27M8%200l2%205%205%20.5-4%203.5%201%205-4-2.6L4%2014l1-5L1%205.5%206%205z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28268%2C148%29%27%3E%3Cpath%20d%3D%27M1%201h13v13H1z%20M4%207h7M7%204v7%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28310%2C152%29%27%3E%3Cpath%20d%3D%27M0%205a5%205%200%200%201%2010%200v6H0z%20M3%2011v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2822%2C196%29%27%3E%3Cpath%20d%3D%27M0%203h16v9H0z%20M5%2012v2h6v-2%20M2%2016h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2864%2C198%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%201%201%200%2012A6%206%200%200%201%206%200z%20M6%203v3l2%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28106%2C194%29%27%3E%3Cpath%20d%3D%27M0%206h12%20M8%202l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28148%2C198%29%27%3E%3Cpath%20d%3D%27M2%200h8a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H2a2%202%200%200%201-2-2V2a2%202%200%200%201%202-2z%20M4%203h4M4%206h4M4%209h2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28190%2C194%29%27%3E%3Cpath%20d%3D%27M0%200h14M0%205h14M0%2010h8%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28232%2C198%29%27%3E%3Cpath%20d%3D%27M7%200l7%207-7%207-7-7z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28274%2C194%29%27%3E%3Cpath%20d%3D%27M1%204h12v9H1z%20M4%204V2a3%203%200%200%201%206%200v2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28316%2C198%29%27%3E%3Cpath%20d%3D%27M0%200l14%207-14%207%203-7z%27%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E');
+  background-repeat: repeat;
+  background-size: 352px 232px;
   position: relative;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
@@ -1049,7 +1197,8 @@ watch(() => messages.value.length, scrollDown);
   margin-top: 1px;
 }
 .cs-bub {
-  padding: 6px 9px 7px 10px;
+  position: relative;
+  padding: 6px 9px 19px 10px;
   border-radius: 7.5px;
   box-shadow: var(--sh);
   min-width: 110px;
@@ -1100,13 +1249,11 @@ watch(() => messages.value.length, scrollDown);
   font-weight: 600;
   color: var(--g);
   margin-bottom: 2px;
-  padding-right: 52px;
 }
 .cs-tx {
   font-size: 14.4px;
   line-height: 1.42;
   word-wrap: break-word;
-  padding-right: 52px;
   white-space: pre-wrap;
 }
 .cs-tx :deep(a) {
@@ -1116,15 +1263,20 @@ watch(() => messages.value.length, scrollDown);
 .cs-tx :deep(p) {
   margin: 0;
 }
+.cs-tx :deep(p + p) {
+  margin-top: 6px;
+}
 .cs-mt {
+  position: absolute;
+  right: 9px;
+  bottom: 4px;
   font-size: 11px;
   color: var(--tx3);
-  float: right;
-  margin: -14px -3px -2px 0;
   display: flex;
   align-items: center;
   gap: 3px;
   line-height: 1;
+  pointer-events: none;
 }
 .cs-mt .cs-tick {
   width: 14px;
