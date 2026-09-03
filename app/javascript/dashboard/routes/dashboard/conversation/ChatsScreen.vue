@@ -150,10 +150,36 @@ const rows = computed(() => {
   return L.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 });
 
+/* API snake_case deti hai, AudioChip camelCase maangta hai */
+const attach = a => ({
+  ...a,
+  id: a.id,
+  dataUrl: a.data_url || a.dataUrl,
+  fileType: a.file_type || a.fileType,
+  fileName: a.file_name || a.fileName,
+  extension: a.extension,
+  transcribedText: a.transcribed_text || a.transcribedText,
+});
+const aUrl = a => a.data_url || a.dataUrl || '';
+const aType = a => a.file_type || a.fileType || 'file';
+
+const plain = html => {
+  if (!html) return '';
+  try {
+    const f = new MessageFormatter(html);
+    if (f.plainText) return f.plainText;
+  } catch (e) {
+    /* niche fallback */
+  }
+  return String(html)
+    .replace(/<[^>]*>/g, '')
+    .trim();
+};
+
 const previewOf = c => {
   const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
   if (!m) return 'No messages yet';
-  if (m.content) return new MessageFormatter(m.content).plainText;
+  if (m.content) return plain(m.content);
   const a = m.attachments?.[0];
   if (a) {
     const map = {
@@ -225,23 +251,41 @@ const scrollDown = () => {
   });
 };
 
+/* Chatwoot ke version ke hisaab se action ka naam alag hota hai.
+   Jo mojood ho wahi use karo — andaza mat lagao. */
+const sendAction = () => {
+  const names = Object.keys(store._actions || {});
+  return (
+    ['createPendingMessageAndSend', 'sendMessage', 'sendMessageWithData'].find(
+      n => names.includes(n)
+    ) || 'sendMessage'
+  );
+};
+
+const pushMessage = payload => {
+  const r = store.dispatch(sendAction(), payload);
+  return r && typeof r.then === 'function' ? r : Promise.resolve(r);
+};
+
 const doSend = () => {
   const text = draft.value.trim();
   if (!text && !pendingFiles.value.length) return;
   if (!currentChat.value?.id) return;
-  store
-    .dispatch('sendMessage', {
-      conversationId: currentChat.value.id,
-      message: text,
-      private: false,
-      files: pendingFiles.value.map(f => f.file),
-    })
+  pushMessage({
+    conversationId: currentChat.value.id,
+    message: text,
+    private: false,
+    files: pendingFiles.value.map(f => f.file),
+    ccEmails: '',
+    bccEmails: '',
+    toEmails: '',
+  })
     .then(() => {
       draft.value = '';
       pendingFiles.value = [];
       scrollDown();
     })
-    .catch(() => {});
+    .catch(e => console.error('[ChatsSync] send fail', e));
 };
 
 const onKey = e => {
@@ -290,15 +334,17 @@ const onRecDone = file => {
     sendAfterRec.value = false;
     isRecording.value = false;
     recState.value = '';
-    store
-      .dispatch('sendMessage', {
-        conversationId: currentChat.value.id,
-        message: '',
-        private: false,
-        files: [file.file],
-      })
+    pushMessage({
+      conversationId: currentChat.value.id,
+      message: '',
+      private: false,
+      files: [file.file],
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+    })
       .then(scrollDown)
-      .catch(() => {});
+      .catch(e => console.error('[ChatsSync] voice fail', e));
   }
 };
 
@@ -487,24 +533,30 @@ watch(() => messages.value.length, scrollDown);
               <template v-if="b.m.attachments && b.m.attachments.length">
                 <template v-for="a in b.m.attachments" :key="a.id">
                   <img
-                    v-if="a.file_type === 'image'"
-                    :src="a.data_url"
+                    v-if="aType(a) === 'image' && aUrl(a)"
+                    :src="aUrl(a)"
                     class="cs-img"
                   />
                   <AudioChip
-                    v-else-if="a.file_type === 'audio'"
-                    :attachment="a"
+                    v-else-if="aType(a) === 'audio' && aUrl(a)"
+                    :attachment="attach(a)"
+                    :show-transcribed-text="false"
                     class="cs-aud"
                   />
                   <video
-                    v-else-if="a.file_type === 'video'"
-                    :src="a.data_url"
+                    v-else-if="aType(a) === 'video' && aUrl(a)"
+                    :src="aUrl(a)"
                     controls
                     class="cs-img"
                   />
-                  <a v-else :href="a.data_url" target="_blank" class="cs-file">
+                  <a
+                    v-else-if="aUrl(a)"
+                    :href="aUrl(a)"
+                    target="_blank"
+                    class="cs-file"
+                  >
                     <span class="i-lucide-file" />
-                    {{ a.file_name || 'Document' }}
+                    {{ a.file_name || a.fileName || 'Document' }}
                   </a>
                 </template>
               </template>
@@ -1048,6 +1100,7 @@ watch(() => messages.value.length, scrollDown);
   font-weight: 600;
   color: var(--g);
   margin-bottom: 2px;
+  padding-right: 52px;
 }
 .cs-tx {
   font-size: 14.4px;
@@ -1111,15 +1164,19 @@ watch(() => messages.value.length, scrollDown);
 .cs-cbar {
   background: var(--fld);
   border-radius: 10px;
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: flex-end;
   gap: 12px;
   padding: 0 14px;
   min-height: 46px;
+  width: 100%;
 }
 .cs-ci {
   width: 22px;
   height: 22px;
+  min-width: 22px;
   color: var(--tx2);
   cursor: pointer;
   flex-shrink: 0;
@@ -1129,18 +1186,23 @@ watch(() => messages.value.length, scrollDown);
   color: var(--tx);
 }
 .cs-cin {
-  flex: 1;
+  flex: 1 1 0 !important;
+  width: auto !important;
   min-width: 0;
-  background: none;
-  border: none;
-  outline: none;
+  background: none !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   resize: none;
   color: var(--tx);
   font-size: 14.5px;
   font-family: inherit;
   line-height: 1.4;
-  padding: 12px 0;
+  padding: 12px 0 !important;
+  margin: 0 !important;
+  min-height: 46px;
   max-height: 110px;
+  display: block;
 }
 .cs-cin::placeholder {
   color: var(--tx3);
