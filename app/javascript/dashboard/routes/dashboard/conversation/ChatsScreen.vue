@@ -255,14 +255,19 @@ const bodyHtml = m => new MessageFormatter(m.content || '').formattedMessage;
 
 const contact = computed(() => currentChat.value?.meta?.sender || {});
 const contactStatus = computed(() => {
-  const ib = (inboxesList.value || []).find(
-    i => i.id === currentChat.value?.inbox_id
+  const c = contact.value;
+  return (
+    c.phone_number ||
+    c.email ||
+    c.identifier ||
+    (inboxesList.value || []).find(i => i.id === currentChat.value?.inbox_id)
+      ?.name ||
+    ''
   );
-  const bits = [];
-  if (contact.value.phone_number) bits.push(contact.value.phone_number);
-  if (ib?.name) bits.push(ib.name);
-  return bits.join(' · ');
 });
+
+/* contact profile drawer */
+const showProfile = ref(false);
 
 /* ---------------- actions ---------------- */
 const openChat = c => {
@@ -279,21 +284,10 @@ const goBack = () => {
   });
 };
 
-const recErr = ref('');
-let recWatchdog = null;
-
-const onRecError = e => {
+const onRecError = () => {
   isRecording.value = false;
   recState.value = '';
   sendAfterRec.value = false;
-  clearTimeout(recWatchdog);
-  const msg = e?.error?.message || e?.message || '';
-  recErr.value = /permission|denied|NotAllowed/i.test(msg)
-    ? 'Mic ki ijazat nahi mili — browser ke address bar mein 🎤 par click karo'
-    : `Recording shuru nahi hui${msg ? ': ' + msg : ''}`;
-  setTimeout(() => {
-    recErr.value = '';
-  }, 6000);
 };
 
 const scrollDown = () => {
@@ -361,24 +355,22 @@ const audioFormat = computed(() => {
 });
 
 const startRec = () => {
-  recErr.value = '';
   isRecording.value = true;
   recState.value = '';
   recTime.value = '0:00';
-  clearTimeout(recWatchdog);
-  // 3 second tak waqt na chale to samjho mic nahi mila
-  recWatchdog = setTimeout(() => {
-    if (isRecording.value && recTime.value === '0:00') {
-      onRecError({ message: 'mic se koi awaz nahi aa rahi' });
-    }
-  }, 3000);
 };
 const cancelRec = () => {
-  clearTimeout(recWatchdog);
   sendAfterRec.value = false;
-  recorderRef.value?.cancelRecording();
-  isRecording.value = false;
-  recState.value = '';
+  try {
+    recorderRef.value?.cancelRecording();
+  } catch (e) {
+    /* ignore */
+  }
+  // foran unmount karne se mic ka stream band nahi hota
+  setTimeout(() => {
+    isRecording.value = false;
+    recState.value = '';
+  }, 180);
 };
 const pauseRec = () => recorderRef.value?.pauseResumeRecording();
 const finishRec = () => {
@@ -386,7 +378,6 @@ const finishRec = () => {
   recorderRef.value?.stopRecording();
 };
 const onRecProgress = t => {
-  clearTimeout(recWatchdog);
   recTime.value = String(t).replace(/^0(\d:)/, '$1');
 };
 const onRecDone = file => {
@@ -426,7 +417,26 @@ const openMenu = (e, c) => {
 };
 const closeMenu = () => {
   menu.value.open = false;
+  mmenu.value.open = false;
   sub.value = '';
+};
+
+/* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
+const menuRef = ref(null);
+const fitMenu = el => {
+  if (!el) return;
+  nextTick(() => {
+    const r = el.getBoundingClientRect();
+    const pad = 8;
+    let t = r.top;
+    let l = r.left;
+    if (r.bottom > window.innerHeight - pad)
+      t = Math.max(pad, window.innerHeight - r.height - pad);
+    if (r.right > window.innerWidth - pad)
+      l = Math.max(pad, window.innerWidth - r.width - pad);
+    el.style.top = t + 'px';
+    el.style.left = l + 'px';
+  });
 };
 
 const convApi = (cid, path) => {
@@ -481,6 +491,34 @@ const act = (name, arg) => {
   } else if (name === 'delete') d('deleteConversation', c.id);
 };
 
+const mmenu = ref({ open: false, x: 0, y: 0, msg: null });
+const openMsgMenu = (e, m) => {
+  e.preventDefault();
+  e.stopPropagation();
+  mmenu.value = {
+    open: true,
+    x: Math.max(8, Math.min(e.clientX, window.innerWidth - 224)),
+    y: Math.max(8, Math.min(e.clientY, window.innerHeight - 300)),
+    msg: m,
+  };
+};
+const msgAct = name => {
+  const m = mmenu.value.msg;
+  mmenu.value.open = false;
+  if (!m) return;
+  if (name === 'copy') navigator.clipboard?.writeText(plain(m.content || ''));
+  else if (name === 'reply') {
+    draft.value = `> ${plain(m.content || '').slice(0, 80)}\n`;
+  } else if (name === 'delete') {
+    store
+      .dispatch('deleteMessage', {
+        conversationId: currentChat.value.id,
+        messageId: m.id,
+      })
+      ?.catch?.(() => {});
+  }
+};
+
 const archivedCount = computed(
   () => Object.values(archived.value).filter(Boolean).length
 );
@@ -492,9 +530,10 @@ onMounted(() => {
   store.dispatch('updateChatListFilters', {
     inboxId: props.inboxId || undefined,
     assigneeType: 'all',
-    status: 'open',
+    status: 'all',
     page: 1,
   });
+  store.dispatch('setChatStatusFilter', 'all');
   store.dispatch('fetchAllConversations');
   document.addEventListener('click', closeMenu);
 
@@ -641,24 +680,18 @@ watch(() => messages.value.length, scrollDown);
     <div v-if="currentChat && currentChat.id" class="cs-main">
       <div class="cs-th">
         <span v-if="isMobile" class="cs-ic i-lucide-arrow-left" @click="goBack" />
-        <div class="cs-tav" :style="{ background: colorFor(currentChat.id) }">
+        <div
+          class="cs-tav"
+          :style="{ background: colorFor(currentChat.id) }"
+          @click="showProfile = true"
+        >
           <img v-if="contact.thumbnail" :src="contact.thumbnail" />
           <template v-else>{{ initials(contact.name) }}</template>
         </div>
-        <div class="cs-tnm">
+        <div class="cs-tnm" @click="showProfile = true">
           <div class="cs-tn">{{ contact.name || 'Unknown' }}</div>
           <div class="cs-ts">{{ contactStatus }}</div>
         </div>
-        <span
-          class="cs-ic i-lucide-check"
-          title="Resolve"
-          @click="
-            store.dispatch('toggleStatus', {
-              conversationId: currentChat.id,
-              status: 'resolved',
-            })
-          "
-        />
       </div>
 
       <div ref="threadRef" class="cs-thread">
@@ -673,7 +706,7 @@ watch(() => messages.value.length, scrollDown);
               { pv: b.m.private, f1: b.first, grp: !b.first },
             ]"
           >
-            <div class="cs-bub">
+            <div class="cs-bub" @contextmenu="openMsgMenu($event, b.m)">
               <div v-if="b.first && b.m.message_type === 1" class="cs-snd">
                 {{ b.m.sender?.name || 'You' }}
               </div>
@@ -724,7 +757,6 @@ watch(() => messages.value.length, scrollDown);
       </div>
 
       <div class="cs-comp">
-        <div v-if="recErr" class="cs-err">{{ recErr }}</div>
         <template v-if="isRecording">
           <!-- waveform poori chaudai ki apni patti mein — yahi shakl
                pehle chal rahi thi. Bar ke andar dalne se WaveSurfer
@@ -802,9 +834,82 @@ watch(() => messages.value.length, scrollDown);
       </div>
     </div>
 
+    <!-- ============ CONTACT PROFILE ============ -->
+    <div v-if="showProfile" class="cs-pf" @click.self="showProfile = false">
+      <div class="cs-pfp">
+        <div class="cs-pfh">
+          <span class="cs-ic i-lucide-x" @click="showProfile = false" />
+          <span>Contact info</span>
+        </div>
+        <div class="cs-pfb">
+          <div
+            class="cs-pfav"
+            :style="{ background: colorFor(currentChat.id) }"
+          >
+            <img v-if="contact.thumbnail" :src="contact.thumbnail" />
+            <template v-else>{{ initials(contact.name) }}</template>
+          </div>
+          <div class="cs-pfn">{{ contact.name || 'Unknown' }}</div>
+          <div class="cs-pfs">{{ contact.phone_number || '' }}</div>
+        </div>
+        <div class="cs-pfr" v-if="contact.email">
+          <span class="cs-pfk">Email</span>
+          <span class="cs-pfv">{{ contact.email }}</span>
+        </div>
+        <div class="cs-pfr" v-if="contact.identifier">
+          <span class="cs-pfk">Identifier</span>
+          <span class="cs-pfv">{{ contact.identifier }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Channel</span>
+          <span class="cs-pfv">
+            {{
+              (inboxesList || []).find(i => i.id === currentChat.inbox_id)
+                ?.name || '—'
+            }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="contact.company_name">
+          <span class="cs-pfk">Company</span>
+          <span class="cs-pfv">{{ contact.company_name }}</span>
+        </div>
+        <div class="cs-pfr" v-if="contact.location">
+          <span class="cs-pfk">Location</span>
+          <span class="cs-pfv">{{ contact.location }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Conversation</span>
+          <span class="cs-pfv">#{{ currentChat.id }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ MESSAGE MENU ============ -->
+    <div
+      v-if="mmenu.open"
+      class="cs-cmenu"
+      :style="{ left: mmenu.x + 'px', top: mmenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="cs-mi" @click="msgAct('reply')">
+        <span class="i-lucide-reply" /><span>Reply</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('copy')">
+        <span class="i-lucide-copy" /><span>Copy</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('info')">
+        <span class="i-lucide-info" /><span>Message info</span>
+      </div>
+      <hr />
+      <div class="cs-mi danger" @click="msgAct('delete')">
+        <span class="i-lucide-trash-2" /><span>Delete message</span>
+      </div>
+    </div>
+
     <!-- ============ RIGHT-CLICK MENU ============ -->
     <div
       v-if="menu.open"
+      :ref="fitMenu"
       class="cs-cmenu"
       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
       @click.stop
@@ -1454,6 +1559,129 @@ watch(() => messages.value.length, scrollDown);
   display: block;
   margin-bottom: 2px;
 }
+/* ===== VOICE bubble — WhatsApp jaisa ===== */
+.cs-aud {
+  width: 300px;
+  max-width: 100%;
+  display: block;
+  margin: 2px 0 0;
+}
+.cs-msg:has(.cs-aud) .cs-bub {
+  padding: 8px 10px 19px;
+  min-width: 300px;
+}
+.cs-aud :deep(.cs-voice__row) {
+  gap: 10px;
+}
+.cs-aud :deep(.cs-voice__play) {
+  width: 26px;
+  height: 26px;
+  opacity: 1;
+}
+.cs-aud :deep(.cs-voice__wave) {
+  height: 26px;
+  gap: 2px;
+}
+.cs-aud :deep(.cs-voice__bar) {
+  min-width: 2px;
+  opacity: 0.42;
+}
+.cs-aud :deep(.cs-voice__bar--on) {
+  opacity: 1;
+  background: #53bdeb;
+}
+.cs-aud :deep(.cs-voice__meta) {
+  padding-left: 36px !important;
+  margin-top: 2px !important;
+}
+.cs-aud :deep(.cs-voice__time) {
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+.cs-aud :deep(.cs-voice__speed) {
+  opacity: 0.6;
+}
+
+/* ===== CONTACT PROFILE ===== */
+.cs-pf {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: flex-end;
+}
+.cs-pfp {
+  width: 380px;
+  max-width: 90vw;
+  background: var(--panel);
+  height: 100%;
+  overflow-y: auto;
+}
+.cs-pfh {
+  height: 60px;
+  background: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 18px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.cs-pfb {
+  padding: 26px 20px 22px;
+  text-align: center;
+  border-bottom: 8px solid var(--chat);
+}
+.cs-pfav {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 52px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.cs-pfav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cs-pfn {
+  font-size: 21px;
+  color: var(--tx);
+}
+.cs-pfs {
+  font-size: 15px;
+  color: var(--tx3);
+  margin-top: 4px;
+}
+.cs-pfr {
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--ln2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cs-pfk {
+  font-size: 12.5px;
+  color: var(--g);
+}
+.cs-pfv {
+  font-size: 14.5px;
+  color: var(--tx);
+  word-break: break-all;
+}
+.cs-tnm {
+  cursor: pointer;
+}
+.cs-tav {
+  cursor: pointer;
+}
+
 .cs-file {
   display: flex;
   align-items: center;
