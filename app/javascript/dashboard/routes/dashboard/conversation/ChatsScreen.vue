@@ -279,10 +279,21 @@ const goBack = () => {
   });
 };
 
-const onRecError = () => {
+const recErr = ref('');
+let recWatchdog = null;
+
+const onRecError = e => {
   isRecording.value = false;
   recState.value = '';
   sendAfterRec.value = false;
+  clearTimeout(recWatchdog);
+  const msg = e?.error?.message || e?.message || '';
+  recErr.value = /permission|denied|NotAllowed/i.test(msg)
+    ? 'Mic ki ijazat nahi mili — browser ke address bar mein 🎤 par click karo'
+    : `Recording shuru nahi hui${msg ? ': ' + msg : ''}`;
+  setTimeout(() => {
+    recErr.value = '';
+  }, 6000);
 };
 
 const scrollDown = () => {
@@ -350,11 +361,20 @@ const audioFormat = computed(() => {
 });
 
 const startRec = () => {
+  recErr.value = '';
   isRecording.value = true;
   recState.value = '';
   recTime.value = '0:00';
+  clearTimeout(recWatchdog);
+  // 3 second tak waqt na chale to samjho mic nahi mila
+  recWatchdog = setTimeout(() => {
+    if (isRecording.value && recTime.value === '0:00') {
+      onRecError({ message: 'mic se koi awaz nahi aa rahi' });
+    }
+  }, 3000);
 };
 const cancelRec = () => {
+  clearTimeout(recWatchdog);
   sendAfterRec.value = false;
   recorderRef.value?.cancelRecording();
   isRecording.value = false;
@@ -366,6 +386,7 @@ const finishRec = () => {
   recorderRef.value?.stopRecording();
 };
 const onRecProgress = t => {
+  clearTimeout(recWatchdog);
   recTime.value = String(t).replace(/^0(\d:)/, '$1');
 };
 const onRecDone = file => {
@@ -393,13 +414,14 @@ const sub = ref('');
 const openMenu = (e, c) => {
   e.preventDefault();
   sub.value = '';
-  const up = e.clientY > window.innerHeight * 0.5;
+  const H = 470; // menu ki taqreeban unchai
+  const y = Math.max(8, Math.min(e.clientY, window.innerHeight - H - 8));
   menu.value = {
     open: true,
-    x: Math.min(e.clientX, window.innerWidth - 240),
-    y: up ? window.innerHeight - e.clientY : e.clientY,
+    x: Math.max(8, Math.min(e.clientX, window.innerWidth - 244)),
+    y,
     chat: c,
-    up,
+    up: false,
   };
 };
 const closeMenu = () => {
@@ -702,6 +724,7 @@ watch(() => messages.value.length, scrollDown);
       </div>
 
       <div class="cs-comp">
+        <div v-if="recErr" class="cs-err">{{ recErr }}</div>
         <template v-if="isRecording">
           <!-- waveform poori chaudai ki apni patti mein — yahi shakl
                pehle chal rahi thi. Bar ke andar dalne se WaveSurfer
@@ -783,11 +806,7 @@ watch(() => messages.value.length, scrollDown);
     <div
       v-if="menu.open"
       class="cs-cmenu"
-      :style="
-        menu.up
-          ? { left: menu.x + 'px', bottom: menu.y + 'px' }
-          : { left: menu.x + 'px', top: menu.y + 'px' }
-      "
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
       @click.stop
     >
       <div class="cs-mi" @click="act('pin')">
@@ -1398,10 +1417,37 @@ watch(() => messages.value.length, scrollDown);
   height: 14px;
 }
 .cs-img {
-  max-width: 100%;
+  max-width: 330px;
+  max-height: 340px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
   border-radius: 6px;
   display: block;
   margin-bottom: 4px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.12);
+}
+.cs-msg:has(.cs-img) .cs-bub {
+  padding: 3px 3px 19px;
+  min-width: 0;
+}
+.cs-msg:has(.cs-img) .cs-mt {
+  right: 10px;
+  bottom: 7px;
+  background: rgba(11, 20, 26, 0.45);
+  color: #e9edef;
+  padding: 2px 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
+}
+.cs-err {
+  background: #4a1d24;
+  color: #ffb4bd;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
 }
 .cs-aud {
   min-width: 210px;
@@ -1600,9 +1646,18 @@ watch(() => messages.value.length, scrollDown);
 
 /* ===== MOBILE ===== */
 @media (max-width: 768px) {
+  .cs-app {
+    overflow: hidden;
+  }
   .cs-panel {
     width: 100%;
+    flex: 1 1 100%;
+    min-width: 0;
     border-right: none;
+  }
+  .cs-img {
+    max-width: 78vw;
+    max-height: 60vh;
   }
   .cs-main {
     display: none;
