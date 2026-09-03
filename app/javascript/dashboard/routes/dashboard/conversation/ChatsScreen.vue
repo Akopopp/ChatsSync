@@ -274,6 +274,7 @@ const showTpl = ref(false);
 const replyTo = ref(null);
 const fwdMsg = ref(null);
 const fwdPick = ref([]);
+const infoMsg = ref(null);
 
 const EMOJIS = (
   '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
@@ -298,6 +299,11 @@ const useTemplate = t => {
   const body = (t.components || []).find(c => c.type === 'BODY');
   draft.value = body?.text || t.name || '';
   showTpl.value = false;
+};
+
+const phoneOf = c => {
+  const sn = c?.meta?.sender || c || {};
+  return sn.phone_number || sn.identifier || '';
 };
 
 const inboxName = id =>
@@ -576,6 +582,8 @@ const msgAct = name => {
   }
   else if (name === 'reply') {
     replyTo.value = m;
+  } else if (name === 'info') {
+    infoMsg.value = m;
   } else if (name === 'note') {
     isNote.value = true;
     draft.value = plain(m.content || '');
@@ -757,6 +765,8 @@ watch(() => messages.value.length, scrollDown);
               </span>
               <span class="cs-t">{{ listTime(c.timestamp) }}</span>
             </div>
+            <div v-if="phoneOf(c)" class="cs-rph">{{ phoneOf(c) }}</div>
+
             <div class="cs-r2">
               <span v-if="isOut(c)" class="cs-tick i-lucide-check-check" />
               <span
@@ -796,7 +806,15 @@ watch(() => messages.value.length, scrollDown);
         </div>
         <div class="cs-tnm" @click="showProfile = true">
           <div class="cs-tn">{{ contact.name || 'Unknown' }}</div>
-          <div class="cs-ts">{{ contactStatus }}</div>
+          <div class="cs-ts">
+            <span v-if="phoneOf(contact)" class="cs-tph">
+              {{ phoneOf(contact) }}
+            </span>
+            <span v-if="phoneOf(contact) && inboxName(currentChat.inbox_id)">
+              ·
+            </span>
+            <span>{{ inboxName(currentChat.inbox_id) }}</span>
+          </div>
         </div>
       </div>
 
@@ -1020,6 +1038,80 @@ watch(() => messages.value.length, scrollDown);
       </div>
     </div>
 
+    <!-- ============ MESSAGE INFO ============ -->
+    <div v-if="infoMsg" class="cs-fw" @click.self="infoMsg = null">
+      <div class="cs-fwb cs-inf">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="infoMsg = null" />
+          <span>Message info</span>
+        </div>
+        <div class="cs-infp">
+          {{ plain(infoMsg.content || '') || 'Attachment' }}
+        </div>
+        <div class="cs-infl">
+          <div class="cs-pfr">
+            <span class="cs-pfk">Sent</span>
+            <span class="cs-pfv">
+              {{ dayLabel(infoMsg.created_at) }} · {{ clock(infoMsg.created_at) }}
+            </span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Status</span>
+            <span class="cs-pfv cap">{{ infoMsg.status || 'sent' }}</span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Direction</span>
+            <span class="cs-pfv">
+              {{ infoMsg.message_type === 1 ? 'Outgoing' : 'Incoming' }}
+            </span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.sender?.name">
+            <span class="cs-pfk">Sent by</span>
+            <span class="cs-pfv">{{ infoMsg.sender.name }}</span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Channel</span>
+            <span class="cs-pfv">
+              {{ inboxName(currentChat.inbox_id) || '—' }}
+            </span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.private">
+            <span class="cs-pfk">Type</span>
+            <span class="cs-pfv">Private note</span>
+          </div>
+          <div class="cs-pfr" v-if="(infoMsg.attachments || []).length">
+            <span class="cs-pfk">Attachment</span>
+            <span class="cs-pfv cap">
+              {{ aType(infoMsg.attachments[0]) }}
+            </span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Message ID</span>
+            <span class="cs-pfv">{{ infoMsg.id }}</span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.source_id">
+            <span class="cs-pfk">WhatsApp ID</span>
+            <span class="cs-pfv">{{ infoMsg.source_id }}</span>
+          </div>
+          <div
+            class="cs-pfr"
+            v-if="infoMsg.content_attributes?.external_error"
+          >
+            <span class="cs-pfk err">Error</span>
+            <span class="cs-pfv err">
+              {{ infoMsg.content_attributes.external_error }}
+            </span>
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">Delete sirf tumhare dashboard se hataata hai</span>
+          <button class="cs-fwbtn" @click="copyText(plain(infoMsg.content || ''))">
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ FORWARD ============ -->
     <div v-if="fwdMsg" class="cs-fw" @click.self="fwdMsg = null">
       <div class="cs-fwb">
@@ -1189,7 +1281,7 @@ watch(() => messages.value.length, scrollDown);
       </div>
       <hr />
       <div class="cs-mi danger" @click="msgAct('delete')">
-        <span class="i-lucide-trash-2" /><span>Delete message</span>
+        <span class="i-lucide-trash-2" /><span>Delete for me</span>
       </div>
     </div>
 
@@ -1306,11 +1398,11 @@ watch(() => messages.value.length, scrollDown);
   --fld: #f0f2f5;
   --tx: #111b21;
   --tx2: #54656f;
-  --tx3: #8696a0;
+  --tx3: #667781;
   --ln: #e4e7e9;
-  --ln2: #f0f2f4;
-  --hov: #f5f6f8;
-  --sel: #e9edef;
+  --ln2: #eef1f2;
+  --hov: #f5f6f6;
+  --sel: #f0f2f5;
   --g: #008069;
   --g-tint: #dcefe9;
   --b: #2f7fd1;
@@ -1320,7 +1412,7 @@ watch(() => messages.value.length, scrollDown);
   --recv: #ffffff;
   --note: #fff6d6;
   --note-b: #e6d79a;
-  --chat: #efe7de;
+  --chat: #e3ded7;
   --badge: #25d366;
   --badge-tx: #053e20;
   --sh: 0 1px 0.5px rgba(11, 20, 26, 0.13);
@@ -2333,6 +2425,43 @@ watch(() => messages.value.length, scrollDown);
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 2px;
+}
+
+/* number: naam ke neeche */
+.cs-rph {
+  font-size: 12px;
+  color: var(--tx3);
+  margin: -1px 0 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cs-tph {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== MESSAGE INFO ===== */
+.cs-inf {
+  width: 400px;
+}
+.cs-infp {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--tx);
+  background: var(--sent);
+  margin: 12px 16px;
+  border-radius: 7.5px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+.cs-infl {
+  flex: 1;
+  overflow-y: auto;
+}
+.cs-pfk.err,
+.cs-pfv.err {
+  color: var(--red);
 }
 
 /* ===== FORWARD ===== */
