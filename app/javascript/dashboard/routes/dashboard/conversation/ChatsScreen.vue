@@ -268,6 +268,37 @@ const contactStatus = computed(() => {
 
 /* contact profile drawer */
 const showProfile = ref(false);
+const isNote = ref(false);
+const showEmoji = ref(false);
+const showTpl = ref(false);
+
+const EMOJIS = (
+  '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
+  '🤔 🤐 😐 😑 😶 😏 😒 🙄 😬 😔 😪 😴 😷 🤒 🤕 🥳 😎 🤓 🧐 😕 ' +
+  '😟 🙁 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 ' +
+  '👍 👎 👌 ✌️ 🤞 🤝 🙏 💪 👏 🙌 👋 ✋ 🤚 ☝️ 👆 👇 👉 👈 ✍️ 💅 ' +
+  '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 🔥 ⭐ ✨ 🎉 🎊 🎁 🏆 ✅ ❌ ⚠️'
+).split(' ');
+
+const addEmoji = e => {
+  draft.value += e;
+};
+
+const templates = computed(() => {
+  const ib = (inboxesList.value || []).find(
+    i => i.id === currentChat.value?.inbox_id
+  );
+  return ib?.message_templates || [];
+});
+
+const useTemplate = t => {
+  const body = (t.components || []).find(c => c.type === 'BODY');
+  draft.value = body?.text || t.name || '';
+  showTpl.value = false;
+};
+
+const inboxName = id =>
+  (inboxesList.value || []).find(i => i.id === id)?.name || '';
 
 /* ---------------- actions ---------------- */
 const openChat = c => {
@@ -319,7 +350,7 @@ const doSend = () => {
   pushMessage({
     conversationId: currentChat.value.id,
     message: text,
-    private: false,
+    private: isNote.value,
     files: pendingFiles.value.map(f => f.file),
     ccEmails: '',
     bccEmails: '',
@@ -481,14 +512,38 @@ const act = (name, arg) => {
       () => {}
     );
   } else if (name === 'copy') {
-    const url = `${window.location.origin}/app/accounts/${accountId.value}/conversations/${c.id}`;
-    navigator.clipboard?.writeText(url);
+    copyText(
+      `${window.location.origin}/app/accounts/${accountId.value}/conversations/${c.id}`
+    );
   } else if (name === 'block') {
     d('contacts/update', {
       id: c.meta?.sender?.id,
       blocked: !c.meta?.sender?.blocked,
     });
   } else if (name === 'delete') d('deleteConversation', c.id);
+};
+
+const copyText = t => {
+  if (!t) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(t).catch(() => fallbackCopy(t));
+  } else {
+    fallbackCopy(t);
+  }
+};
+const fallbackCopy = t => {
+  const ta = document.createElement('textarea');
+  ta.value = t;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+  } catch (e) {
+    /* ignore */
+  }
+  document.body.removeChild(ta);
 };
 
 const mmenu = ref({ open: false, x: 0, y: 0, msg: null });
@@ -506,9 +561,16 @@ const msgAct = name => {
   const m = mmenu.value.msg;
   mmenu.value.open = false;
   if (!m) return;
-  if (name === 'copy') navigator.clipboard?.writeText(plain(m.content || ''));
+  if (name === 'copy') copyText(plain(m.content || ''));
+  else if (name === 'forward') {
+    draft.value = plain(m.content || '');
+    isNote.value = false;
+  }
   else if (name === 'reply') {
     draft.value = `> ${plain(m.content || '').slice(0, 80)}\n`;
+  } else if (name === 'note') {
+    isNote.value = true;
+    draft.value = plain(m.content || '');
   } else if (name === 'delete') {
     store
       .dispatch('deleteMessage', {
@@ -517,6 +579,12 @@ const msgAct = name => {
       })
       ?.catch?.(() => {});
   }
+};
+
+const act2 = name => {
+  menu.value.chat = currentChat.value;
+  menu.value.open = true;
+  act(name);
 };
 
 const archivedCount = computed(
@@ -651,6 +719,9 @@ watch(() => messages.value.length, scrollDown);
           <div class="cs-rb">
             <div class="cs-r1">
               <span class="cs-n">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+              <span v-if="inboxName(c.inbox_id)" class="cs-ib">
+                {{ inboxName(c.inbox_id) }}
+              </span>
               <span class="cs-t">{{ listTime(c.timestamp) }}</span>
             </div>
             <div class="cs-r2">
@@ -663,6 +734,8 @@ watch(() => messages.value.length, scrollDown);
                 {{ chipFor(c.inbox_id).t }}
               </span>
               <span class="cs-m">{{ previewOf(c) }}</span>
+              <span v-if="muted[c.id]" class="cs-mk i-lucide-bell-off" />
+              <span v-if="pinned[c.id]" class="cs-mk i-lucide-pin" />
               <span v-if="(c.unread_count || 0) > 0" class="cs-un">
                 {{ c.unread_count }}
               </span>
@@ -794,8 +867,71 @@ watch(() => messages.value.length, scrollDown);
           </div>
         </template>
 
-        <div v-if="!isRecording" class="cs-cbar">
+        <div v-if="!isRecording" class="cs-tabs">
+          <button
+            class="cs-tab"
+            :class="{ on: !isNote }"
+            @click="isNote = false"
+          >
+            Reply
+          </button>
+          <button class="cs-tab" :class="{ on: isNote }" @click="isNote = true">
+            Private note
+          </button>
+        </div>
+
+        <div v-if="showEmoji && !isRecording" class="cs-emoji">
+          <span
+            v-for="(e, i) in EMOJIS"
+            :key="i"
+            class="cs-em"
+            @click="addEmoji(e)"
+          >
+            {{ e }}
+          </span>
+        </div>
+
+        <div v-if="showTpl && !isRecording" class="cs-tplbox">
+          <div v-if="!templates.length" class="cs-tplempty">
+            Is inbox mein koi template nahi
+          </div>
+          <div
+            v-for="t in templates"
+            :key="t.id || t.name"
+            class="cs-tpl"
+            @click="useTemplate(t)"
+          >
+            <div class="cs-tpln">{{ t.name }}</div>
+            <div class="cs-tplt">
+              {{
+                (t.components || []).find(c => c.type === 'BODY')?.text || ''
+              }}
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="!isRecording"
+          class="cs-cbar"
+          :class="{ note: isNote }"
+        >
           <span class="cs-ci i-lucide-paperclip" @click="pickFile" />
+          <span
+            class="cs-ci i-lucide-smile"
+            :class="{ act: showEmoji }"
+            @click="
+              showEmoji = !showEmoji;
+              showTpl = false;
+            "
+          />
+          <span
+            class="cs-ci i-lucide-layout-template"
+            :class="{ act: showTpl }"
+            @click="
+              showTpl = !showTpl;
+              showEmoji = false;
+            "
+          />
           <input
             ref="fileInput"
             type="file"
@@ -807,7 +943,7 @@ watch(() => messages.value.length, scrollDown);
             v-model="draft"
             class="cs-cin"
             rows="1"
-            placeholder="Type a message"
+            :placeholder="isNote ? 'Private note...' : 'Type a message'"
             @keydown="onKey"
           />
           <span
@@ -881,6 +1017,64 @@ watch(() => messages.value.length, scrollDown);
           <span class="cs-pfk">Conversation</span>
           <span class="cs-pfv">#{{ currentChat.id }}</span>
         </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Status</span>
+          <span class="cs-pfv cap">{{ currentChat.status || '—' }}</span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.priority">
+          <span class="cs-pfk">Priority</span>
+          <span class="cs-pfv cap">{{ currentChat.priority }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Assigned to</span>
+          <span class="cs-pfv">
+            {{ currentChat.meta?.assignee?.name || 'Unassigned' }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.meta?.team?.name">
+          <span class="cs-pfk">Team</span>
+          <span class="cs-pfv">{{ currentChat.meta.team.name }}</span>
+        </div>
+        <div class="cs-pfr" v-if="(currentChat.labels || []).length">
+          <span class="cs-pfk">Labels</span>
+          <span class="cs-pfv">{{ (currentChat.labels || []).join(', ') }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Messages</span>
+          <span class="cs-pfv">{{ messages.length }}</span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.created_at">
+          <span class="cs-pfk">First contact</span>
+          <span class="cs-pfv">
+            {{ dayLabel(currentChat.created_at) }} · {{ clock(currentChat.created_at) }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="contact.created_at">
+          <span class="cs-pfk">Contact since</span>
+          <span class="cs-pfv">{{ dayLabel(contact.created_at) }}</span>
+        </div>
+        <div
+          class="cs-pfr"
+          v-for="(v, k) in contact.custom_attributes || {}"
+          :key="k"
+        >
+          <span class="cs-pfk">{{ k }}</span>
+          <span class="cs-pfv">{{ v }}</span>
+        </div>
+        <div class="cs-pfacts">
+          <div class="cs-pfab" @click="act2('mute')">
+            <span :class="muted[currentChat.id] ? 'i-lucide-bell' : 'i-lucide-bell-off'" />
+            <span>{{ muted[currentChat.id] ? 'Unmute' : 'Mute' }}</span>
+          </div>
+          <div class="cs-pfab" @click="act2('pin')">
+            <span class="i-lucide-pin" />
+            <span>{{ pinned[currentChat.id] ? 'Unpin' : 'Pin' }}</span>
+          </div>
+          <div class="cs-pfab" @click="act2('archive')">
+            <span class="i-lucide-archive" />
+            <span>{{ archived[currentChat.id] ? 'Unarchive' : 'Archive' }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -896,6 +1090,12 @@ watch(() => messages.value.length, scrollDown);
       </div>
       <div class="cs-mi" @click="msgAct('copy')">
         <span class="i-lucide-copy" /><span>Copy</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('forward')">
+        <span class="i-lucide-forward" /><span>Forward</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('note')">
+        <span class="i-lucide-sticky-note" /><span>Add to private note</span>
       </div>
       <div class="cs-mi" @click="msgAct('info')">
         <span class="i-lucide-info" /><span>Message info</span>
@@ -1704,7 +1904,7 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-cbar {
   background: var(--fld);
-  border-radius: 10px;
+  border-radius: 24px;
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
@@ -1826,6 +2026,159 @@ watch(() => messages.value.length, scrollDown);
   height: 14px;
 }
 
+/* ===== COMPOSER extras ===== */
+.cs-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.cs-tab {
+  font-size: 13px;
+  padding: 5px 13px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--tx3);
+  cursor: pointer;
+}
+.cs-tab.on {
+  background: var(--fld);
+  color: var(--tx);
+  font-weight: 500;
+}
+.cs-cbar.note {
+  background: var(--note);
+  border: 1px solid var(--note-b);
+}
+.cs-ci.act {
+  color: var(--g);
+}
+.cs-emoji {
+  background: var(--fld);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 7px;
+  max-height: 190px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+}
+.cs-em {
+  font-size: 21px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  height: 34px;
+  border-radius: 6px;
+}
+.cs-em:hover {
+  background: var(--hov);
+}
+.cs-tplbox {
+  background: var(--fld);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.cs-tpl {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tpl:hover {
+  background: var(--hov);
+}
+.cs-tpln {
+  font-size: 13.5px;
+  color: var(--g);
+  font-weight: 500;
+}
+.cs-tplt {
+  font-size: 13px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.cs-tplempty {
+  padding: 16px;
+  text-align: center;
+  color: var(--tx3);
+  font-size: 13px;
+}
+
+/* row ke chhote nishan */
+.cs-mk {
+  width: 14px;
+  height: 14px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-ib {
+  font-size: 10.5px;
+  color: var(--tx3);
+  background: var(--fld);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* submenu ab menu ke upar — chhupta nahi tha */
+.cs-cmenu {
+  overflow: visible !important;
+}
+.cs-cmenu {
+  z-index: 9999;
+}
+.cs-sub {
+  z-index: 10000 !important;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.55) !important;
+}
+.cs-has-sub:hover {
+  background: var(--menu-hov);
+}
+
+/* profile: aur tafseel */
+.cs-pfacts {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 16px 0 24px;
+}
+.cs-pfv.cap {
+  text-transform: capitalize;
+}
+.cs-pfa {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+.cs-pfab {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: var(--g);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+.cs-pfab:hover {
+  background: var(--hov);
+}
+.cs-pfab span:first-child {
+  width: 20px;
+  height: 20px;
+}
+
 /* ===== EMPTY ===== */
 .cs-none {
   flex: 1;
@@ -1917,6 +2270,52 @@ watch(() => messages.value.length, scrollDown);
   }
   .cs-cmenu {
     min-width: 200px;
+    max-width: 84vw;
+  }
+  .cs-th {
+    height: 56px;
+    padding: 0 10px;
+    gap: 10px;
+  }
+  .cs-tav {
+    width: 36px;
+    height: 36px;
+  }
+  .cs-tn {
+    font-size: 15.5px;
+  }
+  .cs-av {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+  }
+  .cs-psr {
+    margin: 0 10px 10px;
+  }
+  .cs-pills {
+    padding: 0 10px 10px;
+  }
+  .cs-pfp {
+    width: 100%;
+    max-width: 100%;
+  }
+  .cs-cbar {
+    border-radius: 22px;
+    min-height: 44px;
+    gap: 9px;
+    padding: 0 12px;
+  }
+  .cs-emoji {
+    max-height: 150px;
+  }
+  .cs-msg:has(.cs-aud) .cs-bub {
+    min-width: 0;
+  }
+  .cs-aud {
+    width: 100%;
+  }
+  .cs-comp {
+    padding-bottom: env(safe-area-inset-bottom, 9px);
   }
 }
 .cs-mi {
