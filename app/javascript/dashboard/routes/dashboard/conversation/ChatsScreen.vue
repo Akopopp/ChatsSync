@@ -44,10 +44,27 @@ const pendingFiles = ref([]);
 const threadRef = ref(null);
 const recorderRef = ref(null);
 const fileInput = ref(null);
-const menu = ref({ open: false, x: 0, y: 0, chat: null });
-const pinned = ref({});
-const muted = ref({});
-const archived = ref({});
+const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
+const isMobile = ref(window.innerWidth <= 768);
+const isLight = ref(false);
+const showArchived = ref(false);
+const LS = k => {
+  try {
+    return JSON.parse(localStorage.getItem('cs_' + k) || '{}');
+  } catch (e) {
+    return {};
+  }
+};
+const saveLS = (k, v) => {
+  try {
+    localStorage.setItem('cs_' + k, JSON.stringify(v));
+  } catch (e) {
+    /* ignore */
+  }
+};
+const pinned = ref(LS('pin'));
+const muted = ref(LS('mute'));
+const archived = ref(LS('arch'));
 
 /* ---------------- helpers ---------------- */
 const initials = name =>
@@ -150,7 +167,10 @@ const rows = computed(() => {
       return `${n} ${p} ${m}`.toLowerCase().includes(s);
     });
   }
-  return L.filter(c => !archived.value[c.id]).sort((a, b) => {
+  L = L.filter(c =>
+    showArchived.value ? archived.value[c.id] : !archived.value[c.id]
+  );
+  return L.sort((a, b) => {
     const p = (pinned.value[b.id] ? 1 : 0) - (pinned.value[a.id] ? 1 : 0);
     if (p) return p;
     return (b.timestamp || 0) - (a.timestamp || 0);
@@ -250,6 +270,19 @@ const openChat = c => {
     name: 'inbox_conversation',
     params: { accountId: accountId.value, conversation_id: c.id },
   });
+};
+
+const goBack = () => {
+  router.push({
+    name: 'home',
+    params: { accountId: accountId.value },
+  });
+};
+
+const onRecError = () => {
+  isRecording.value = false;
+  recState.value = '';
+  sendAfterRec.value = false;
 };
 
 const scrollDown = () => {
@@ -360,7 +393,14 @@ const sub = ref('');
 const openMenu = (e, c) => {
   e.preventDefault();
   sub.value = '';
-  menu.value = { open: true, x: e.clientX, y: e.clientY, chat: c };
+  const up = e.clientY > window.innerHeight * 0.5;
+  menu.value = {
+    open: true,
+    x: Math.min(e.clientX, window.innerWidth - 240),
+    y: up ? window.innerHeight - e.clientY : e.clientY,
+    chat: c,
+    up,
+  };
 };
 const closeMenu = () => {
   menu.value.open = false;
@@ -395,13 +435,16 @@ const act = (name, arg) => {
   else if (name === 'priority')
     d('assignPriority', { conversationId: c.id, priority: arg });
   else if (name === 'mute') {
-    muted.value[c.id] = !muted.value[c.id];
+    muted.value = { ...muted.value, [c.id]: !muted.value[c.id] };
+    saveLS('mute', muted.value);
     d(muted.value[c.id] ? 'muteConversation' : 'unmuteConversation', c.id);
   } else if (name === 'pin') {
-    pinned.value[c.id] = !pinned.value[c.id];
+    pinned.value = { ...pinned.value, [c.id]: !pinned.value[c.id] };
+    saveLS('pin', pinned.value);
     convApi(c.id, pinned.value[c.id] ? 'pin' : 'unpin').catch(() => {});
   } else if (name === 'archive') {
-    archived.value[c.id] = !archived.value[c.id];
+    archived.value = { ...archived.value, [c.id]: !archived.value[c.id] };
+    saveLS('arch', archived.value);
     convApi(c.id, archived.value[c.id] ? 'archive' : 'unarchive').catch(
       () => {}
     );
@@ -432,6 +475,27 @@ onMounted(() => {
   });
   store.dispatch('fetchAllConversations');
   document.addEventListener('click', closeMenu);
+
+  const onResize = () => {
+    isMobile.value = window.innerWidth <= 768;
+  };
+  window.addEventListener('resize', onResize);
+
+  /* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
+  const readTheme = () => {
+    isLight.value = !(
+      document.documentElement.classList.contains('dark') ||
+      document.body.classList.contains('dark') ||
+      !!document.querySelector('.dark')
+    );
+  };
+  readTheme();
+  const mo = new MutationObserver(readTheme);
+  mo.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+    subtree: true,
+  });
 });
 
 watch(
@@ -470,7 +534,7 @@ watch(() => messages.value.length, scrollDown);
 </script>
 
 <template>
-  <section class="cs-app">
+  <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: !!conversationId }">
     <!-- ============ LEFT: CHATS PANEL ============ -->
     <div class="cs-panel">
       <div class="cs-ph">
@@ -497,9 +561,14 @@ watch(() => messages.value.length, scrollDown);
       </div>
 
       <div class="cs-list">
-        <div v-if="!q" class="cs-arch">
-          <span class="i-lucide-archive" />
-          <span class="cs-arch-t">Archived</span>
+        <div
+          v-if="!q"
+          class="cs-arch"
+          :class="{ on: showArchived }"
+          @click="showArchived = !showArchived"
+        >
+          <span :class="showArchived ? 'i-lucide-arrow-left' : 'i-lucide-archive'" />
+          <span class="cs-arch-t">{{ showArchived ? 'Back to chats' : 'Archived' }}</span>
           <span class="cs-arch-c">{{ archivedCount }}</span>
         </div>
 
@@ -549,6 +618,7 @@ watch(() => messages.value.length, scrollDown);
     <!-- ============ RIGHT: THREAD ============ -->
     <div v-if="currentChat && currentChat.id" class="cs-main">
       <div class="cs-th">
+        <span v-if="isMobile" class="cs-ic i-lucide-arrow-left" @click="goBack" />
         <div class="cs-tav" :style="{ background: colorFor(currentChat.id) }">
           <img v-if="contact.thumbnail" :src="contact.thumbnail" />
           <template v-else>{{ initials(contact.name) }}</template>
@@ -636,16 +706,7 @@ watch(() => messages.value.length, scrollDown);
           <span class="cs-ci i-lucide-trash-2" @click="cancelRec" />
           <span class="cs-dot" :class="{ pz: recState === 'recording-paused' }" />
           <span class="cs-rt">{{ recTime }}</span>
-          <span class="cs-sp" />
-          <span
-            class="cs-ci"
-            :class="
-              recState === 'recording-paused' ? 'i-lucide-mic' : 'i-lucide-pause'
-            "
-            @click="pauseRec"
-          />
-          <span class="cs-send i-lucide-send" @click="finishRec" />
-          <div class="cs-recwrap">
+          <div class="cs-recwave">
             <AudioRecorder
               ref="recorderRef"
               :audio-record-format="audioFormat"
@@ -654,9 +715,17 @@ watch(() => messages.value.length, scrollDown);
               @record-pause="recState = 'recording-paused'"
               @record-resume="recState = ''"
               @record-cancel="isRecording = false"
-              @record-error="isRecording = false"
+              @record-error="onRecError"
             />
           </div>
+          <span
+            class="cs-ci"
+            :class="
+              recState === 'recording-paused' ? 'i-lucide-mic' : 'i-lucide-pause'
+            "
+            @click="pauseRec"
+          />
+          <span class="cs-send i-lucide-send" @click="finishRec" />
         </div>
 
         <div v-else class="cs-cbar">
@@ -703,7 +772,11 @@ watch(() => messages.value.length, scrollDown);
     <div
       v-if="menu.open"
       class="cs-cmenu"
-      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      :style="
+        menu.up
+          ? { left: menu.x + 'px', bottom: menu.y + 'px' }
+          : { left: menu.x + 'px', top: menu.y + 'px' }
+      "
       @click.stop
     >
       <div class="cs-mi" @click="act('pin')">
@@ -802,6 +875,37 @@ watch(() => messages.value.length, scrollDown);
   min-width: 0;
   font-size: 14px;
   color: var(--tx);
+}
+
+/* ===== LIGHT THEME ===== */
+.cs-app.lite {
+  --panel: #ffffff;
+  --head: #f0f2f5;
+  --fld: #f0f2f5;
+  --tx: #111b21;
+  --tx2: #54656f;
+  --tx3: #8696a0;
+  --ln: #e4e7e9;
+  --ln2: #f0f2f4;
+  --hov: #f5f6f8;
+  --sel: #e9edef;
+  --g: #008069;
+  --g-tint: #dcefe9;
+  --b: #2f7fd1;
+  --menu: #ffffff;
+  --menu-hov: #f0f2f5;
+  --sent: #d9fdd3;
+  --recv: #ffffff;
+  --note: #fff6d6;
+  --note-b: #e6d79a;
+  --chat: #efe7de;
+  --badge: #25d366;
+  --badge-tx: #053e20;
+  --sh: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  --red: #d63c4b;
+}
+.cs-app.lite .cs-thread {
+  background-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27352%27%20height%3D%27232%27%20viewBox%3D%270%200%20352%20232%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%230b141a%27%20stroke-opacity%3D%27.07%27%20stroke-width%3D%271.25%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cg%20transform%3D%27translate%2818%2C20%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%200%201%2012%200%206%206%200%200%201-6%206H2l2-3a6%206%200%200%201-4-3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C14%29%27%3E%3Cpath%20d%3D%27M0%200h14v10H4L0%2013z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28108%2C22%29%27%3E%3Cpath%20d%3D%27M6%200l1.8%203.7%204%20.6-2.9%202.8.7%204L6%209.2%202.4%2011l.7-4L.2%204.3l4-.6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28150%2C16%29%27%3E%3Cpath%20d%3D%27M2%202h12v12H2z%20M2%206h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28192%2C20%29%27%3E%3Cpath%20d%3D%27M7%200C3%200%200%203%200%206.5%200%2011%207%2016%207%2016s7-5%207-9.5C14%203%2011%200%207%200z%20M7%204a2.5%202.5%200%201%201%200%205%202.5%202.5%200%200%201%200-5z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28234%2C14%29%27%3E%3Cpath%20d%3D%27M0%208c0-4%203-7%207-7s7%203%207%207-3%207-7%207-7-3-7-7z%20M4%208h6%20M7%205v6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28276%2C20%29%27%3E%3Cpath%20d%3D%27M0%203h16v10H0z%20M0%203l8%206%208-6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28318%2C16%29%27%3E%3Cpath%20d%3D%27M3%200h10v4H3z%20M1%204h14v11H1z%20M6%208h4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2814%2C64%29%27%3E%3Cpath%20d%3D%27M0%2010c3-5%209-5%2012%200%20M6%204a2.5%202.5%200%201%201%200%20.01%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2856%2C58%29%27%3E%3Cpath%20d%3D%27M0%200h13M0%205h9M0%2010h11%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2898%2C62%29%27%3E%3Cpath%20d%3D%27M8%200a8%208%200%201%201%200%2016A8%208%200%200%201%208%200z%20M8%204v4.5l3%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28140%2C60%29%27%3E%3Cpath%20d%3D%27M0%200l11%206-11%206z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28182%2C58%29%27%3E%3Cpath%20d%3D%27M2%200h11l3%204v11H2z%20M13%200v4h3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28224%2C62%29%27%3E%3Cpath%20d%3D%27M0%206h4l4-5v14l-4-5H0z%20M11%204a4%204%200%200%201%200%208%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28266%2C58%29%27%3E%3Cpath%20d%3D%27M1%201h14v10H1z%20M1%2011l5-4%203%202%203-3%203%203%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28308%2C64%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%200%201%206%206c0%204-6%2010-6%2010S0%2010%200%206a6%206%200%200%201%206-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2820%2C106%29%27%3E%3Cpath%20d%3D%27M0%204h5l3-4h4l3%204h1v10H0z%20M8%206a3%203%200%201%201%200%206%203%203%200%200%201%200-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C110%29%27%3E%3Cpath%20d%3D%27M6%200l6%2012H0z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%2C104%29%27%3E%3Cpath%20d%3D%27M0%200h12v12H0z%20M3%203h6v6H3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28146%2C108%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%201%200%2012%200%206%206%200%200%200-12%200z%20M3%206l2%202%204-4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28188%2C104%29%27%3E%3Cpath%20d%3D%27M1%203h14v9H1z%20M4%203V1h8v2%20M4%2012v2h8v-2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28230%2C110%29%27%3E%3Cpath%20d%3D%27M0%2012L6%200l6%2012z%20M4%2012v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28272%2C106%29%27%3E%3Cpath%20d%3D%27M2%202l10%2010M12%202L2%2012%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28314%2C110%29%27%3E%3Cpath%20d%3D%27M0%208h16%20M4%204l-4%204%204%204%20M12%204l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2816%2C150%29%27%3E%3Cpath%20d%3D%27M0%202h14v12H0z%20M3%200v4M11%200v4M0%206h14%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2858%2C154%29%27%3E%3Cpath%20d%3D%27M7%200a7%207%200%201%201%200%2014A7%207%200%200%201%207%200z%20M4%207h6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28100%2C148%29%27%3E%3Cpath%20d%3D%27M0%2010c0-6%205-10%208-10s8%204%208%2010%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28142%2C152%29%27%3E%3Cpath%20d%3D%27M2%200h10v14l-5-4-5%204z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28184%2C150%29%27%3E%3Cpath%20d%3D%27M0%200h14v3H0z%20M2%203v10h10V3%20M6%206v4M8%206v4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28226%2C154%29%27%3E%3Cpath%20d%3D%27M8%200l2%205%205%20.5-4%203.5%201%205-4-2.6L4%2014l1-5L1%205.5%206%205z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28268%2C148%29%27%3E%3Cpath%20d%3D%27M1%201h13v13H1z%20M4%207h7M7%204v7%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28310%2C152%29%27%3E%3Cpath%20d%3D%27M0%205a5%205%200%200%201%2010%200v6H0z%20M3%2011v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2822%2C196%29%27%3E%3Cpath%20d%3D%27M0%203h16v9H0z%20M5%2012v2h6v-2%20M2%2016h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2864%2C198%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%201%201%200%2012A6%206%200%200%201%206%200z%20M6%203v3l2%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28106%2C194%29%27%3E%3Cpath%20d%3D%27M0%206h12%20M8%202l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28148%2C198%29%27%3E%3Cpath%20d%3D%27M2%200h8a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H2a2%202%200%200%201-2-2V2a2%202%200%200%201%202-2z%20M4%203h4M4%206h4M4%209h2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28190%2C194%29%27%3E%3Cpath%20d%3D%27M0%200h14M0%205h14M0%2010h8%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28232%2C198%29%27%3E%3Cpath%20d%3D%27M7%200l7%207-7%207-7-7z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28274%2C194%29%27%3E%3Cpath%20d%3D%27M1%204h12v9H1z%20M4%204V2a3%203%200%200%201%206%200v2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28316%2C198%29%27%3E%3Cpath%20d%3D%27M0%200l14%207-14%207%203-7z%27%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E');
 }
 
 /* ===== PANEL ===== */
@@ -1401,12 +1505,11 @@ watch(() => messages.value.length, scrollDown);
 .cs-sp {
   flex: 1;
 }
-.cs-recwrap {
-  position: absolute;
-  width: 0;
-  height: 0;
+.cs-recwave {
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
-  opacity: 0;
+  margin: 4px 0;
 }
 .cs-files {
   display: flex;
@@ -1457,7 +1560,62 @@ watch(() => messages.value.length, scrollDown);
   border-radius: 8px;
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
   padding: 7px 0;
-  min-width: 212px;
+  min-width: 224px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cs-cmenu::-webkit-scrollbar {
+  width: 5px;
+}
+.cs-cmenu::-webkit-scrollbar-thumb {
+  background: var(--ln);
+  border-radius: 3px;
+}
+.cs-arch.on {
+  background: var(--g-tint);
+}
+.cs-arch.on .cs-arch-t {
+  color: var(--g);
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 768px) {
+  .cs-panel {
+    width: 100%;
+    border-right: none;
+  }
+  .cs-main {
+    display: none;
+  }
+  .cs-none {
+    display: none;
+  }
+  .cs-app.thr .cs-panel {
+    display: none;
+  }
+  .cs-app.thr .cs-main {
+    display: flex;
+    width: 100%;
+  }
+  .cs-thread {
+    padding: 14px 10px;
+  }
+  .cs-msg {
+    max-width: 82%;
+  }
+  .cs-comp {
+    padding: 7px 8px 9px;
+  }
+  .cs-ph {
+    padding: 14px 14px 10px;
+  }
+  .cs-row {
+    padding: 11px 14px;
+  }
+  .cs-cmenu {
+    min-width: 200px;
+  }
 }
 .cs-mi {
   display: flex;
