@@ -175,6 +175,25 @@ const rows = computed(() => {
     const only = L.filter(c => c.inbox_id === iid);
     if (only.length) L = only;
   }
+  if (fStatus.value !== 'all') L = L.filter(c => c.status === fStatus.value);
+  if (fAssignee.value === 'me')
+    L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
+  else if (fAssignee.value === 'none') L = L.filter(c => !c.meta?.assignee);
+  if (fPriority.value !== 'all')
+    L = L.filter(c => (c.priority || 'none') === fPriority.value);
+  if (fUnreplied.value) {
+    L = L.filter(c => {
+      const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
+      return m && m.message_type === 0;
+    });
+  }
+  if (fHasAttach.value) {
+    L = L.filter(c => {
+      const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
+      return (m?.attachments || []).length > 0;
+    });
+  }
+
   const f = filt.value;
   if (f === 'unread') L = L.filter(c => (c.unread_count || 0) > 0);
   else if (f === 'mine')
@@ -262,6 +281,9 @@ const previewOf = c => {
   return '';
 };
 
+const lastOf = c =>
+  c?.messages?.length ? c.messages[c.messages.length - 1] : null;
+
 const isOut = c => {
   const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
   return m?.message_type === 1;
@@ -334,6 +356,32 @@ const SORTS = [
   { k: 'waiting_since_desc', n: 'Longest waiting' },
 ];
 const sortBy = ref('last_activity_at_desc');
+
+/* filter panel */
+const showFilter = ref(false);
+const fStatus = ref('all');
+const fAssignee = ref('all');
+const fPriority = ref('all');
+const fUnreplied = ref(false);
+const fHasAttach = ref(false);
+
+const activeFilterCount = computed(() => {
+  let n = 0;
+  if (fStatus.value !== 'all') n += 1;
+  if (fAssignee.value !== 'all') n += 1;
+  if (fPriority.value !== 'all') n += 1;
+  if (fUnreplied.value) n += 1;
+  if (fHasAttach.value) n += 1;
+  return n;
+});
+
+const clearFilters = () => {
+  fStatus.value = 'all';
+  fAssignee.value = 'all';
+  fPriority.value = 'all';
+  fUnreplied.value = false;
+  fHasAttach.value = false;
+};
 
 const togglePick = id => {
   const i = picked.value.indexOf(id);
@@ -415,6 +463,20 @@ const useTemplate = t => {
 const phoneOf = c => {
   const sn = c?.meta?.sender || c || {};
   return sn.phone_number || sn.identifier || '';
+};
+
+/* asli tick: Chatwoot/WhatsApp ka status field
+   sent -> ek tick | delivered -> do grey | read -> do neele
+   failed -> laal (!) */
+const tickOf = m => {
+  if (!m || m.message_type !== 1) return null;
+  const st = m.status || 'sent';
+  if (st === 'failed') return { i: 'i-lucide-circle-alert', c: 'err' };
+  if (st === 'read') return { i: 'i-lucide-check-check', c: 'blue' };
+  if (st === 'delivered') return { i: 'i-lucide-check-check', c: '' };
+  if (st === 'progress' || st === 'pending')
+    return { i: 'i-lucide-clock-3', c: '' };
+  return { i: 'i-lucide-check', c: '' };
 };
 
 const inboxName = id =>
@@ -504,10 +566,12 @@ const onFiles = e => {
 
 /* audio — Chatwoot ka apna recorder use kar rahe hain */
 const audioFormat = computed(() => {
-  const ib = (inboxesList.value || []).find(
-    i => i.id === currentChat.value?.inbox_id
-  );
-  return /Whatsapp/.test(ib?.channel_type || '') ? 'audio/ogg' : 'audio/mp3';
+  /* WhatsApp voice note ke liye OGG/Opus lazmi hai. Browser support
+     kare to wahi, warna mp3 (jo file ki tarah jayega). */
+  const canOgg =
+    typeof MediaRecorder !== 'undefined' &&
+    MediaRecorder.isTypeSupported?.('audio/ogg;codecs=opus');
+  return canOgg ? 'audio/ogg' : 'audio/mp3';
 });
 
 const startRec = () => {
@@ -542,14 +606,25 @@ const onRecDone = file => {
     sendAfterRec.value = false;
     isRecording.value = false;
     recState.value = '';
+    /* WhatsApp voice note (PTT) tabhi banta hai jab file OGG/Opus ho
+       aur Chatwoot ko isVoiceMessage flag mile. Warna woh usay
+       aam audio file ki tarah bhejta hai. */
+    const f = file.file;
+    try {
+      f.isVoiceMessage = true;
+    } catch (e) {
+      /* ignore */
+    }
     pushMessage({
       conversationId: currentChat.value.id,
       message: '',
       private: false,
-      files: [file.file],
+      files: [f],
+      isVoiceMessage: true,
       ccEmails: '',
       bccEmails: '',
       toEmails: '',
+      contentAttributes: { is_recorded_audio: true },
     })
       .then(scrollDown)
       .catch(e => console.error('[ChatsSync] voice fail', e));
@@ -967,11 +1042,14 @@ watch(() => messages.value.length, scrollDown);
           <div
             class="cs-mi"
             @click="
-              showAllPills = true;
+              showFilter = true;
               hmenu = false;
             "
           >
             <span class="i-lucide-list-filter" /><span>Filter conversations</span>
+            <span v-if="activeFilterCount" class="cs-fcn">
+              {{ activeFilterCount }}
+            </span>
           </div>
           <hr />
           <div class="cs-mi" @click="goSettings">
@@ -1073,7 +1151,11 @@ watch(() => messages.value.length, scrollDown);
             </div>
 
             <div class="cs-r2">
-              <span v-if="isOut(c)" class="cs-tick i-lucide-check-check" />
+              <span
+                v-if="lastOf(c) && tickOf(lastOf(c))"
+                class="cs-tick"
+                :class="[tickOf(lastOf(c)).i, tickOf(lastOf(c)).c]"
+              />
               <span
                 v-else-if="chipFor(c.inbox_id)"
                 class="cs-chip"
@@ -1203,8 +1285,9 @@ watch(() => messages.value.length, scrollDown);
               <div class="cs-mt">
                 <span>{{ clock(b.m.created_at) }}</span>
                 <span
-                  v-if="b.m.message_type === 1"
-                  class="cs-tick i-lucide-check-check"
+                  v-if="tickOf(b.m)"
+                  class="cs-tick"
+                  :class="[tickOf(b.m).i, tickOf(b.m).c]"
                 />
               </div>
             </div>
@@ -1367,6 +1450,88 @@ watch(() => messages.value.length, scrollDown);
       <div>
         <div class="cs-none-t">ChatsSync</div>
         <div class="cs-none-s">Select a chat to start messaging</div>
+      </div>
+    </div>
+
+    <!-- ============ FILTERS ============ -->
+    <div v-if="showFilter" class="cs-fw" @click.self="showFilter = false">
+      <div class="cs-fwb cs-flt">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="showFilter = false" />
+          <span>Filter conversations</span>
+        </div>
+        <div class="cs-fltb">
+          <div class="cs-fg">
+            <div class="cs-fgl">Status</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in ['all', 'open', 'pending', 'resolved', 'snoozed']"
+                :key="o"
+                class="cs-pl"
+                :class="{ on: fStatus === o }"
+                @click="fStatus = o"
+              >
+                {{ o }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Assigned</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in [
+                  { k: 'all', n: 'Anyone' },
+                  { k: 'me', n: 'Me' },
+                  { k: 'none', n: 'Unassigned' },
+                ]"
+                :key="o.k"
+                class="cs-pl"
+                :class="{ on: fAssignee === o.k }"
+                @click="fAssignee = o.k"
+              >
+                {{ o.n }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Priority</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in ['all', 'urgent', 'high', 'medium', 'low', 'none']"
+                :key="o"
+                class="cs-pl"
+                :class="{ on: fPriority === o }"
+                @click="fPriority = o"
+              >
+                {{ o }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Quick</div>
+            <div class="cs-fgo">
+              <span
+                class="cs-pl"
+                :class="{ on: fUnreplied }"
+                @click="fUnreplied = !fUnreplied"
+              >
+                Needs reply
+              </span>
+              <span
+                class="cs-pl"
+                :class="{ on: fHasAttach }"
+                @click="fHasAttach = !fHasAttach"
+              >
+                Has attachment
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">{{ rows.length }} chats match</span>
+          <button class="cs-fwbtn ghost" @click="clearFilters">Clear</button>
+          <button class="cs-fwbtn" @click="showFilter = false">Done</button>
+        </div>
       </div>
     </div>
 
@@ -2265,10 +2430,12 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-bub {
   position: relative;
-  padding: 6px 9px 19px 10px;
+  padding: 6px 9px 7px 10px;
   border-radius: 7.5px;
   box-shadow: var(--sh);
-  min-width: 110px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .cs-msg.in {
   align-self: flex-start;
@@ -2334,17 +2501,20 @@ watch(() => messages.value.length, scrollDown);
   margin-top: 6px;
 }
 .cs-mt {
-  position: absolute;
-  right: 9px;
-  bottom: 4px;
   font-size: 11px;
   color: var(--tx3);
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 3px;
   line-height: 1;
-  pointer-events: none;
+  margin: 2px 0 -1px 14px;
+  align-self: flex-end;
+  white-space: nowrap;
 }
+.cs-msg { width: fit-content; }
+.cs-msg.in { margin-right: auto; }
+.cs-msg.out { margin-left: auto; }
 .cs-mt .cs-tick {
   width: 14px;
   height: 14px;
@@ -2362,12 +2532,14 @@ watch(() => messages.value.length, scrollDown);
   background: rgba(0, 0, 0, 0.12);
 }
 .cs-msg:has(.cs-img) .cs-bub {
-  padding: 3px 3px 19px;
+  padding: 3px;
   min-width: 0;
 }
 .cs-msg:has(.cs-img) .cs-mt {
+  position: absolute;
   right: 10px;
-  bottom: 7px;
+  bottom: 8px;
+  margin: 0;
   background: rgba(11, 20, 26, 0.45);
   color: #e9edef;
   padding: 2px 6px;
@@ -2400,7 +2572,7 @@ watch(() => messages.value.length, scrollDown);
   width: min(330px, 100%);
 }
 .cs-msg:has(.cs-aud) .cs-bub {
-  padding: 8px 10px 19px;
+  padding: 8px 10px 7px;
   min-width: 0;
   width: 100%;
 }
@@ -2418,9 +2590,20 @@ watch(() => messages.value.length, scrollDown);
   gap: 10px;
 }
 .cs-aud :deep(.cs-voice__play) {
-  width: 26px;
-  height: 26px;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px;
   opacity: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+.cs-aud :deep(.cs-voice__play svg),
+.cs-aud :deep(.cs-voice__play .size-5) {
+  width: 21px !important;
+  height: 21px !important;
+}
+.cs-app.lite .cs-aud :deep(.cs-voice__play) {
+  background: rgba(0, 0, 0, 0.07) !important;
 }
 .cs-aud :deep(.cs-voice__wave) {
   height: 26px;
@@ -2435,7 +2618,7 @@ watch(() => messages.value.length, scrollDown);
   background: #53bdeb;
 }
 .cs-aud :deep(.cs-voice__meta) {
-  padding-left: 36px !important;
+  padding-left: 44px !important;
   margin-top: 2px !important;
 }
 .cs-aud :deep(.cs-voice__time) {
@@ -3315,6 +3498,72 @@ watch(() => messages.value.length, scrollDown);
 .cs-app.lite .cs-rxi,
 .cs-app.lite .cs-q {
   background: #f0f2f5;
+}
+
+/* tick: asli status */
+.cs-tick {
+  color: var(--tx3);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-tick.blue {
+  color: var(--b);
+}
+.cs-tick.err {
+  color: var(--red);
+}
+.cs-mt .cs-tick {
+  width: 14px;
+  height: 14px;
+}
+
+/* filter panel */
+.cs-flt {
+  width: 440px;
+}
+.cs-fltb {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 18px 14px;
+}
+.cs-fg {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-fg:last-child {
+  border-bottom: none;
+}
+.cs-fgl {
+  font-size: 12.5px;
+  color: var(--g);
+  margin-bottom: 9px;
+  font-weight: 500;
+}
+.cs-fgo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cs-fgo .cs-pl {
+  text-transform: capitalize;
+}
+.cs-fcn {
+  margin-left: auto;
+  background: var(--g);
+  color: #fff;
+  font-size: 11px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+}
+.cs-fwbtn.ghost {
+  background: transparent;
+  color: var(--tx2);
+  border: 1px solid var(--ln);
 }
 
 /* ===== CONTEXT MENU ===== */
