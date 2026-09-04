@@ -515,16 +515,33 @@ const fitMenu = el => {
   });
 };
 
-const convApi = (cid, path) => {
-  const base = `/api/v1/accounts/${accountId.value}/conversations/${cid}`;
-  return fetch(`${base}/${path}`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: {
-      'Content-Type': 'application/json',
-      api_access_token: currentUser.value?.access_token || '',
-    },
+/* Chatwoot ki custom_attributes API — server par save hota hai,
+   isliye PC aur mobile dono par ek jaisa. localStorage sirf
+   fallback hai agar API fail ho jaye. */
+const setAttr = (c, patch) => {
+  const merged = { ...(c.custom_attributes || {}), ...patch };
+  // turant UI update
+  if (c.custom_attributes) Object.assign(c.custom_attributes, patch);
+  else c.custom_attributes = { ...patch };
+
+  const r = store.dispatch('updateCustomAttributes', {
+    conversationId: c.id,
+    customAttributes: merged,
   });
+  if (r && r.catch) {
+    r.catch(() => {
+      // API na chale to kam az kam is device par yaad rahe
+      if (patch.cs_pinned !== undefined) {
+        pinned.value = { ...pinned.value, [c.id]: patch.cs_pinned };
+        saveLS('pin', pinned.value);
+      }
+      if (patch.cs_archived !== undefined) {
+        archived.value = { ...archived.value, [c.id]: patch.cs_archived };
+        saveLS('arch', archived.value);
+      }
+    });
+  }
+  return r;
 };
 
 const act = (name, arg) => {
@@ -547,15 +564,20 @@ const act = (name, arg) => {
     saveLS('mute', muted.value);
     d(muted.value[c.id] ? 'muteConversation' : 'unmuteConversation', c.id);
   } else if (name === 'pin') {
-    pinned.value = { ...pinned.value, [c.id]: !pinned.value[c.id] };
-    saveLS('pin', pinned.value);
-    convApi(c.id, pinned.value[c.id] ? 'pin' : 'unpin').catch(() => {});
+    setAttr(c, { cs_pinned: !isPinned(c) });
   } else if (name === 'archive') {
-    archived.value = { ...archived.value, [c.id]: !archived.value[c.id] };
-    saveLS('arch', archived.value);
-    convApi(c.id, archived.value[c.id] ? 'archive' : 'unarchive').catch(
-      () => {}
-    );
+    const next = !isArchived(c);
+    setAttr(c, { cs_archived: next });
+    // WhatsApp jaisa: archive karte hi mute ho jaye
+    if (next && !isMuted(c)) {
+      d('muteConversation', c.id);
+      muted.value = { ...muted.value, [c.id]: true };
+      saveLS('mute', muted.value);
+    } else if (!next && isMuted(c)) {
+      d('unmuteConversation', c.id);
+      muted.value = { ...muted.value, [c.id]: false };
+      saveLS('mute', muted.value);
+    }
   } else if (name === 'copy') {
     copyText(
       `${window.location.origin}/app/accounts/${accountId.value}/conversations/${c.id}`
@@ -687,10 +709,19 @@ const toggleFwd = id => {
 /* server ka field pehle, warna local — jab backend chale to
    sab agents ko nazar aayega */
 const isPinned = c =>
-  !!(c?.additional_attributes?.pinned_at || pinned.value[c?.id]);
+  !!(
+    c?.custom_attributes?.cs_pinned ||
+    c?.additional_attributes?.pinned_at ||
+    pinned.value[c?.id]
+  );
 const isArchived = c =>
-  !!(c?.additional_attributes?.archived_at || archived.value[c?.id]);
-const isMuted = c => !!(c?.muted || muted.value[c?.id]);
+  !!(
+    c?.custom_attributes?.cs_archived ||
+    c?.additional_attributes?.archived_at ||
+    archived.value[c?.id]
+  );
+const isMuted = c =>
+  !!(c?.muted || c?.custom_attributes?.cs_archived || muted.value[c?.id]);
 
 /* reply ka quote dhoondo */
 const quotedOf = m => {
@@ -717,7 +748,7 @@ const fwdRows = computed(() => {
 });
 
 const archivedCount = computed(
-  () => Object.values(archived.value).filter(Boolean).length
+  () => (allChats.value || []).filter(isArchived).length
 );
 
 /* ---------------- lifecycle ---------------- */
@@ -2183,14 +2214,30 @@ watch(() => messages.value.length, scrollDown);
 }
 /* ===== VOICE bubble — WhatsApp jaisa ===== */
 .cs-aud {
-  width: 300px;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   display: block;
   margin: 2px 0 0;
 }
+/* :has() ke bagair bhi chale — bubble khud chaudai le */
+.cs-msg:has(.cs-aud) {
+  width: min(330px, 100%);
+}
 .cs-msg:has(.cs-aud) .cs-bub {
   padding: 8px 10px 19px;
-  min-width: 300px;
+  min-width: 0;
+  width: 100%;
+}
+.cs-aud :deep(.cs-voice) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.cs-aud :deep(.cs-voice__wave) {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
 }
 .cs-aud :deep(.cs-voice__row) {
   gap: 10px;
@@ -3127,32 +3174,8 @@ watch(() => messages.value.length, scrollDown);
   .cs-msg:has(.cs-aud) .cs-bub {
     min-width: 0;
   }
-  .cs-aud {
-    width: 100% !important;
-    min-width: 0 !important;
-  }
   .cs-msg:has(.cs-aud) {
-    max-width: 90%;
-  }
-  .cs-msg:has(.cs-aud) .cs-bub {
-    min-width: 0 !important;
-    width: 100%;
-    padding: 8px 9px 19px;
-  }
-  .cs-aud :deep(.cs-voice) {
-    min-width: 0 !important;
-    width: 100% !important;
-  }
-  .cs-aud :deep(.cs-voice__wave) {
-    min-width: 0 !important;
-    flex: 1 1 0 !important;
-  }
-  .cs-aud :deep(.cs-voice__play) {
-    width: 28px;
-    height: 28px;
-  }
-  .cs-aud :deep(.cs-voice__meta) {
-    padding-left: 38px !important;
+    width: min(330px, 84%);
   }
   .cs-lb img {
     max-width: 98vw;
