@@ -31,6 +31,18 @@ const currentUser = useMapGetter('getCurrentUser');
 const inboxesList = useMapGetter('inboxes/getInboxes');
 const accountId = useMapGetter('getCurrentAccountId');
 const listLoading = useMapGetter('getChatListLoadingStatus');
+const agentsList = useMapGetter('agents/getAgents');
+const teamsList = useMapGetter('teams/getTeams');
+const typingGetter = useMapGetter('conversationTypingStatus/getUserList');
+
+const typingNames = computed(() => {
+  try {
+    const u = typingGetter.value?.(currentChat.value?.id) || [];
+    return u.map(x => x.name).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+});
 
 /* ---------------- local state ---------------- */
 const q = ref('');
@@ -167,11 +179,9 @@ const rows = computed(() => {
       return `${n} ${p} ${m}`.toLowerCase().includes(s);
     });
   }
-  L = L.filter(c =>
-    showArchived.value ? archived.value[c.id] : !archived.value[c.id]
-  );
+  L = L.filter(c => (showArchived.value ? isArchived(c) : !isArchived(c)));
   return L.sort((a, b) => {
-    const p = (pinned.value[b.id] ? 1 : 0) - (pinned.value[a.id] ? 1 : 0);
+    const p = (isPinned(b) ? 1 : 0) - (isPinned(a) ? 1 : 0);
     if (p) return p;
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
@@ -275,6 +285,8 @@ const replyTo = ref(null);
 const fwdMsg = ref(null);
 const fwdPick = ref([]);
 const infoMsg = ref(null);
+const lightbox = ref(null);
+const fwdQ = ref('');
 
 const EMOJIS = (
   '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
@@ -534,7 +546,9 @@ const act = (name, arg) => {
       id: c.meta?.sender?.id,
       blocked: !c.meta?.sender?.blocked,
     });
-  } else if (name === 'delete') d('deleteConversation', c.id);
+  } else if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id })
+  else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
+  else if (name === 'delete') d('deleteConversation', c.id);
 };
 
 const copyText = t => {
@@ -628,6 +642,38 @@ const toggleFwd = id => {
   else fwdPick.value.push(id);
 };
 
+/* server ka field pehle, warna local — jab backend chale to
+   sab agents ko nazar aayega */
+const isPinned = c =>
+  !!(c?.additional_attributes?.pinned_at || pinned.value[c?.id]);
+const isArchived = c =>
+  !!(c?.additional_attributes?.archived_at || archived.value[c?.id]);
+const isMuted = c => !!(c?.muted || muted.value[c?.id]);
+
+/* reply ka quote dhoondo */
+const quotedOf = m => {
+  const rid = m?.content_attributes?.in_reply_to;
+  if (!rid) return null;
+  return messages.value.find(x => x.id === rid) || null;
+};
+
+/* reactions agar data mein hon */
+const reactionsOf = m => {
+  const r = m?.content_attributes?.reactions;
+  if (!r) return [];
+  if (Array.isArray(r)) return r;
+  return Object.entries(r).map(([e, n]) => ({ emoji: e, count: n }));
+};
+
+const fwdRows = computed(() => {
+  const q2 = fwdQ.value.trim().toLowerCase();
+  const L = allChats.value || [];
+  if (!q2) return L;
+  return L.filter(c =>
+    `${c.meta?.sender?.name || ''} ${phoneOf(c)}`.toLowerCase().includes(q2)
+  );
+});
+
 const archivedCount = computed(
   () => Object.values(archived.value).filter(Boolean).length
 );
@@ -635,6 +681,8 @@ const archivedCount = computed(
 /* ---------------- lifecycle ---------------- */
 onMounted(() => {
   store.dispatch('inboxes/get');
+  store.dispatch('teams/get');
+  store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
   store.dispatch('updateChatListFilters', {
     inboxId: props.inboxId || undefined,
@@ -766,6 +814,9 @@ watch(() => messages.value.length, scrollDown);
               <span class="cs-t">{{ listTime(c.timestamp) }}</span>
             </div>
             <div v-if="phoneOf(c)" class="cs-rph">{{ phoneOf(c) }}</div>
+            <div v-if="(c.labels || []).length" class="cs-lbs">
+              <span v-for="l in c.labels" :key="l" class="cs-lb">{{ l }}</span>
+            </div>
 
             <div class="cs-r2">
               <span v-if="isOut(c)" class="cs-tick i-lucide-check-check" />
@@ -777,8 +828,8 @@ watch(() => messages.value.length, scrollDown);
                 {{ chipFor(c.inbox_id).t }}
               </span>
               <span class="cs-m">{{ previewOf(c) }}</span>
-              <span v-if="muted[c.id]" class="cs-mk i-lucide-bell-off" />
-              <span v-if="pinned[c.id]" class="cs-mk i-lucide-pin" />
+              <span v-if="isMuted(c)" class="cs-mk i-lucide-bell-off" />
+              <span v-if="isPinned(c)" class="cs-mk i-lucide-pin" />
               <span v-if="(c.unread_count || 0) > 0" class="cs-un">
                 {{ c.unread_count }}
               </span>
@@ -806,7 +857,10 @@ watch(() => messages.value.length, scrollDown);
         </div>
         <div class="cs-tnm" @click="showProfile = true">
           <div class="cs-tn">{{ contact.name || 'Unknown' }}</div>
-          <div class="cs-ts">
+          <div v-if="typingNames.length" class="cs-ts cs-typ">
+            {{ typingNames.join(', ') }} typing…
+          </div>
+          <div v-else class="cs-ts">
             <span v-if="phoneOf(contact)" class="cs-tph">
               {{ phoneOf(contact) }}
             </span>
@@ -835,12 +889,29 @@ watch(() => messages.value.length, scrollDown);
                 {{ b.m.sender?.name || 'You' }}
               </div>
 
+              <div v-if="quotedOf(b.m)" class="cs-q">
+                <div class="cs-qbar" />
+                <div class="cs-qb">
+                  <div class="cs-qn">
+                    {{
+                      quotedOf(b.m).message_type === 1
+                        ? quotedOf(b.m).sender?.name || 'You'
+                        : contact.name || 'Customer'
+                    }}
+                  </div>
+                  <div class="cs-qt">
+                    {{ plain(quotedOf(b.m).content || '') || 'Attachment' }}
+                  </div>
+                </div>
+              </div>
+
               <template v-if="b.m.attachments && b.m.attachments.length">
                 <template v-for="a in b.m.attachments" :key="a.id">
                   <img
                     v-if="aType(a) === 'image' && aUrl(a)"
                     :src="aUrl(a)"
                     class="cs-img"
+                    @click.stop="lightbox = aUrl(a)"
                   />
                   <AudioChip
                     v-else-if="aType(a) === 'audio' && aUrl(a)"
@@ -867,6 +938,13 @@ watch(() => messages.value.length, scrollDown);
               </template>
 
               <div v-if="b.m.content" class="cs-tx" v-html="bodyHtml(b.m)" />
+
+              <div v-if="reactionsOf(b.m).length" class="cs-rx">
+                <span v-for="(r, i) in reactionsOf(b.m)" :key="i" class="cs-rxi">
+                  {{ r.emoji || r }}
+                  <b v-if="r.count > 1">{{ r.count }}</b>
+                </span>
+              </div>
 
               <div class="cs-mt">
                 <span>{{ clock(b.m.created_at) }}</span>
@@ -1038,6 +1116,15 @@ watch(() => messages.value.length, scrollDown);
       </div>
     </div>
 
+    <!-- ============ IMAGE LIGHTBOX ============ -->
+    <div v-if="lightbox" class="cs-lb" @click="lightbox = null">
+      <span class="cs-lbx i-lucide-x" />
+      <img :src="lightbox" @click.stop />
+      <a class="cs-lbd" :href="lightbox" target="_blank" @click.stop>
+        <span class="i-lucide-download" />
+      </a>
+    </div>
+
     <!-- ============ MESSAGE INFO ============ -->
     <div v-if="infoMsg" class="cs-fw" @click.self="infoMsg = null">
       <div class="cs-fwb cs-inf">
@@ -1120,9 +1207,14 @@ watch(() => messages.value.length, scrollDown);
           <span>Forward message to</span>
         </div>
         <div class="cs-fwp">{{ plain(fwdMsg.content || '') || 'Attachment' }}</div>
+        <div class="cs-search cs-fwsr">
+          <span class="cs-search__ic i-lucide-search" />
+          <input v-model="fwdQ" placeholder="Search name or number" />
+          <span v-if="fwdQ" class="cs-search__x i-lucide-x" @click="fwdQ = ''" />
+        </div>
         <div class="cs-fwl">
           <div
-            v-for="c in rows"
+            v-for="c in fwdRows"
             :key="c.id"
             class="cs-fwr"
             :class="{ on: fwdPick.includes(c.id) }"
@@ -1131,7 +1223,10 @@ watch(() => messages.value.length, scrollDown);
             <div class="cs-fwav" :style="{ background: colorFor(c.id) }">
               {{ initials(c.meta?.sender?.name) }}
             </div>
-            <span class="cs-fwn">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+            <div class="cs-fwnb">
+              <span class="cs-fwn">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+              <span v-if="phoneOf(c)" class="cs-fwph">{{ phoneOf(c) }}</span>
+            </div>
             <span
               class="cs-fwck"
               :class="
@@ -1338,6 +1433,44 @@ watch(() => messages.value.length, scrollDown);
           >
             <span>{{ p }}</span>
           </div>
+        </div>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'ag' ? '' : 'ag'"
+      >
+        <span class="i-lucide-user-plus" /><span>Assign agent</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'ag'" class="cs-sub cs-sub--tall">
+          <div class="cs-mi" @click.stop="act('agent', { id: null })">
+            <span>Unassign</span>
+          </div>
+          <div
+            v-for="a in agentsList"
+            :key="a.id"
+            class="cs-mi"
+            @click.stop="act('agent', a)"
+          >
+            <span>{{ a.name }}</span>
+          </div>
+        </div>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'tm' ? '' : 'tm'"
+      >
+        <span class="i-lucide-users" /><span>Assign team</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'tm'" class="cs-sub cs-sub--tall">
+          <div
+            v-for="t in teamsList"
+            :key="t.id"
+            class="cs-mi"
+            @click.stop="act('team', t)"
+          >
+            <span>{{ t.name }}</span>
+          </div>
+          <div v-if="!teamsList.length" class="cs-mi"><span>No teams</span></div>
         </div>
       </div>
       <hr />
@@ -2573,6 +2706,138 @@ watch(() => messages.value.length, scrollDown);
   cursor: default;
 }
 
+/* quoted reply bubble ke andar */
+.cs-q {
+  display: flex;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 5px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  max-height: 58px;
+  overflow: hidden;
+}
+.cs-app.lite .cs-q {
+  background: rgba(0, 0, 0, 0.06);
+}
+.cs-qbar {
+  width: 4px;
+  border-radius: 3px;
+  background: var(--g);
+  flex-shrink: 0;
+}
+.cs-qb {
+  min-width: 0;
+}
+.cs-qn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g);
+}
+.cs-qt {
+  font-size: 12.5px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* reactions */
+.cs-rx {
+  display: flex;
+  gap: 3px;
+  margin: 3px 0 -2px;
+}
+.cs-rxi {
+  background: var(--head);
+  border-radius: 11px;
+  padding: 2px 7px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  box-shadow: var(--sh);
+}
+.cs-rxi b {
+  font-size: 11px;
+  color: var(--tx3);
+  font-weight: 500;
+}
+
+/* labels chip */
+.cs-lbs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 3px;
+  overflow: hidden;
+}
+.cs-lb {
+  font-size: 10.5px;
+  background: var(--g-tint);
+  color: var(--g);
+  padding: 1px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* typing */
+.cs-typ {
+  color: var(--g) !important;
+  font-style: italic;
+}
+
+/* lightbox */
+.cs-lb {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.92);
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+.cs-lb img {
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.cs-lbx,
+.cs-lbd {
+  position: absolute;
+  top: 18px;
+  width: 26px;
+  height: 26px;
+  color: #e9edef;
+  cursor: pointer;
+}
+.cs-lbx {
+  left: 20px;
+}
+.cs-lbd {
+  right: 20px;
+}
+
+/* forward: search + number */
+.cs-fwsr {
+  margin: 0 14px 8px !important;
+}
+.cs-fwnb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-fwph {
+  display: block;
+  font-size: 12px;
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
+}
+.cs-sub--tall {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 /* ===== CONTEXT MENU ===== */
 .cs-cmenu {
   position: fixed;
@@ -2687,11 +2952,34 @@ watch(() => messages.value.length, scrollDown);
     min-width: 0;
   }
   .cs-aud {
-    width: 100%;
-    min-width: 0;
+    width: 100% !important;
+    min-width: 0 !important;
   }
   .cs-msg:has(.cs-aud) {
-    max-width: 88%;
+    max-width: 90%;
+  }
+  .cs-msg:has(.cs-aud) .cs-bub {
+    min-width: 0 !important;
+    width: 100%;
+    padding: 8px 9px 19px;
+  }
+  .cs-aud :deep(.cs-voice) {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  .cs-aud :deep(.cs-voice__wave) {
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+  }
+  .cs-aud :deep(.cs-voice__play) {
+    width: 28px;
+    height: 28px;
+  }
+  .cs-aud :deep(.cs-voice__meta) {
+    padding-left: 38px !important;
+  }
+  .cs-lb img {
+    max-width: 98vw;
   }
   .cs-fwb {
     max-height: 88vh;
