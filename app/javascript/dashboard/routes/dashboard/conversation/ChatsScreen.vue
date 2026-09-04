@@ -1016,30 +1016,38 @@ watch(() => messages.value.length, scrollDown);
           "
         />
         <h1 class="cs-selh">{{ picked.length }} selected</h1>
-        <span
-          class="cs-ic i-lucide-mail-open"
-          :class="{ off: !picked.length }"
-          title="Mark read"
+        <button
+          class="cs-sb"
+          :disabled="!picked.length"
           @click="bulk('read')"
-        />
-        <span
-          class="cs-ic i-lucide-check"
-          :class="{ off: !picked.length }"
-          title="Resolve"
+        >
+          <span class="i-lucide-mail-open" />
+          <span>Read</span>
+        </button>
+        <button
+          class="cs-sb"
+          :disabled="!picked.length"
           @click="bulk('resolved')"
-        />
-        <span
-          class="cs-ic i-lucide-archive"
-          :class="{ off: !picked.length }"
-          title="Archive"
+        >
+          <span class="i-lucide-check" />
+          <span>Resolve</span>
+        </button>
+        <button
+          class="cs-sb"
+          :disabled="!picked.length"
           @click="bulk('archive')"
-        />
-        <span
-          class="cs-ic dgr i-lucide-trash-2"
-          :class="{ off: !picked.length }"
-          title="Delete"
+        >
+          <span class="i-lucide-archive" />
+          <span>Archive</span>
+        </button>
+        <button
+          class="cs-sb dgr"
+          :disabled="!picked.length"
           @click="bulk('delete')"
-        />
+        >
+          <span class="i-lucide-trash-2" />
+          <span>Delete</span>
+        </button>
       </div>
 
       <div v-else class="cs-ph">
@@ -2481,9 +2489,8 @@ watch(() => messages.value.length, scrollDown);
   padding: 6px 9px 7px 10px;
   border-radius: 7.5px;
   box-shadow: var(--sh);
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+  min-width: 110px;
+  cursor: default;
 }
 .cs-msg.in {
   align-self: flex-start;
@@ -2537,6 +2544,8 @@ watch(() => messages.value.length, scrollDown);
   line-height: 1.42;
   word-wrap: break-word;
   white-space: pre-wrap;
+  padding-right: 52px;
+  letter-spacing: 0.002em;
 }
 .cs-tx :deep(a) {
   color: var(--b);
@@ -2548,30 +2557,36 @@ watch(() => messages.value.length, scrollDown);
 .cs-tx :deep(p + p) {
   margin-top: 6px;
 }
+/* target ka exact tareeqa: waqt text ki aakhri line par float
+   karta hai, neeche nayi line nahi banata */
 .cs-mt {
   font-size: 11px;
   color: var(--tx3);
+  float: right;
+  margin: -14px -3px -2px 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 3px;
   line-height: 1;
-  margin: 2px 0 -1px 14px;
-  align-self: flex-end;
   white-space: nowrap;
 }
 .cs-msg {
   width: fit-content;
   max-width: 65%;
 }
-.cs-msg .cs-bub {
-  width: fit-content;
-  min-width: 78px;
-  max-width: 100%;
-}
 .cs-msg.out.f1::before,
 .cs-msg.in.f1::before {
   z-index: 1;
+}
+/* attachment bubbles: text nahi hota, isliye waqt absolute */
+.cs-msg:has(.cs-aud) .cs-mt,
+.cs-msg:has(.cs-img) .cs-mt,
+.cs-msg:has(.cs-file) .cs-mt {
+  float: none;
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  margin: 0;
 }
 .cs-msg.in { margin-right: auto; }
 .cs-msg.out { margin-left: auto; }
@@ -2649,18 +2664,25 @@ watch(() => messages.value.length, scrollDown);
 .cs-aud :deep(.cs-voice__row) {
   gap: 10px;
 }
-.cs-aud :deep(.cs-voice__play) {
-  width: 34px !important;
-  height: 34px !important;
-  min-width: 34px;
-  opacity: 1;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1) !important;
+.cs-msg .cs-aud :deep(.cs-voice__play),
+.cs-aud :deep(button.cs-voice__play) {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  flex: 0 0 38px !important;
+  opacity: 1 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  display: grid !important;
+  place-items: center !important;
 }
+.cs-msg .cs-aud :deep(.cs-voice__play *),
 .cs-aud :deep(.cs-voice__play svg),
 .cs-aud :deep(.cs-voice__play .size-5) {
-  width: 21px !important;
-  height: 21px !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  font-size: 24px !important;
 }
 .cs-app.lite .cs-aud :deep(.cs-voice__play) {
   background: rgba(0, 0, 0, 0.07) !important;
@@ -2678,7 +2700,7 @@ watch(() => messages.value.length, scrollDown);
   background: #53bdeb;
 }
 .cs-aud :deep(.cs-voice__meta) {
-  padding-left: 44px !important;
+  padding-left: 48px !important;
   margin-top: 2px !important;
 }
 .cs-aud :deep(.cs-voice__time) {
@@ -3519,11 +3541,44 @@ watch(() => messages.value.length, scrollDown);
   letter-spacing: 0 !important;
 }
 .cs-phsel {
-  gap: 2px;
+  gap: 6px;
+  padding: 13px 14px 10px;
+}
+.cs-sb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 15px;
+  border: 0;
+  background: var(--fld);
+  color: var(--tx2);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.cs-sb span:first-child {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-sb:hover:not(:disabled) {
+  background: var(--sel);
+  color: var(--tx);
+}
+.cs-sb.dgr {
+  color: var(--red);
+}
+.cs-sb:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .cs-phsel .cs-ic {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   padding: 8px;
   box-sizing: content-box;
 }
