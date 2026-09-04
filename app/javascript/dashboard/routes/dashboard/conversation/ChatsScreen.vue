@@ -154,8 +154,19 @@ const pills = computed(() => {
   (inboxesList.value || []).forEach(ib => {
     base.push({ k: `in-${ib.id}`, n: ib.name });
   });
+  (labelsList.value || []).forEach(l => {
+    base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
+  });
   return base;
 });
+
+const PILL_LIMIT = 5;
+const visiblePills = computed(() =>
+  showAllPills.value ? pills.value : pills.value.slice(0, PILL_LIMIT)
+);
+const hiddenPillCount = computed(() =>
+  Math.max(0, pills.value.length - PILL_LIMIT)
+);
 
 const rows = computed(() => {
   let L = [...(allChats.value || [])];
@@ -164,7 +175,10 @@ const rows = computed(() => {
   else if (f === 'mine')
     L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
   else if (f === 'unassigned') L = L.filter(c => !c.meta?.assignee);
-  else if (f.startsWith('in-')) {
+  else if (f.startsWith('lb-')) {
+    const t = f.slice(3);
+    L = L.filter(c => (c.labels || []).includes(t));
+  } else if (f.startsWith('in-')) {
     const id = Number(f.slice(3));
     L = L.filter(c => c.inbox_id === id);
   }
@@ -287,6 +301,11 @@ const fwdPick = ref([]);
 const infoMsg = ref(null);
 const lightbox = ref(null);
 const fwdQ = ref('');
+const newLabel = ref('');
+const showAllPills = ref(false);
+const labelsList = useMapGetter('labels/getLabels');
+
+const REACTS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 const EMOJIS = (
   '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
@@ -546,6 +565,18 @@ const act = (name, arg) => {
       id: c.meta?.sender?.id,
       blocked: !c.meta?.sender?.blocked,
     });
+  } else if (name === 'label') {
+    const cur = c.labels || [];
+    const next = cur.includes(arg) ? cur.filter(x => x !== arg) : [...cur, arg];
+    d('setLabels', { conversationId: c.id, labels: next });
+  } else if (name === 'newlabel') {
+    const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
+    if (!t) return;
+    newLabel.value = '';
+    store
+      .dispatch('labels/create', { title: t, color: '#00A884' })
+      ?.catch?.(() => {});
+    d('setLabels', { conversationId: c.id, labels: [...(c.labels || []), t] });
   } else if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id })
   else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
   else if (name === 'delete') d('deleteConversation', c.id);
@@ -585,7 +616,7 @@ const openMsgMenu = (e, m) => {
     msg: m,
   };
 };
-const msgAct = name => {
+const msgAct = (name, arg) => {
   const m = mmenu.value.msg;
   mmenu.value.open = false;
   if (!m) return;
@@ -598,6 +629,17 @@ const msgAct = name => {
     replyTo.value = m;
   } else if (name === 'info') {
     infoMsg.value = m;
+  } else if (name === 'react') {
+    pushMessage({
+      conversationId: currentChat.value.id,
+      message: arg,
+      private: false,
+      files: [],
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+      contentAttributes: { in_reply_to: m.id },
+    }).then(scrollDown);
   } else if (name === 'note') {
     isNote.value = true;
     draft.value = plain(m.content || '');
@@ -682,6 +724,7 @@ const archivedCount = computed(
 onMounted(() => {
   store.dispatch('inboxes/get');
   store.dispatch('teams/get');
+  store.dispatch('labels/get');
   store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
   store.dispatch('updateChatListFilters', {
@@ -767,14 +810,34 @@ watch(() => messages.value.length, scrollDown);
 
       <div class="cs-pills">
         <div
-          v-for="p in pills"
+          v-for="p in visiblePills"
           :key="p.k"
           class="cs-pl"
-          :class="{ on: filt === p.k }"
+          :class="{ on: filt === p.k, lb: p.lb }"
           @click="filt = p.k"
         >
+          <span
+            v-if="p.lb"
+            class="cs-pld"
+            :style="{ background: p.color || 'var(--g)' }"
+          />
           <span>{{ p.n }}</span>
           <span v-if="p.c" class="cs-plc">{{ p.c }}</span>
+        </div>
+        <div
+          v-if="hiddenPillCount && !showAllPills"
+          class="cs-pl cs-plmore"
+          @click="showAllPills = true"
+        >
+          <span class="i-lucide-chevron-down" />
+          <span>{{ hiddenPillCount }}</span>
+        </div>
+        <div
+          v-if="showAllPills && hiddenPillCount"
+          class="cs-pl cs-plmore"
+          @click="showAllPills = false"
+        >
+          <span class="i-lucide-chevron-up" />
         </div>
       </div>
 
@@ -1359,6 +1422,17 @@ watch(() => messages.value.length, scrollDown);
       :style="{ left: mmenu.x + 'px', top: mmenu.y + 'px' }"
       @click.stop
     >
+      <div class="cs-rxrow">
+        <span
+          v-for="e in REACTS"
+          :key="e"
+          class="cs-rxb"
+          @click="msgAct('react', e)"
+        >
+          {{ e }}
+        </span>
+      </div>
+      <hr />
       <div class="cs-mi" @click="msgAct('reply')">
         <span class="i-lucide-reply" /><span>Reply</span>
       </div>
@@ -1432,6 +1506,40 @@ watch(() => messages.value.length, scrollDown);
             @click.stop="act('priority', p === 'none' ? null : p)"
           >
             <span>{{ p }}</span>
+          </div>
+        </div>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'lb' ? '' : 'lb'"
+      >
+        <span class="i-lucide-tag" /><span>Assign label</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'lb'" class="cs-sub cs-sub--tall" @click.stop>
+          <div class="cs-lbnew">
+            <input
+              v-model="newLabel"
+              placeholder="New label..."
+              @keydown.enter.stop="act('newlabel')"
+              @click.stop
+            />
+            <span class="i-lucide-plus" @click.stop="act('newlabel')" />
+          </div>
+          <div
+            v-for="l in labelsList"
+            :key="l.id"
+            class="cs-mi"
+            @click.stop="act('label', l.title)"
+          >
+            <span class="cs-pld" :style="{ background: l.color }" />
+            <span>{{ l.title }}</span>
+            <span
+              v-if="(menu.chat?.labels || []).includes(l.title)"
+              class="cs-arw i-lucide-check"
+            />
+          </div>
+          <div v-if="!labelsList.length" class="cs-mi">
+            <span>Koi label nahi — upar likh kar banao</span>
           </div>
         </div>
       </div>
@@ -1513,6 +1621,7 @@ watch(() => messages.value.length, scrollDown);
   --chat: #0b141a;
   --badge: #00a884;
   --badge-tx: #0b141a;
+  --inp: #2a3942;
   --sh: 0 1px 0.5px rgba(0, 0, 0, 0.35);
   --red: #f15c6d;
 
@@ -1548,6 +1657,7 @@ watch(() => messages.value.length, scrollDown);
   --chat: #e3ded7;
   --badge: #25d366;
   --badge-tx: #053e20;
+  --inp: #ffffff;
   --sh: 0 1px 0.5px rgba(11, 20, 26, 0.13);
   --red: #d63c4b;
 }
@@ -1581,7 +1691,7 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-psr {
   margin: 0 12px 11px;
-  background: var(--fld);
+  background: var(--inp);
   border-radius: 9px;
   padding: 0 14px;
   display: flex;
@@ -2215,15 +2325,15 @@ watch(() => messages.value.length, scrollDown);
   position: relative;
 }
 .cs-cbar {
-  background: var(--fld);
+  background: var(--inp);
   border-radius: 24px;
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   align-items: center;
-  gap: 11px;
-  padding: 10px 16px;
-  min-height: 46px;
+  gap: 12px;
+  padding: 11px 17px;
+  min-height: 48px;
   width: 100%;
 }
 .cs-ci {
@@ -2838,6 +2948,72 @@ watch(() => messages.value.length, scrollDown);
   overflow-y: auto;
 }
 
+/* pills: label dot + more arrow */
+.cs-pld {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.cs-plmore {
+  padding: 5px 10px !important;
+  gap: 4px;
+}
+.cs-plmore span:first-child {
+  width: 15px;
+  height: 15px;
+}
+
+/* reactions row menu mein */
+.cs-rxrow {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 8px;
+  justify-content: space-between;
+}
+.cs-rxb {
+  font-size: 21px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition: transform 0.1s, background 0.1s;
+}
+.cs-rxb:hover {
+  background: var(--menu-hov);
+  transform: scale(1.18);
+}
+
+/* naya label banao */
+.cs-lbnew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-lbnew input {
+  flex: 1;
+  min-width: 0;
+  background: var(--inp);
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.cs-lbnew span {
+  width: 18px;
+  height: 18px;
+  color: var(--g);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 /* ===== CONTEXT MENU ===== */
 .cs-cmenu {
   position: fixed;
@@ -2988,7 +3164,22 @@ watch(() => messages.value.length, scrollDown);
     padding: 9px 13px;
   }
   .cs-comp {
-    padding-bottom: env(safe-area-inset-bottom, 9px);
+    padding: 7px 8px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  .cs-cbar {
+    border-radius: 24px;
+    min-height: 46px;
+    gap: 12px;
+    padding: 10px 15px;
+  }
+  .cs-msg {
+    max-width: 84%;
+  }
+  .cs-snd2,
+  .cs-ci {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
   }
 }
 .cs-mi {
