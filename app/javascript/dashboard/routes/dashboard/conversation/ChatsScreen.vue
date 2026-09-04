@@ -170,6 +170,11 @@ const hiddenPillCount = computed(() =>
 
 const rows = computed(() => {
   let L = [...(allChats.value || [])];
+  if (props.inboxId) {
+    const iid = Number(props.inboxId);
+    const only = L.filter(c => c.inbox_id === iid);
+    if (only.length) L = only;
+  }
   const f = filt.value;
   if (f === 'unread') L = L.filter(c => (c.unread_count || 0) > 0);
   else if (f === 'mine')
@@ -194,10 +199,23 @@ const rows = computed(() => {
     });
   }
   L = L.filter(c => (showArchived.value ? isArchived(c) : !isArchived(c)));
-  return L.sort((a, b) => {
+
+  const k = sortBy.value;
+  const val = c => {
+    if (k === 'created_at_desc' || k === 'created_at_asc') return c.created_at || 0;
+    if (k === 'priority_desc') {
+      const P = { urgent: 4, high: 3, medium: 2, low: 1 };
+      return P[c.priority] || 0;
+    }
+    if (k === 'waiting_since_desc') return -(c.waiting_since || c.timestamp || 0);
+    return c.timestamp || 0;
+  };
+  const asc = k === 'created_at_asc';
+
+  return L.slice().sort((a, b) => {
     const p = (isPinned(b) ? 1 : 0) - (isPinned(a) ? 1 : 0);
     if (p) return p;
-    return (b.timestamp || 0) - (a.timestamp || 0);
+    return asc ? val(a) - val(b) : val(b) - val(a);
   });
 });
 
@@ -352,14 +370,6 @@ const applySort = k => {
   hmenu.value = false;
   hsub.value = '';
   store.dispatch('setChatSortFilter', k);
-  store.dispatch('updateChatListFilters', {
-    inboxId: props.inboxId || undefined,
-    assigneeType: 'all',
-    status: 'all',
-    sortBy: k,
-    page: 1,
-  });
-  store.dispatch('fetchAllConversations');
 };
 
 const goSettings = () => {
@@ -831,7 +841,6 @@ onMounted(() => {
   store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
   store.dispatch('updateChatListFilters', {
-    inboxId: props.inboxId || undefined,
     assigneeType: 'all',
     status: 'all',
     page: 1,
@@ -901,7 +910,26 @@ watch(() => messages.value.length, scrollDown);
   <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: !!conversationId }">
     <!-- ============ LEFT: CHATS PANEL ============ -->
     <div class="cs-panel">
-      <div class="cs-ph">
+      <div v-if="selectMode" class="cs-ph cs-phsel">
+        <span
+          class="cs-ic i-lucide-x"
+          @click="
+            selectMode = false;
+            picked = [];
+          "
+        />
+        <h1 class="cs-selh">{{ picked.length }} selected</h1>
+        <span
+          class="cs-ic i-lucide-mail-open"
+          title="Mark read"
+          @click="bulk('read')"
+        />
+        <span class="cs-ic i-lucide-check" @click="bulk('resolved')" />
+        <span class="cs-ic i-lucide-archive" @click="bulk('archive')" />
+        <span class="cs-ic dgr i-lucide-trash-2" @click="bulk('delete')" />
+      </div>
+
+      <div v-else class="cs-ph">
         <h1>Chats</h1>
         <span class="cs-ic i-lucide-more-vertical" @click.stop="hmenu = !hmenu" />
         <div v-if="hmenu" class="cs-hm" @click.stop>
@@ -955,14 +983,6 @@ watch(() => messages.value.length, scrollDown);
         </div>
       </div>
 
-      <div v-if="selectMode" class="cs-selbar">
-        <span class="cs-ic i-lucide-x" @click="selectMode = false; picked = []" />
-        <span class="cs-selc">{{ picked.length }} selected</span>
-        <span class="cs-ic i-lucide-mail-open" title="Mark read" @click="bulk('read')" />
-        <span class="cs-ic i-lucide-check" title="Resolve" @click="bulk('resolved')" />
-        <span class="cs-ic i-lucide-archive" title="Archive" @click="bulk('archive')" />
-        <span class="cs-ic i-lucide-trash-2 dgr" title="Delete" @click="bulk('delete')" />
-      </div>
 
       <div class="cs-psr" :class="{ act: q }">
         <span class="i-lucide-search" />
@@ -2098,14 +2118,29 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-sub {
   position: absolute;
-  left: 100%;
+  left: calc(100% + 4px);
   top: -7px;
   background: var(--menu);
   border-radius: 8px;
-  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.5);
   padding: 7px 0;
-  min-width: 150px;
-  z-index: 1;
+  min-width: 186px;
+  max-width: 260px;
+  z-index: 10000;
+  white-space: nowrap;
+}
+.cs-sub .cs-mi {
+  white-space: nowrap;
+  padding: 9px 16px !important;
+  gap: 10px !important;
+}
+.cs-hm .cs-sub {
+  left: auto;
+  right: calc(100% + 4px);
+}
+.cs-app.lite .cs-sub {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
 }
 .cs-sub .cs-mi {
   text-transform: capitalize;
@@ -3207,8 +3242,8 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-hm {
   position: absolute;
-  top: 52px;
-  right: 16px;
+  top: 54px;
+  right: 18px;
   z-index: 60;
   background: var(--menu);
   border-radius: 8px;
@@ -3223,17 +3258,21 @@ watch(() => messages.value.length, scrollDown);
 }
 
 /* select mode */
-.cs-selbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px 10px;
-  flex-shrink: 0;
+.cs-phsel {
+  gap: 4px;
 }
-.cs-selc {
-  flex: 1;
-  font-size: 14px;
-  color: var(--tx);
+.cs-selh {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+.cs-phsel .cs-ic {
+  width: 34px;
+  height: 34px;
+}
+.cs-phsel .cs-ic > * {
+  width: 19px;
+  height: 19px;
 }
 .cs-ic.dgr {
   color: var(--red);
