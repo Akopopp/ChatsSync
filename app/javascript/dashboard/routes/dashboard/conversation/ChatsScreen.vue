@@ -2371,11 +2371,11 @@ watch(() => messages.value.length, scrollDown);
   white-space: nowrap;
 }
 .cs-ic {
-  width: 38px;
-  height: 38px;
+  width: 20px;
+  height: 20px;
+  padding: 7px;
+  box-sizing: content-box;
   border-radius: 50%;
-  display: grid;
-  place-items: center;
   cursor: pointer;
   color: var(--tx2);
   flex-shrink: 0;
@@ -3131,6 +3131,13 @@ watch(() => messages.value.length, scrollDown);
   flex-direction: column;
   overflow: hidden;
 }
+.cs-fwh .cs-ic,
+.cs-pfh .cs-ic {
+  width: 19px;
+  height: 19px;
+  padding: 7px;
+  box-sizing: content-box;
+}
 .cs-fwh {
   height: 58px;
   background: var(--head);
@@ -3450,12 +3457,10 @@ watch(() => messages.value.length, scrollDown);
   letter-spacing: 0 !important;
 }
 .cs-phsel .cs-ic {
-  width: 34px;
-  height: 34px;
-}
-.cs-phsel .cs-ic > * {
   width: 19px;
   height: 19px;
+  padding: 7px;
+  box-sizing: content-box;
 }
 .cs-ic.dgr {
   color: var(--red);
