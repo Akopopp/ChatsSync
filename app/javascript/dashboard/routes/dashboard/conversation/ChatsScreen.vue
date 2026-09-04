@@ -303,6 +303,76 @@ const lightbox = ref(null);
 const fwdQ = ref('');
 const newLabel = ref('');
 const showAllPills = ref(false);
+const hmenu = ref(false);
+const hsub = ref('');
+const selectMode = ref(false);
+const picked = ref([]);
+
+const SORTS = [
+  { k: 'last_activity_at_desc', n: 'Latest' },
+  { k: 'created_at_desc', n: 'Newest first' },
+  { k: 'created_at_asc', n: 'Oldest first' },
+  { k: 'priority_desc', n: 'Priority' },
+  { k: 'waiting_since_desc', n: 'Longest waiting' },
+];
+const sortBy = ref('last_activity_at_desc');
+
+const togglePick = id => {
+  const i = picked.value.indexOf(id);
+  if (i >= 0) picked.value.splice(i, 1);
+  else picked.value.push(id);
+};
+
+const bulk = name => {
+  const ids = [...picked.value];
+  if (!ids.length) return;
+  ids.forEach(id => {
+    const c = (allChats.value || []).find(x => x.id === id);
+    if (!c) return;
+    if (name === 'read') store.dispatch('markMessagesRead', { id });
+    else if (name === 'resolved')
+      store.dispatch('toggleStatus', { conversationId: id, status: 'resolved' });
+    else if (name === 'archive') setAttr(c, { cs_archived: true });
+    else if (name === 'delete') store.dispatch('deleteConversation', id);
+  });
+  picked.value = [];
+  selectMode.value = false;
+};
+
+const markAllRead = () => {
+  (rows.value || []).forEach(c => {
+    if ((c.unread_count || 0) > 0)
+      store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+  });
+  hmenu.value = false;
+};
+
+const applySort = k => {
+  sortBy.value = k;
+  hmenu.value = false;
+  hsub.value = '';
+  store.dispatch('setChatSortFilter', k);
+  store.dispatch('updateChatListFilters', {
+    inboxId: props.inboxId || undefined,
+    assigneeType: 'all',
+    status: 'all',
+    sortBy: k,
+    page: 1,
+  });
+  store.dispatch('fetchAllConversations');
+};
+
+const goSettings = () => {
+  hmenu.value = false;
+  router.push({ name: 'general_settings_index', params: { accountId: accountId.value } });
+};
+
+const doLogout = () => {
+  hmenu.value = false;
+  store.dispatch('logout')?.catch?.(() => {
+    window.location.href = '/app/login';
+  });
+};
 const labelsList = useMapGetter('labels/getLabels');
 
 const REACTS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -495,6 +565,8 @@ const closeMenu = () => {
   menu.value.open = false;
   mmenu.value.open = false;
   sub.value = '';
+  hmenu.value = false;
+  hsub.value = '';
 };
 
 /* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
@@ -831,6 +903,65 @@ watch(() => messages.value.length, scrollDown);
     <div class="cs-panel">
       <div class="cs-ph">
         <h1>Chats</h1>
+        <span class="cs-ic i-lucide-more-vertical" @click.stop="hmenu = !hmenu" />
+        <div v-if="hmenu" class="cs-hm" @click.stop>
+          <div
+            class="cs-mi"
+            @click="
+              selectMode = true;
+              hmenu = false;
+            "
+          >
+            <span class="i-lucide-check-square" /><span>Select chats</span>
+          </div>
+          <div class="cs-mi" @click="markAllRead">
+            <span class="i-lucide-mail-open" /><span>Mark all as read</span>
+          </div>
+          <hr />
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="hsub = hsub === 'sort' ? '' : 'sort'"
+          >
+            <span class="i-lucide-arrow-up-down" /><span>Sort by</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="hsub === 'sort'" class="cs-sub" @click.stop>
+              <div
+                v-for="o in SORTS"
+                :key="o.k"
+                class="cs-mi"
+                @click.stop="applySort(o.k)"
+              >
+                <span>{{ o.n }}</span>
+                <span v-if="sortBy === o.k" class="cs-arw i-lucide-check" />
+              </div>
+            </div>
+          </div>
+          <div
+            class="cs-mi"
+            @click="
+              showAllPills = true;
+              hmenu = false;
+            "
+          >
+            <span class="i-lucide-list-filter" /><span>Filter conversations</span>
+          </div>
+          <hr />
+          <div class="cs-mi" @click="goSettings">
+            <span class="i-lucide-settings" /><span>Settings</span>
+          </div>
+          <div class="cs-mi" @click="doLogout">
+            <span class="i-lucide-log-out" /><span>Log out</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="selectMode" class="cs-selbar">
+        <span class="cs-ic i-lucide-x" @click="selectMode = false; picked = []" />
+        <span class="cs-selc">{{ picked.length }} selected</span>
+        <span class="cs-ic i-lucide-mail-open" title="Mark read" @click="bulk('read')" />
+        <span class="cs-ic i-lucide-check" title="Resolve" @click="bulk('resolved')" />
+        <span class="cs-ic i-lucide-archive" title="Archive" @click="bulk('archive')" />
+        <span class="cs-ic i-lucide-trash-2 dgr" title="Delete" @click="bulk('delete')" />
       </div>
 
       <div class="cs-psr" :class="{ act: q }">
@@ -892,9 +1023,18 @@ watch(() => messages.value.length, scrollDown);
             on: Number(conversationId) === c.id,
             unrd: (c.unread_count || 0) > 0,
           }"
-          @click="openChat(c)"
+          @click="selectMode ? togglePick(c.id) : openChat(c)"
           @contextmenu="openMenu($event, c)"
         >
+          <span
+            v-if="selectMode"
+            class="cs-ck"
+            :class="
+              picked.includes(c.id)
+                ? 'i-lucide-check-circle-2 on'
+                : 'i-lucide-circle'
+            "
+          />
           <div class="cs-av" :style="{ background: colorFor(c.id) }">
             <img v-if="c.meta?.sender?.thumbnail" :src="c.meta.sender.thumbnail" />
             <template v-else>{{ initials(c.meta?.sender?.name) }}</template>
@@ -1431,16 +1571,16 @@ watch(() => messages.value.length, scrollDown);
         </div>
         <div class="cs-pfacts">
           <div class="cs-pfab" @click="act2('mute')">
-            <span :class="muted[currentChat.id] ? 'i-lucide-bell' : 'i-lucide-bell-off'" />
-            <span>{{ muted[currentChat.id] ? 'Unmute' : 'Mute' }}</span>
+            <span :class="isMuted(currentChat) ? 'i-lucide-bell' : 'i-lucide-bell-off'" />
+            <span>{{ isMuted(currentChat) ? 'Unmute' : 'Mute' }}</span>
           </div>
           <div class="cs-pfab" @click="act2('pin')">
             <span class="i-lucide-pin" />
-            <span>{{ pinned[currentChat.id] ? 'Unpin' : 'Pin' }}</span>
+            <span>{{ isPinned(currentChat) ? 'Unpin' : 'Pin' }}</span>
           </div>
           <div class="cs-pfab" @click="act2('archive')">
             <span class="i-lucide-archive" />
-            <span>{{ archived[currentChat.id] ? 'Unarchive' : 'Archive' }}</span>
+            <span>{{ isArchived(currentChat) ? 'Unarchive' : 'Archive' }}</span>
           </div>
         </div>
       </div>
@@ -1495,18 +1635,18 @@ watch(() => messages.value.length, scrollDown);
     >
       <div class="cs-mi" @click="act('pin')">
         <span class="i-lucide-pin" />
-        <span>{{ pinned[menu.chat?.id] ? 'Unpin chat' : 'Pin chat' }}</span>
+        <span>{{ isPinned(menu.chat) ? 'Unpin chat' : 'Pin chat' }}</span>
       </div>
       <div class="cs-mi" @click="act('mute')">
         <span class="i-lucide-bell-off" />
         <span>
-          {{ muted[menu.chat?.id] ? 'Unmute notifications' : 'Mute notifications' }}
+          {{ isMuted(menu.chat) ? 'Unmute notifications' : 'Mute notifications' }}
         </span>
       </div>
       <div class="cs-mi" @click="act('archive')">
         <span class="i-lucide-archive" />
         <span>
-          {{ archived[menu.chat?.id] ? 'Unarchive chat' : 'Archive chat' }}
+          {{ isArchived(menu.chat) ? 'Unarchive chat' : 'Archive chat' }}
         </span>
       </div>
       <div class="cs-mi" @click="act('unread')">
@@ -1668,19 +1808,19 @@ watch(() => messages.value.length, scrollDown);
 .cs-app.lite {
   --panel: #ffffff;
   --head: #f0f2f5;
-  --fld: #f0f2f5;
+  --fld: #eaeef0;
   --tx: #111b21;
   --tx2: #54656f;
   --tx3: #667781;
-  --ln: #e4e7e9;
-  --ln2: #eef1f2;
-  --hov: #f5f6f6;
-  --sel: #f0f2f5;
+  --ln: #d9dfe2;
+  --ln2: #e9edef;
+  --hov: #f0f2f5;
+  --sel: #dee7e4;
   --g: #008069;
-  --g-tint: #dcefe9;
-  --b: #2f7fd1;
+  --g-tint: #d6f0e6;
+  --b: #027eb5;
   --menu: #ffffff;
-  --menu-hov: #f0f2f5;
+  --menu-hov: #eef3f1;
   --sent: #d9fdd3;
   --recv: #ffffff;
   --note: #fff6d6;
@@ -1722,7 +1862,7 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-psr {
   margin: 0 12px 11px;
-  background: var(--inp);
+  background: var(--fld);
   border-radius: 9px;
   padding: 0 14px;
   display: flex;
@@ -3059,6 +3199,83 @@ watch(() => messages.value.length, scrollDown);
   color: var(--g);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* header 3-dot menu */
+.cs-ph {
+  position: relative;
+}
+.cs-hm {
+  position: absolute;
+  top: 52px;
+  right: 16px;
+  z-index: 60;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.32);
+  padding: 7px 0;
+  min-width: 226px;
+}
+.cs-app.lite .cs-hm,
+.cs-app.lite .cs-cmenu {
+  box-shadow: 0 4px 22px rgba(11, 20, 26, 0.16);
+  border: 1px solid var(--ln);
+}
+
+/* select mode */
+.cs-selbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 10px;
+  flex-shrink: 0;
+}
+.cs-selc {
+  flex: 1;
+  font-size: 14px;
+  color: var(--tx);
+}
+.cs-ic.dgr {
+  color: var(--red);
+}
+.cs-ck {
+  width: 22px;
+  height: 22px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-ck.on {
+  color: var(--g);
+}
+
+/* light mode: bubbles aur panel ko kinara do */
+.cs-app.lite .cs-bub {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-day,
+.cs-app.lite .cs-sysm {
+  background: #ffffff;
+  color: #54656f;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-panel {
+  border-right: 1px solid var(--ln);
+}
+.cs-app.lite .cs-th {
+  border-bottom: 1px solid var(--ln);
+}
+.cs-app.lite .cs-comp {
+  border-top: 1px solid var(--ln);
+}
+.cs-app.lite .cs-cbar {
+  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.08);
+}
+.cs-app.lite .cs-un {
+  color: #ffffff;
+}
+.cs-app.lite .cs-rxi,
+.cs-app.lite .cs-q {
+  background: #f0f2f5;
 }
 
 /* ===== CONTEXT MENU ===== */
