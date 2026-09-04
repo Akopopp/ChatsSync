@@ -175,7 +175,10 @@ const rows = computed(() => {
     const only = L.filter(c => c.inbox_id === iid);
     if (only.length) L = only;
   }
-  if (fStatus.value !== 'all') L = L.filter(c => c.status === fStatus.value);
+  if (fStatus.value === 'snoozed')
+    L = L.filter(c => c.status === 'snoozed' || !!c.snoozed_until);
+  else if (fStatus.value !== 'all')
+    L = L.filter(c => c.status === fStatus.value);
   if (fAssignee.value === 'me')
     L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
   else if (fAssignee.value === 'none') L = L.filter(c => !c.meta?.assignee);
@@ -183,15 +186,14 @@ const rows = computed(() => {
     L = L.filter(c => (c.priority || 'none') === fPriority.value);
   if (fUnreplied.value) {
     L = L.filter(c => {
-      const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
-      return m && m.message_type === 0;
+      const m = lastOf(c);
+      return m && m.message_type === 0 && c.status !== 'resolved';
     });
   }
   if (fHasAttach.value) {
-    L = L.filter(c => {
-      const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
-      return (m?.attachments || []).length > 0;
-    });
+    L = L.filter(c =>
+      (c.messages || []).some(m => (m.attachments || []).length > 0)
+    );
   }
 
   const f = filt.value;
@@ -296,6 +298,7 @@ const blocks = computed(() => {
   const out = [];
   let lastDay = null;
   let prevSender = null;
+  let lastAgent = null;
   messages.value.forEach(m => {
     const d = dayLabel(m.created_at);
     if (d !== lastDay) {
@@ -309,7 +312,16 @@ const blocks = computed(() => {
       return;
     }
     const key = `${m.message_type}-${m.private ? 'p' : ''}-${m.sender?.id || ''}`;
-    out.push({ kind: 'msg', id: m.id, m, first: key !== prevSender });
+    const first = key !== prevSender;
+    // naam sirf outgoing par, aur sirf jab agent badle — 1-on-1 chat
+    // mein har bubble par apna naam WhatsApp nahi dikhata
+    const showName =
+      first &&
+      m.message_type === 1 &&
+      !!m.sender?.name &&
+      m.sender.id !== lastAgent;
+    if (m.message_type === 1 && m.sender?.id) lastAgent = m.sender.id;
+    out.push({ kind: 'msg', id: m.id, m, first, showName });
     prevSender = key;
   });
   return out;
@@ -345,6 +357,16 @@ const newLabel = ref('');
 const showAllPills = ref(false);
 const hmenu = ref(false);
 const hsub = ref('');
+const hmFlip = ref(false);
+
+/* submenu ki side: daayen jagah na ho to baaen kholo */
+const fitHm = el => {
+  if (!el) return;
+  nextTick(() => {
+    const r = el.getBoundingClientRect();
+    hmFlip.value = r.right + 200 > window.innerWidth;
+  });
+};
 const selectMode = ref(false);
 const picked = ref([]);
 
@@ -996,18 +1018,40 @@ watch(() => messages.value.length, scrollDown);
         <h1 class="cs-selh">{{ picked.length }} selected</h1>
         <span
           class="cs-ic i-lucide-mail-open"
+          :class="{ off: !picked.length }"
           title="Mark read"
           @click="bulk('read')"
         />
-        <span class="cs-ic i-lucide-check" @click="bulk('resolved')" />
-        <span class="cs-ic i-lucide-archive" @click="bulk('archive')" />
-        <span class="cs-ic dgr i-lucide-trash-2" @click="bulk('delete')" />
+        <span
+          class="cs-ic i-lucide-check"
+          :class="{ off: !picked.length }"
+          title="Resolve"
+          @click="bulk('resolved')"
+        />
+        <span
+          class="cs-ic i-lucide-archive"
+          :class="{ off: !picked.length }"
+          title="Archive"
+          @click="bulk('archive')"
+        />
+        <span
+          class="cs-ic dgr i-lucide-trash-2"
+          :class="{ off: !picked.length }"
+          title="Delete"
+          @click="bulk('delete')"
+        />
       </div>
 
       <div v-else class="cs-ph">
         <h1>Chats</h1>
         <span class="cs-ic i-lucide-more-vertical" @click.stop="hmenu = !hmenu" />
-        <div v-if="hmenu" class="cs-hm" @click.stop>
+        <div
+          v-if="hmenu"
+          :ref="fitHm"
+          class="cs-hm"
+          :class="{ flipL: hmFlip }"
+          @click.stop
+        >
           <div
             class="cs-mi"
             @click="
@@ -1221,7 +1265,7 @@ watch(() => messages.value.length, scrollDown);
             ]"
           >
             <div class="cs-bub" @contextmenu="openMsgMenu($event, b.m)">
-              <div v-if="b.first && b.m.message_type === 1" class="cs-snd">
+              <div v-if="b.showName" class="cs-snd">
                 {{ b.m.sender?.name || 'You' }}
               </div>
 
@@ -2300,6 +2344,10 @@ watch(() => messages.value.length, scrollDown);
   gap: 10px !important;
 }
 .cs-hm .cs-sub {
+  left: calc(100% + 4px);
+  right: auto;
+}
+.cs-hm.flipL .cs-sub {
   left: auto;
   right: calc(100% + 4px);
 }
@@ -2512,7 +2560,19 @@ watch(() => messages.value.length, scrollDown);
   align-self: flex-end;
   white-space: nowrap;
 }
-.cs-msg { width: fit-content; }
+.cs-msg {
+  width: fit-content;
+  max-width: 65%;
+}
+.cs-msg .cs-bub {
+  width: fit-content;
+  min-width: 78px;
+  max-width: 100%;
+}
+.cs-msg.out.f1::before,
+.cs-msg.in.f1::before {
+  z-index: 1;
+}
 .cs-msg.in { margin-right: auto; }
 .cs-msg.out { margin-left: auto; }
 .cs-mt .cs-tick {
@@ -3118,8 +3178,10 @@ watch(() => messages.value.length, scrollDown);
   inset: 0;
   z-index: 9998;
   background: rgba(0, 0, 0, 0.55);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 .cs-fwb {
   width: 420px;
@@ -3456,11 +3518,21 @@ watch(() => messages.value.length, scrollDown);
   font-weight: 500 !important;
   letter-spacing: 0 !important;
 }
+.cs-phsel {
+  gap: 2px;
+}
 .cs-phsel .cs-ic {
-  width: 19px;
-  height: 19px;
-  padding: 7px;
+  width: 18px;
+  height: 18px;
+  padding: 8px;
   box-sizing: content-box;
+}
+.cs-phsel::after {
+  display: none;
+}
+.cs-ic.off {
+  opacity: 0.32;
+  pointer-events: none;
 }
 .cs-ic.dgr {
   color: var(--red);
@@ -3552,6 +3624,12 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-fgo .cs-pl {
   text-transform: capitalize;
+  user-select: none;
+}
+.cs-fgo .cs-pl.on::before {
+  content: '✓';
+  font-size: 11px;
+  margin-right: 2px;
 }
 .cs-fcn {
   margin-left: auto;
