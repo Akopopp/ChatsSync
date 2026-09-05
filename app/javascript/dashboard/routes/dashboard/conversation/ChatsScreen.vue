@@ -71,24 +71,37 @@ const loadingMore = ref(false);
 const showDown = ref(false);
 const firstUnreadId = ref(null);
 
+const atBottom = ref(true);
+
 const onThreadScroll = e => {
   const el = e.target;
-  showDown.value = el.scrollHeight - el.scrollTop - el.clientHeight > 320;
-  if (el.scrollTop < 90 && !loadingOlder.value && messages.value.length >= 20) {
+  const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+  atBottom.value = gap < 80;
+  showDown.value = gap > 320;
+
+  if (el.scrollTop < 120 && !loadingOlder.value && messages.value.length >= 15) {
     loadingOlder.value = true;
     const before = messages.value[0]?.id;
     const h0 = el.scrollHeight;
-    store
-      .dispatch('fetchPreviousMessages', {
-        conversationId: currentChat.value.id,
-        before,
-      })
-      ?.finally?.(() => {
-        loadingOlder.value = false;
-        nextTick(() => {
-          el.scrollTop = el.scrollHeight - h0;
+    const t0 = el.scrollTop;
+    // smooth scroll ko band karo warna position bahal karte waqt
+    // browser animate karta hai aur chat upar-neeche koodti hai
+    el.style.scrollBehavior = 'auto';
+    const done = () => {
+      nextTick(() => {
+        requestAnimationFrame(() => {
+          el.scrollTop = t0 + (el.scrollHeight - h0);
+          el.style.scrollBehavior = '';
+          loadingOlder.value = false;
         });
       });
+    };
+    const r = store.dispatch('fetchPreviousMessages', {
+      conversationId: currentChat.value.id,
+      before,
+    });
+    if (r && r.finally) r.finally(done);
+    else setTimeout(done, 400);
   }
 };
 
@@ -511,6 +524,35 @@ const fwdQ = ref('');
 const tq = ref('');
 const showTq = ref(false);
 const tmenu = ref(false);
+const agm = ref(false);
+const agQ = ref('');
+
+const agentHits = computed(() => {
+  const k = agQ.value.trim().toLowerCase();
+  const L = agentsList.value || [];
+  if (!k) return L;
+  return L.filter(a =>
+    `${a.name || ''} ${a.email || ''}`.toLowerCase().includes(k)
+  );
+});
+
+const toggleAgm = () => {
+  const w = agm.value;
+  closeAll();
+  agm.value = !w;
+  agQ.value = '';
+};
+
+const pickAgent = a => {
+  agm.value = false;
+  store
+    .dispatch('assignAgent', {
+      conversationId: currentChat.value.id,
+      agentId: a?.id || null,
+    })
+    ?.then?.(() => toast(a ? `Assigned to ${a.name}` : 'Unassigned'))
+    ?.catch?.(() => toast('Could not assign', 'err'));
+};
 const tsub = ref('');
 const msgSelect = ref(false);
 const msgPicked = ref([]);
@@ -1094,6 +1136,7 @@ const closeAll = () => {
   mmenu.value.open = false;
   hmenu.value = false;
   tmenu.value = false;
+  agm.value = false;
   sub.value = '';
   hsub.value = '';
   tsub.value = '';
@@ -1498,6 +1541,8 @@ watch(
 watch(
   () => currentChat.value?.id,
   () => {
+    atBottom.value = true;
+    lastCount = 0;
     const u = currentChat.value?.unread_count || 0;
     const M = messages.value;
     firstUnreadId.value =
@@ -1510,7 +1555,20 @@ watch(
   }
 );
 
-watch(() => messages.value.length, scrollDown);
+let lastCount = 0;
+watch(
+  () => messages.value.length,
+  n => {
+    // purane messages upar jud rahe hain -> scroll ko haath mat lagao
+    if (loadingOlder.value) {
+      lastCount = n;
+      return;
+    }
+    // sirf tab neeche jao jab pehle se neeche the ya naya message aaya
+    if (n > lastCount && atBottom.value) scrollDown();
+    lastCount = n;
+  }
+);
 </script>
 
 <template>
@@ -1796,20 +1854,57 @@ watch(() => messages.value.length, scrollDown);
         </div>
 
         <span
-          v-if="currentChat.meta?.assignee?.name"
           class="cs-asg"
-          @click.stop="menu = { open: true, x: 260, y: 90, chat: currentChat, up: false }; sub = 'ag'"
+          :class="{ none: !currentChat.meta?.assignee?.name }"
+          @click.stop="toggleAgm"
         >
-          <span class="cs-asgd" />
-          {{ currentChat.meta.assignee.name }}
+          <span v-if="currentChat.meta?.assignee?.name" class="cs-asgd" />
+          {{ currentChat.meta?.assignee?.name || 'Unassigned' }}
+          <span class="cs-asgc i-lucide-chevron-down" />
         </span>
-        <span
-          v-else
-          class="cs-asg none"
-          @click.stop="menu = { open: true, x: 260, y: 90, chat: currentChat, up: false }; sub = 'ag'"
-        >
-          Unassigned
-        </span>
+
+        <div v-if="agm" class="cs-agm" @click.stop>
+          <div class="cs-search cs-agsr">
+            <span class="cs-search__ic i-lucide-search" />
+            <input v-model="agQ" placeholder="Search agents" />
+          </div>
+          <div class="cs-agl">
+            <div
+              class="cs-agr"
+              :class="{ on: !currentChat.meta?.assignee?.id }"
+              @click="pickAgent(null)"
+            >
+              <span class="cs-agav none i-lucide-user-x" />
+              <span class="cs-agn">Unassigned</span>
+              <span
+                v-if="!currentChat.meta?.assignee?.id"
+                class="cs-agck i-lucide-check"
+              />
+            </div>
+            <div
+              v-for="a in agentHits"
+              :key="a.id"
+              class="cs-agr"
+              :class="{ on: currentChat.meta?.assignee?.id === a.id }"
+              @click="pickAgent(a)"
+            >
+              <span class="cs-agav" :style="{ background: colorFor(a.id) }">
+                {{ initials(a.name) }}
+              </span>
+              <span class="cs-agnb">
+                <span class="cs-agn">{{ a.name }}</span>
+                <span class="cs-age">{{ a.email }}</span>
+              </span>
+              <span
+                v-if="currentChat.meta?.assignee?.id === a.id"
+                class="cs-agck i-lucide-check"
+              />
+            </div>
+            <div v-if="!agentHits.length" class="cs-agempty">
+              No agents found
+            </div>
+          </div>
+        </div>
 
         <span
           class="cs-ic i-lucide-search"
@@ -3418,8 +3513,13 @@ watch(() => messages.value.length, scrollDown);
   padding: 6px 9px 7px 10px;
   border-radius: 7.5px;
   box-shadow: var(--sh);
-  min-width: 110px;
+  min-width: 0;
   cursor: default;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  column-gap: 10px;
 }
 .cs-msg.in {
   align-self: flex-start;
@@ -3462,6 +3562,13 @@ watch(() => messages.value.length, scrollDown);
 .cs-msg.pv.f1::before {
   border-top-color: var(--note);
 }
+.cs-snd,
+.cs-q,
+.cs-lp,
+.cs-more,
+.cs-rx {
+  flex: 1 0 100%;
+}
 .cs-snd {
   font-size: 12.5px;
   font-weight: 600;
@@ -3472,9 +3579,11 @@ watch(() => messages.value.length, scrollDown);
   font-size: 14.4px;
   line-height: 1.42;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
-  padding-right: 52px;
   letter-spacing: 0.002em;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .cs-tx :deep(a) {
   color: var(--b);
@@ -3486,18 +3595,18 @@ watch(() => messages.value.length, scrollDown);
 .cs-tx :deep(p + p) {
   margin-top: 6px;
 }
-/* target ka exact tareeqa: waqt text ki aakhri line par float
-   karta hai, neeche nayi line nahi banata */
+/* waqt: chhote message ke saath usi line par, lambe ke neeche-daayen.
+   float se overlap ho raha tha, isliye flex use kiya. */
 .cs-mt {
   font-size: 11px;
   color: var(--tx3);
-  float: right;
-  margin: -14px -3px -2px 0;
   display: flex;
   align-items: center;
   gap: 3px;
   line-height: 1;
   white-space: nowrap;
+  flex: 0 0 auto;
+  margin-bottom: 1px;
 }
 .cs-msg {
   width: fit-content;
@@ -3511,7 +3620,6 @@ watch(() => messages.value.length, scrollDown);
 .cs-msg:has(.cs-aud) .cs-mt,
 .cs-msg:has(.cs-img) .cs-mt,
 .cs-msg:has(.cs-file) .cs-mt {
-  float: none;
   position: absolute;
   right: 10px;
   bottom: 6px;
@@ -4920,9 +5028,9 @@ watch(() => messages.value.length, scrollDown);
 
 /* header icons: screenshot ke naap */
 .cs-th .cs-ic {
-  width: 17px;
-  height: 17px;
-  padding: 8px;
+  width: 14px;
+  height: 14px;
+  padding: 9px;
   box-sizing: content-box;
 }
 
@@ -4952,23 +5060,35 @@ watch(() => messages.value.length, scrollDown);
 /* scroll-down: chhota aur saaf */
 .cs-down {
   position: absolute;
-  right: 20px;
-  bottom: 92px;
+  right: 22px;
+  bottom: 108px;
   width: 18px !important;
   height: 18px !important;
-  padding: 9px !important;
+  padding: 10px !important;
   box-sizing: content-box;
   border-radius: 50%;
-  background: var(--head);
+  background: var(--panel);
   color: var(--tx2);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--ln);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
   cursor: pointer;
-  z-index: 5;
-  opacity: 0.92;
+  z-index: 6;
 }
 .cs-down:hover {
-  opacity: 1;
-  color: var(--tx);
+  color: var(--g);
+  border-color: var(--g);
+}
+.cs-app.lite .cs-down {
+  background: #ffffff;
+  color: #54656f;
+  border-color: #d9dfe2;
+  box-shadow: 0 2px 10px rgba(11, 20, 26, 0.16);
+}
+@media (max-width: 768px) {
+  .cs-down {
+    right: 14px;
+    bottom: 96px;
+  }
 }
 
 /* ===== MOBILE MENUS ===== */
@@ -5257,6 +5377,116 @@ watch(() => messages.value.length, scrollDown);
 }
 .cs-more:hover {
   text-decoration: underline;
+}
+
+/* agent picker */
+.cs-asgc {
+  width: 13px;
+  height: 13px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.cs-agm {
+  position: absolute;
+  top: 50px;
+  right: 96px;
+  z-index: 70;
+  width: 290px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 8px 0 6px;
+  overflow: hidden;
+}
+.cs-app.lite .cs-agm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+.cs-agsr {
+  margin: 0 10px 8px !important;
+  background: var(--inp) !important;
+}
+.cs-agsr input {
+  padding: 8px 0 !important;
+  font-size: 13.5px !important;
+}
+.cs-agl {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.cs-agr {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.cs-agr:hover {
+  background: var(--menu-hov);
+}
+.cs-agr.on {
+  background: var(--g-tint);
+}
+.cs-agav {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.cs-agav.none {
+  background: var(--fld);
+  color: var(--tx3);
+  width: 20px;
+  height: 20px;
+  margin: 6px;
+}
+.cs-agnb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-agn {
+  display: block;
+  font-size: 14px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-age {
+  display: block;
+  font-size: 11.5px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-agck {
+  width: 17px;
+  height: 17px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-agempty {
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tx3);
+}
+@media (max-width: 768px) {
+  .cs-agm {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    width: auto;
+    border-radius: 12px;
+  }
 }
 
 /* ===== CONTEXT MENU ===== */
