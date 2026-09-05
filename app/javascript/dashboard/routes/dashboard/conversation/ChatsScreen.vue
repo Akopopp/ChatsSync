@@ -906,6 +906,18 @@ const activeFilterCount = computed(() => {
   return n;
 });
 
+const clearAllFilters = () => {
+  filt.value = 'all';
+  q.value = '';
+  fStatus.value = 'all';
+  fAssignee.value = 'all';
+  fPriority.value = 'all';
+  fUnreplied.value = false;
+  fHasAttach.value = false;
+  showArchived.value = false;
+  toast('Filters cleared');
+};
+
 const clearFilters = () => {
   fStatus.value = 'all';
   fAssignee.value = 'all';
@@ -1008,6 +1020,17 @@ const tickOf = m => {
   if (st === 'progress' || st === 'pending')
     return { i: 'i-lucide-clock-3', c: '' };
   return { i: 'i-lucide-check', c: '' };
+};
+
+const dropLabel = (c, l) => {
+  const next = (c.labels || []).filter(x => x !== l);
+  try {
+    c.labels = next;
+  } catch (e) {
+    /* ignore */
+  }
+  safeD('setLabels', { conversationId: c.id, labels: next }).catch(() => {});
+  toast(`Label "${l}" removed`);
 };
 
 const inboxName = id =>
@@ -1266,6 +1289,7 @@ const lpStart = (e, fn, arg) => {
 };
 const lpMove = () => {
   lpMoved = true;
+  closeRail();
   clearTimeout(lpTimer);
 };
 const lpEnd = () => clearTimeout(lpTimer);
@@ -1284,13 +1308,36 @@ const closeAll = () => {
 /* Chatwoot ka mobile sidebar khol do — uska apna floating
    button hum chhupa dete hain (target design mein hamburger
    header ke andar hai, neeche tairta hua button nahi) */
+const railOpen = ref(false);
+
+/* Chatwoot ka aside mobile par translate se chhupa hota hai.
+   Launcher button dhoondhne ke bajaye seedha usay khol dete hain —
+   ye har layout mein chalta hai. */
+const railEl = () =>
+  document.querySelector('aside.bg-n-background') ||
+  document.querySelector('aside');
+
 const openRail = () => {
-  const b =
-    document.querySelector('#mobile-sidebar-launcher') ||
-    document.querySelector('[data-testid="mobile-sidebar-launcher"]') ||
-    document.querySelector('button[aria-label*="sidebar" i]');
-  if (b) b.click();
-  else toast('Menu button not found', 'err');
+  const a = railEl();
+  if (!a) return;
+  railOpen.value = true;
+  a.classList.remove('ltr:-translate-x-full', 'rtl:translate-x-full');
+  a.style.transform = 'translateX(0)';
+  a.style.zIndex = '9997';
+  a.style.boxShadow = '0 0 40px rgba(0,0,0,.5)';
+  document.body.classList.add('cs-rail-open');
+};
+
+const closeRail = () => {
+  if (!railOpen.value) return;
+  const a = railEl();
+  railOpen.value = false;
+  if (a) {
+    a.style.transform = '';
+    a.style.boxShadow = '';
+    a.classList.add('ltr:-translate-x-full');
+  }
+  document.body.classList.remove('cs-rail-open');
 };
 
 const toggleHm = () => {
@@ -1326,6 +1373,7 @@ const closeMenu = () => {
   tmenu.value = false;
   tsub.value = '';
   agm.value = false;
+  closeRail();
   showEmoji.value = false;
   showTpl.value = false;
   showCanned.value = false;
@@ -1973,6 +2021,25 @@ watch(
         </div>
       </div>
 
+      <div v-if="activeFilterCount || filt !== 'all' || q" class="cs-fbar">
+        <span class="i-lucide-list-filter" />
+        <div class="cs-fbt">
+          <span v-if="filt !== 'all'" class="cs-fbc">
+            {{ pills.find(p => p.k === filt)?.n || filt }}
+          </span>
+          <span v-if="fStatus !== 'all'" class="cs-fbc">{{ fStatus }}</span>
+          <span v-if="fAssignee !== 'all'" class="cs-fbc">
+            {{ fAssignee === 'me' ? 'Mine' : 'Unassigned' }}
+          </span>
+          <span v-if="fPriority !== 'all'" class="cs-fbc">{{ fPriority }}</span>
+          <span v-if="fUnreplied" class="cs-fbc">Needs reply</span>
+          <span v-if="fHasAttach" class="cs-fbc">Has attachment</span>
+          <span v-if="q" class="cs-fbc">"{{ q }}"</span>
+        </div>
+        <span class="cs-fbn">{{ rows.length }}</span>
+        <button class="cs-fbx" @click="clearAllFilters">Clear</button>
+      </div>
+
       <div v-if="channelErrors.length" class="cs-cerr">
         <span class="i-lucide-alert-triangle" />
         <div class="cs-cerrb">
@@ -2032,8 +2099,32 @@ watch(
               <span class="cs-t">{{ listTime(c.timestamp) }}</span>
             </div>
             <div v-if="phoneOf(c)" class="cs-rph">{{ phoneOf(c) }}</div>
+            <div class="cs-meta">
+              <span
+                v-if="c.priority && c.priority !== 'none'"
+                class="cs-pr"
+                :class="'p-' + c.priority"
+              >
+                {{ c.priority }}
+              </span>
+              <span v-if="c.meta?.assignee?.name" class="cs-asn">
+                <span class="i-lucide-user" />{{ c.meta.assignee.name }}
+              </span>
+              <span v-else class="cs-asn none">Unassigned</span>
+              <span v-if="c.meta?.team?.name" class="cs-asn tm">
+                <span class="i-lucide-users" />{{ c.meta.team.name }}
+              </span>
+            </div>
+
             <div v-if="(c.labels || []).length" class="cs-lbs">
-              <span v-for="l in c.labels" :key="l" class="cs-lb">{{ l }}</span>
+              <span v-for="l in c.labels" :key="l" class="cs-lb">
+                {{ l }}
+                <span
+                  class="cs-lbx i-lucide-x"
+                  title="Remove label"
+                  @click.stop="dropLabel(c, l)"
+                />
+              </span>
             </div>
 
             <div class="cs-r2">
@@ -2819,6 +2910,8 @@ watch(
         </div>
       </div>
     </div>
+
+    <div v-if="railOpen" class="cs-railbg" @click="closeRail" />
 
     <!-- ============ CONFIRM ============ -->
     <div v-if="ask" class="cs-fw" @click.self="ask.cancel()">
@@ -5853,6 +5946,146 @@ watch(
   height: 20px !important;
 }
 
+/* row ke chhote meta chips */
+.cs-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 0 3px;
+  flex-wrap: wrap;
+}
+.cs-asn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--tx3);
+  background: var(--fld);
+  padding: 1px 7px 1px 5px;
+  border-radius: 9px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cs-asn span {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+.cs-asn.none {
+  opacity: 0.6;
+  font-style: italic;
+  padding: 1px 7px;
+}
+.cs-asn.tm {
+  color: var(--b);
+}
+.cs-pr {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.cs-pr.p-urgent {
+  background: rgba(241, 92, 109, 0.18);
+  color: var(--red);
+}
+.cs-pr.p-high {
+  background: rgba(255, 159, 67, 0.18);
+  color: #ff9f43;
+}
+.cs-pr.p-medium {
+  background: rgba(83, 189, 235, 0.16);
+  color: var(--b);
+}
+.cs-pr.p-low {
+  background: var(--fld);
+  color: var(--tx3);
+}
+
+/* label par ✕ */
+.cs-lb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cs-lbx {
+  width: 11px;
+  height: 11px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.cs-lbx:hover {
+  opacity: 1;
+}
+
+/* active filter bar */
+.cs-fbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 12px 10px;
+  padding: 8px 11px;
+  background: var(--g-tint);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.cs-fbar > span:first-child {
+  width: 15px;
+  height: 15px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-fbt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.cs-fbc {
+  font-size: 11.5px;
+  color: var(--g);
+  background: var(--panel);
+  padding: 1px 7px;
+  border-radius: 8px;
+  text-transform: capitalize;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fbn {
+  font-size: 11.5px;
+  color: var(--g);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+.cs-fbx {
+  border: 0;
+  background: var(--g);
+  color: #fff;
+  font-size: 11.5px;
+  padding: 3px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+
+/* mobile rail overlay */
+.cs-railbg {
+  position: fixed;
+  inset: 0;
+  z-index: 9996;
+  background: rgba(0, 0, 0, 0.45);
+}
+
 /* ===== CONTEXT MENU ===== */
 /* desktop: overflow visible taake submenu flyout kata na jaye —
    fitMenu menu ko khud screen ke andar khinch leta hai.
@@ -6111,5 +6344,106 @@ watch(
 .cs-aud .cs-voice__dl span {
   width: 15px !important;
   height: 15px !important;
+}
+
+/* ===== RAIL (Chatwoot ka sidebar) — target ke naap par =====
+   width 62px · icon 42px gol · active par hara tint
+   Ye rules global hain magar sirf aside par lagti hain. */
+body aside {
+  width: 62px !important;
+  min-width: 62px !important;
+  max-width: 62px !important;
+  background: #202c33 !important;
+  padding: 11px 0 10px !important;
+  border-right: none !important;
+  align-items: center !important;
+}
+body:not(.dark) aside,
+html:not(.dark) body aside {
+  background: #f0f2f5 !important;
+}
+body aside nav,
+body aside > section {
+  padding: 0 !important;
+  width: 100%;
+}
+body aside nav ul {
+  align-items: center !important;
+  gap: 5px !important;
+  width: 100%;
+}
+body aside nav a,
+body aside nav > ul > li > a,
+body aside nav [role='button'] {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 50% !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
+  color: #aebac1 !important;
+  transition: background 0.13s, color 0.13s !important;
+}
+body aside nav a:hover {
+  background: #2a3942 !important;
+}
+body aside nav a.active,
+body aside nav a[aria-current='page'],
+body aside nav a.router-link-active {
+  background: #103529 !important;
+  color: #00a884 !important;
+}
+html:not(.dark) body aside nav a {
+  color: #54656f !important;
+}
+html:not(.dark) body aside nav a:hover {
+  background: #e3e6ea !important;
+}
+html:not(.dark) body aside nav a.active,
+html:not(.dark) body aside nav a.router-link-active {
+  background: #dcefe9 !important;
+  color: #008069 !important;
+}
+/* rail par sirf icon — text chhupa do */
+body aside nav a span:not([class*='i-']):not([class*='icon']),
+body aside nav a > span + span {
+  display: none !important;
+}
+body aside nav a [class*='i-'] {
+  width: 21px !important;
+  height: 21px !important;
+}
+/* separator */
+body aside nav ul + ul {
+  border-top: 1px solid #2a3942;
+  margin-top: 8px !important;
+  padding-top: 8px !important;
+  width: 28px;
+}
+/* resize handle band — rail fixed 62px */
+body aside > div[class*='cursor-col-resize'] {
+  display: none !important;
+}
+/* mobile par drawer */
+body.cs-rail-open aside {
+  width: 264px !important;
+  min-width: 264px !important;
+  max-width: 264px !important;
+  align-items: stretch !important;
+}
+body.cs-rail-open aside nav a {
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  padding: 13px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 20px !important;
+  justify-content: flex-start !important;
+  font-size: 15.5px !important;
+}
+body.cs-rail-open aside nav a span {
+  display: inline !important;
 }
 </style>
