@@ -932,20 +932,77 @@ const togglePick = id => {
   else picked.value.push(id);
 };
 
-const bulk = name => {
+const bmenu = ref(false);
+const bsub = ref('');
+
+const bulk = (name, arg) => {
   const ids = [...picked.value];
   if (!ids.length) return;
-  ids.forEach(id => {
-    const c = (allChats.value || []).find(x => x.id === id);
-    if (!c) return;
-    if (name === 'read') safeD('markMessagesRead', { id });
+  const chats = ids
+    .map(id => (allChats.value || []).find(x => x.id === id))
+    .filter(Boolean);
+
+  const finish = msg => {
+    picked.value = [];
+    selectMode.value = false;
+    bmenu.value = false;
+    bsub.value = '';
+    toast(`${msg} — ${chats.length} chat(s)`);
+  };
+
+  if (name === 'delete') {
+    confirmBox(
+      'Delete conversations',
+      `Delete ${chats.length} conversation(s)? This cannot be undone.`,
+      'Delete',
+      () => {
+        chats.forEach(c => safeD('deleteConversation', c.id).catch(() => {}));
+        finish('Deleted');
+      }
+    );
+    return;
+  }
+
+  chats.forEach(c => {
+    if (name === 'read') markRead(c);
     else if (name === 'resolved')
-      safeD('toggleStatus', { conversationId: id, status: 'resolved' });
+      safeD('toggleStatus', { conversationId: c.id, status: 'resolved' });
+    else if (name === 'pending')
+      safeD('toggleStatus', { conversationId: c.id, status: 'pending' });
     else if (name === 'archive') setAttr(c, { cs_archived: true });
-    else if (name === 'delete') safeD('deleteConversation', id);
+    else if (name === 'agent')
+      safeD('assignAgent', { conversationId: c.id, agentId: arg?.id || null });
+    else if (name === 'team')
+      safeD('assignTeam', { conversationId: c.id, teamId: arg?.id });
+    else if (name === 'priority')
+      safeD('assignPriority', { conversationId: c.id, priority: arg });
+    else if (name === 'label' || name === 'unlabel') {
+      const cur = c.labels || [];
+      const next =
+        name === 'label'
+          ? [...new Set([...cur, arg])]
+          : cur.filter(x => x !== arg);
+      try {
+        c.labels = next;
+      } catch (e) {
+        /* ignore */
+      }
+      safeD('setLabels', { conversationId: c.id, labels: next });
+    }
   });
-  picked.value = [];
-  selectMode.value = false;
+
+  const M = {
+    read: 'Marked read',
+    resolved: 'Resolved',
+    pending: 'Marked pending',
+    archive: 'Archived',
+    agent: arg?.name ? `Assigned to ${arg.name}` : 'Unassigned',
+    team: `Assigned to ${arg?.name || 'team'}`,
+    priority: `Priority: ${arg || 'none'}`,
+    label: `Label "${arg}" added`,
+    unlabel: `Label "${arg}" removed`,
+  };
+  finish(M[name] || 'Done');
 };
 
 const markAllRead = () => {
@@ -1373,6 +1430,8 @@ const closeMenu = () => {
   tmenu.value = false;
   tsub.value = '';
   agm.value = false;
+  bmenu.value = false;
+  bsub.value = '';
   closeRail();
   showEmoji.value = false;
   showTpl.value = false;
@@ -1493,16 +1552,43 @@ const act = (name, arg) => {
     });
   } else if (name === 'label') {
     const cur = c.labels || [];
-    const next = cur.includes(arg) ? cur.filter(x => x !== arg) : [...cur, arg];
-    d('setLabels', { conversationId: c.id, labels: next });
+    const on = cur.includes(arg);
+    const next = on ? cur.filter(x => x !== arg) : [...cur, arg];
+    try {
+      c.labels = next;
+    } catch (e) {
+      /* ignore */
+    }
+    safeD('setLabels', { conversationId: c.id, labels: next })
+      .then(() => toast(on ? `Label "${arg}" removed` : `Label "${arg}" added`))
+      .catch(() => toast('Could not update labels', 'err'));
   } else if (name === 'newlabel') {
     const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
     if (!t) return;
     newLabel.value = '';
-    store
-      .dispatch('labels/create', { title: t, color: '#00A884' })
-      ?.catch?.(() => {});
-    d('setLabels', { conversationId: c.id, labels: [...(c.labels || []), t] });
+    const next = [...new Set([...(c.labels || []), t])];
+    const apply = () => {
+      try {
+        c.labels = next;
+      } catch (e) {
+        /* ignore */
+      }
+      safeD('setLabels', { conversationId: c.id, labels: next })
+        .then(() => {
+          toast(`Label "${t}" added`);
+          safeD('labels/get');
+        })
+        .catch(() => toast('Could not add label', 'err'));
+    };
+    // Label pehle SERVER par banao, PHIR chat par lagao. Pehle main
+    // dono ek saath chala deta tha — label bana bhi nahi hota tha aur
+    // setLabels chup-chaap gir jaata tha.
+    const exists = (labelsList.value || []).some(l => l.title === t);
+    if (exists) apply();
+    else
+      safeD('labels/create', { title: t, color: '#00A884' })
+        .then(apply)
+        .catch(apply);
   } else if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id })
   else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
   else if (name === 'delete') {
@@ -1856,38 +1942,148 @@ watch(
         />
         <h1 class="cs-selh">{{ picked.length }} selected</h1>
         <div class="cs-sbrow">
-        <button
-          class="cs-sb"
-          :disabled="!picked.length"
-          @click="bulk('read')"
-        >
-          <span class="i-lucide-mail-open" />
-          <span>Read</span>
-        </button>
-        <button
-          class="cs-sb"
-          :disabled="!picked.length"
-          @click="bulk('resolved')"
-        >
-          <span class="i-lucide-check" />
-          <span>Resolve</span>
-        </button>
-        <button
-          class="cs-sb"
-          :disabled="!picked.length"
-          @click="bulk('archive')"
-        >
-          <span class="i-lucide-archive" />
-          <span>Archive</span>
-        </button>
-        <button
-          class="cs-sb dgr"
-          :disabled="!picked.length"
-          @click="bulk('delete')"
-        >
-          <span class="i-lucide-trash-2" />
-          <span>Delete</span>
-        </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="picked = rows.map(r => r.id)"
+          >
+            <span class="i-lucide-check-square" />
+            <span>All</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="bulk('read')"
+          >
+            <span class="i-lucide-mail-open" />
+            <span>Read</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="bulk('resolved')"
+          >
+            <span class="i-lucide-check" />
+            <span>Resolve</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click.stop="bmenu = !bmenu"
+          >
+            <span class="i-lucide-more-horizontal" />
+            <span>More</span>
+          </button>
+
+          <div v-if="bmenu" class="cs-bm" @click.stop>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'ag' ? '' : 'ag'"
+            >
+              <span class="i-lucide-user-plus" /><span>Assign agent</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'ag'" class="cs-sub cs-sub--tall" @click.stop>
+                <div class="cs-mi" @click.stop="bulk('agent', { id: null })">
+                  <span>Unassign</span>
+                </div>
+                <div
+                  v-for="a in agentsList"
+                  :key="a.id"
+                  class="cs-mi"
+                  @click.stop="bulk('agent', a)"
+                >
+                  <span>{{ a.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'tm' ? '' : 'tm'"
+            >
+              <span class="i-lucide-users" /><span>Assign team</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'tm'" class="cs-sub cs-sub--tall" @click.stop>
+                <div
+                  v-for="t in teamsList"
+                  :key="t.id"
+                  class="cs-mi"
+                  @click.stop="bulk('team', t)"
+                >
+                  <span>{{ t.name }}</span>
+                </div>
+                <div v-if="!teamsList.length" class="cs-mi">
+                  <span>No teams</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'lb' ? '' : 'lb'"
+            >
+              <span class="i-lucide-tag" /><span>Add label</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'lb'" class="cs-sub cs-sub--tall" @click.stop>
+                <div
+                  v-for="l in labelsList"
+                  :key="l.id"
+                  class="cs-mi"
+                  @click.stop="bulk('label', l.title)"
+                >
+                  <span class="cs-pld" :style="{ background: l.color }" />
+                  <span>{{ l.title }}</span>
+                </div>
+                <div v-if="!labelsList.length" class="cs-mi">
+                  <span>No labels</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'rl' ? '' : 'rl'"
+            >
+              <span class="i-lucide-tag" /><span>Remove label</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'rl'" class="cs-sub cs-sub--tall" @click.stop>
+                <div
+                  v-for="l in labelsList"
+                  :key="l.id"
+                  class="cs-mi"
+                  @click.stop="bulk('unlabel', l.title)"
+                >
+                  <span class="cs-pld" :style="{ background: l.color }" />
+                  <span>{{ l.title }}</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'pr' ? '' : 'pr'"
+            >
+              <span class="i-lucide-flag" /><span>Priority</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'pr'" class="cs-sub" @click.stop>
+                <div
+                  v-for="pp in ['urgent', 'high', 'medium', 'low', 'none']"
+                  :key="pp"
+                  class="cs-mi"
+                  @click.stop="bulk('priority', pp === 'none' ? null : pp)"
+                >
+                  <span style="text-transform: capitalize">{{ pp }}</span>
+                </div>
+              </div>
+            </div>
+            <hr />
+            <div class="cs-mi" @click="bulk('pending')">
+              <span class="i-lucide-clock" /><span>Mark as pending</span>
+            </div>
+            <div class="cs-mi" @click="bulk('archive')">
+              <span class="i-lucide-archive" /><span>Archive</span>
+            </div>
+            <hr />
+            <div class="cs-mi danger" @click="bulk('delete')">
+              <span class="i-lucide-trash-2" /><span>Delete</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2037,7 +2233,11 @@ watch(
           <span v-if="q" class="cs-fbc">"{{ q }}"</span>
         </div>
         <span class="cs-fbn">{{ rows.length }}</span>
-        <button class="cs-fbx" @click="clearAllFilters">Clear</button>
+        <span
+          class="cs-fbx i-lucide-x"
+          title="Clear filters"
+          @click="clearAllFilters"
+        />
       </div>
 
       <div v-if="channelErrors.length" class="cs-cerr">
@@ -6067,15 +6267,19 @@ watch(
   flex-shrink: 0;
 }
 .cs-fbx {
-  border: 0;
-  background: var(--g);
-  color: #fff;
-  font-size: 11.5px;
-  padding: 3px 11px;
-  border-radius: 10px;
+  width: 14px;
+  height: 14px;
+  padding: 5px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  color: var(--g);
   cursor: pointer;
   flex-shrink: 0;
-  font-family: inherit;
+  opacity: 0.7;
+}
+.cs-fbx:hover {
+  opacity: 1;
+  background: var(--panel);
 }
 
 /* mobile rail overlay */
@@ -6084,6 +6288,39 @@ watch(
   inset: 0;
   z-index: 9996;
   background: rgba(0, 0, 0, 0.45);
+}
+
+/* bulk actions dropdown */
+.cs-sbrow {
+  position: relative;
+}
+.cs-bm {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 80;
+  min-width: 236px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+}
+.cs-app.lite .cs-bm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+@media (max-width: 768px) {
+  .cs-bm {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    min-width: 0;
+    border-radius: 12px;
+  }
 }
 
 /* ===== CONTEXT MENU ===== */
