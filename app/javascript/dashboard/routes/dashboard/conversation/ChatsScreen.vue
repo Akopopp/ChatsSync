@@ -5,7 +5,7 @@
    Chatwoot ke ChatList / ConversationBox / MessagesView / ReplyBox
    ismein use NAHI hote — poora markup apna hai.
    ===================================================================== */
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -382,16 +382,26 @@ const rows = computed(() => {
   });
 });
 
-/* API snake_case deti hai, AudioChip camelCase maangta hai */
-const attach = a => ({
-  ...a,
-  id: a.id,
-  dataUrl: a.data_url || a.dataUrl,
-  fileType: a.file_type || a.fileType,
-  fileName: a.file_name || a.fileName,
-  extension: a.extension,
-  transcribedText: a.transcribed_text || a.transcribedText,
-});
+/* API snake_case deti hai, AudioChip camelCase maangta hai.
+   Cache isliye ke har render par naya object banne se AudioChip
+   dobara render hota tha (bajti hui voice ruk sakti thi). */
+const attachCache = new Map();
+const attach = a => {
+  const k = a.id || a.data_url || a.dataUrl;
+  const hit = attachCache.get(k);
+  if (hit) return hit;
+  const o = {
+    ...a,
+    id: a.id,
+    dataUrl: a.data_url || a.dataUrl,
+    fileType: a.file_type || a.fileType,
+    fileName: a.file_name || a.fileName,
+    extension: a.extension,
+    transcribedText: a.transcribed_text || a.transcribedText,
+  };
+  attachCache.set(k, o);
+  return o;
+};
 const aUrl = a => a.data_url || a.dataUrl || '';
 const aType = a => a.file_type || a.fileType || 'file';
 
@@ -807,6 +817,18 @@ const onPaste = e => {
     }
   });
 };
+const dropFile = i => {
+  const f = pendingFiles.value[i];
+  if (f?._url) {
+    try {
+      URL.revokeObjectURL(f._url);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  pendingFiles.value.splice(i, 1);
+};
+
 const thumbOf = f => {
   if (!f.file?.type?.startsWith('image/')) return null;
   if (!f._url) f._url = URL.createObjectURL(f.file);
@@ -1101,6 +1123,15 @@ const doSend = () => {
   if (forceUnread.value[currentChat.value.id]) markRead(currentChat.value);
   const sent = text;
   const files = pendingFiles.value;
+  files.forEach(f => {
+    if (f._url) {
+      try {
+        URL.revokeObjectURL(f._url);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  });
   draft.value = '';
   pendingFiles.value = [];
   replyTo.value = null;
@@ -1116,12 +1147,16 @@ const doSend = () => {
 };
 
 const onKey = e => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  if (e.key !== 'Enter') return;
+  // Ctrl/Cmd+Enter hamesha bhejta hai
+  if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
     doSend();
     return;
   }
-  if (e.key === 'Enter' && !e.shiftKey) {
+  // Mobile: Enter = nayi line. Bhejna sirf ➤ button se.
+  if (isMobile.value) return;
+  if (!e.shiftKey) {
     e.preventDefault();
     doSend();
   }
@@ -1274,20 +1309,24 @@ const closeMenu = () => {
   showCanned.value = false;
 };
 
-/* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
+/* Render ke baad asli naap le kar menu ko screen ke andar lao.
+   Pehle main el.style.top set karta tha — magar :style binding
+   har re-render par usay wapas overwrite kar deta tha. Isliye ab
+   reactive value hi badalte hain. */
 const fitMenu = el => {
   if (!el) return;
   nextTick(() => {
     const r = el.getBoundingClientRect();
-    const pad = 8;
-    let t = r.top;
-    let l = r.left;
-    if (r.bottom > window.innerHeight - pad)
-      t = Math.max(pad, window.innerHeight - r.height - pad);
-    if (r.right > window.innerWidth - pad)
-      l = Math.max(pad, window.innerWidth - r.width - pad);
-    el.style.top = t + 'px';
-    el.style.left = l + 'px';
+    if (!r.height) return;
+    const pad = 10;
+    const maxT = window.innerHeight - r.height - pad;
+    const maxL = window.innerWidth - r.width - pad;
+    const t = Math.max(pad, Math.min(r.top, maxT));
+    const l = Math.max(pad, Math.min(r.left, maxL));
+    if (menu.value.open && Math.abs(t - menu.value.y) > 1) menu.value.y = t;
+    if (menu.value.open && Math.abs(l - menu.value.x) > 1) menu.value.x = l;
+    if (mmenu.value.open && Math.abs(t - mmenu.value.y) > 1) mmenu.value.y = t;
+    if (mmenu.value.open && Math.abs(l - mmenu.value.x) > 1) mmenu.value.x = l;
   });
 };
 
@@ -1560,6 +1599,50 @@ const archivedCount = computed(
 );
 
 /* ---------------- lifecycle ---------------- */
+let themeObs = null;
+let recWatchdog = null;
+
+const onResize = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
+
+/* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
+const readTheme = () => {
+  isLight.value = !(
+    document.documentElement.classList.contains('dark') ||
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
+  );
+};
+
+const onHotkey = e => {
+  if (e.key === 'Escape') {
+    closeMenu();
+    showProfile.value = false;
+    fwdMsg.value = null;
+    infoMsg.value = null;
+    lightbox.value = null;
+    showFilter.value = false;
+    showTq.value = false;
+    showEmoji.value = false;
+    showCanned.value = false;
+    newCanned.value = null;
+    ask.value = null;
+    if (selectMode.value) {
+      selectMode.value = false;
+      picked.value = [];
+    }
+    if (msgSelect.value) {
+      msgSelect.value = false;
+      msgPicked.value = [];
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    document.querySelector('.cs-psr input')?.focus();
+  }
+};
+
 onMounted(() => {
   store.dispatch('inboxes/get');
   store.dispatch('teams/get');
@@ -1574,48 +1657,41 @@ onMounted(() => {
   store.dispatch('setChatStatusFilter', 'all');
   safeD('fetchAllConversations');
   document.addEventListener('click', closeMenu);
-
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeMenu();
-      showProfile.value = false;
-      fwdMsg.value = null;
-      infoMsg.value = null;
-      lightbox.value = null;
-      showFilter.value = false;
-      showTq.value = false;
-      showEmoji.value = false;
-      showCanned.value = false;
-      if (selectMode.value) {
-        selectMode.value = false;
-        picked.value = [];
-      }
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-      e.preventDefault();
-      document.querySelector('.cs-psr input')?.focus();
-    }
-  });
-
-  const onResize = () => {
-    isMobile.value = window.innerWidth <= 768;
-  };
+  document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
 
-  /* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
-  const readTheme = () => {
-    isLight.value = !(
-      document.documentElement.classList.contains('dark') ||
-      document.body.classList.contains('dark') ||
-      !!document.querySelector('.dark')
-    );
-  };
   readTheme();
-  const mo = new MutationObserver(readTheme);
-  mo.observe(document.documentElement, {
+  themeObs = new MutationObserver(readTheme);
+  themeObs.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['class'],
     subtree: true,
+  });
+});
+
+/* Component hatte waqt sab kuch band karo. Warna doosre tab par
+   jaane ke baad bhi Esc / Ctrl+K yahan aate rehte the aur
+   observer chalta rehta tha. */
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeMenu);
+  document.removeEventListener('keydown', onHotkey);
+  window.removeEventListener('resize', onResize);
+  if (themeObs) {
+    themeObs.disconnect();
+    themeObs = null;
+  }
+  clearTimeout(lpTimer);
+  clearTimeout(recWatchdog);
+  toasts.value = [];
+  // file preview ke object URL free karo
+  pendingFiles.value.forEach(f => {
+    if (f._url) {
+      try {
+        URL.revokeObjectURL(f._url);
+      } catch (e) {
+        /* ignore */
+      }
+    }
   });
 });
 
@@ -1655,6 +1731,7 @@ watch(
   () => currentChat.value?.id,
   () => {
     atBottom.value = true;
+    if (attachCache.size > 400) attachCache.clear();
     noMoreOlder.value = false;
     lastFetch = 0;
     lastCount = 0;
@@ -2077,9 +2154,6 @@ watch(
         <div v-if="tmenu" class="cs-tm" @click.stop>
           <div class="cs-mi" @click="tmenu = false; showProfile = true">
             <span class="i-lucide-info" /><span>Contact info</span>
-          </div>
-          <div class="cs-mi" @click="tmenu = false; showTq = true">
-            <span class="i-lucide-search" /><span>Search in chat</span>
           </div>
           <div
             class="cs-mi"
@@ -2617,7 +2691,7 @@ watch(
             <img v-if="thumbOf(f)" :src="thumbOf(f)" class="cs-fpi" />
             <span v-else class="cs-fpf i-lucide-file" />
             <span class="cs-fpn">{{ f.name }}</span>
-            <span class="cs-fpx i-lucide-x" @click="pendingFiles.splice(i, 1)" />
+            <span class="cs-fpx i-lucide-x" @click="dropFile(i)" />
           </div>
         </div>
       </div>
@@ -5164,9 +5238,9 @@ watch(
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
   padding: 7px 0;
   min-width: 240px;
-  max-height: calc(100vh - 90px);
+  max-height: calc(100vh - 100px);
   overflow-y: auto;
-  overflow: visible;
+  overflow-x: visible;
 }
 .cs-app.lite .cs-tm {
   border: 1px solid var(--ln);
@@ -5269,34 +5343,6 @@ watch(
 
 /* ===== MOBILE MENUS ===== */
 @media (max-width: 768px) {
-  .cs-sub,
-  .cs-sub.left,
-  .cs-sub--tall {
-    position: static !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    box-shadow: none !important;
-    border: none !important;
-    border-radius: 0 !important;
-    background: var(--menu-hov) !important;
-    padding: 4px 0 !important;
-    margin: 4px 0 !important;
-    max-height: 240px;
-    overflow-y: auto;
-  }
-  .cs-sub .cs-mi {
-    padding-left: 44px !important;
-  }
-  .cs-has-sub {
-    flex-wrap: wrap;
-  }
-  .cs-arw {
-    margin-left: auto;
-  }
   .cs-cmenu {
     max-width: calc(100vw - 20px);
     min-width: 210px !important;
@@ -5696,6 +5742,62 @@ watch(
   flex-shrink: 0;
   line-height: 1;
 }
+/* ===== SUBMENU: hamesha menu ke ANDAR (accordion) =====
+   Flyout (left:100%) screen se bahar chala jaata tha aur menu ka
+   overflow-y bhi torta tha. Andar khulne se dono masle khatam. */
+.cs-sub,
+.cs-sub.left,
+.cs-sub--tall {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: var(--menu-hov) !important;
+  padding: 4px 0 !important;
+  margin: 5px 0 2px !important;
+  max-height: 230px;
+  overflow-y: auto;
+}
+.cs-sub .cs-mi {
+  padding-left: 44px !important;
+  font-size: 13.5px !important;
+}
+.cs-has-sub {
+  flex-wrap: wrap;
+}
+.cs-has-sub .cs-arw {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+
+/* menus kabhi screen se bahar na jayen */
+.cs-cmenu,
+.cs-hm,
+.cs-tm {
+  max-height: min(78vh, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cs-cmenu::-webkit-scrollbar,
+.cs-hm::-webkit-scrollbar,
+.cs-tm::-webkit-scrollbar,
+.cs-sub::-webkit-scrollbar {
+  width: 5px;
+}
+.cs-cmenu::-webkit-scrollbar-thumb,
+.cs-hm::-webkit-scrollbar-thumb,
+.cs-tm::-webkit-scrollbar-thumb,
+.cs-sub::-webkit-scrollbar-thumb {
+  background: var(--ln);
+  border-radius: 3px;
+}
+
 /* ===== CONTEXT MENU ===== */
 /* desktop: overflow visible taake submenu flyout kata na jaye —
    fitMenu menu ko khud screen ke andar khinch leta hai.
