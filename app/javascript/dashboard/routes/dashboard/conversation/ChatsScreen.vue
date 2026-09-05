@@ -231,7 +231,8 @@ const stats = useMapGetter('conversationStats/getStats');
    Chat kholte hi unread_count 0 ho jaata hai to number khud ghat jata hai. */
 const setFor = key => {
   const L = (allChats.value || []).filter(c => !isArchived(c));
-  if (key === 'all' || key === 'unread') return L;
+  if (key === 'all') return L;
+  if (key === 'unread') return L.filter(isUnread);
   if (key === 'mine')
     return L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
   if (key === 'unassigned') return L.filter(c => !c.meta?.assignee);
@@ -257,8 +258,6 @@ const readNow = ref(LS('read'));
 
 const unreadIn = key => setFor(key).filter(isUnread).length;
 
-const totalIn = key => setFor(key).length;
-
 const pills = computed(() => {
   const base = [
     { k: 'all', n: 'All' },
@@ -272,11 +271,7 @@ const pills = computed(() => {
   (labelsList.value || []).forEach(l => {
     base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
   });
-  return base.map(p => ({
-    ...p,
-    unread: unreadIn(p.k),
-    total: totalIn(p.k),
-  }));
+  return base.map(p => ({ ...p, unread: unreadIn(p.k) }));
 });
 
 const PILL_LIMIT = 5;
@@ -1704,7 +1699,18 @@ watch(
 
       <div v-else class="cs-ph">
         <h1>Chats</h1>
-        <span class="cs-ic i-lucide-more-vertical" @click.stop="toggleHm" />
+        <span class="cs-ic" title="Menu" @click.stop="toggleHm">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <circle cx="12" cy="5" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="12" cy="19" r="1.9" />
+          </svg>
+        </span>
         <div
           v-if="hmenu"
           :ref="fitHm"
@@ -1787,7 +1793,6 @@ watch(
           />
           <span>{{ p.n }}</span>
           <span v-if="p.unread" class="cs-plu">{{ p.unread }}</span>
-          <span v-else-if="p.total" class="cs-plt">{{ p.total }}</span>
         </div>
         <div
           v-if="hiddenPillCount && !showAllPills"
@@ -2004,11 +2009,18 @@ watch(
             <path d="m20 20-3.5-3.5" />
           </svg>
         </span>
-        <span
-          class="cs-ic i-lucide-more-vertical"
-          title="More"
-          @click.stop="toggleTm"
-        />
+        <span class="cs-ic" title="More" @click.stop="toggleTm">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <circle cx="12" cy="5" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="12" cy="19" r="1.9" />
+          </svg>
+        </span>
 
         <div v-if="tmenu" class="cs-tm" @click.stop>
           <div class="cs-mi" @click="tmenu = false; showProfile = true">
@@ -5621,17 +5633,6 @@ watch(
   flex-shrink: 0;
   line-height: 1;
 }
-.cs-plt {
-  font-size: 11.5px;
-  opacity: 0.5;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.cs-pill--on .cs-plt,
-.cs-pl.on .cs-plt {
-  opacity: 0.75;
-}
-
 /* ===== CONTEXT MENU ===== */
 .cs-cmenu {
   position: fixed;
