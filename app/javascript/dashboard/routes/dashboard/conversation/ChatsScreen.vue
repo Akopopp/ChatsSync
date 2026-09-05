@@ -253,7 +253,7 @@ const openId = computed(() => Number(props.conversationId) || 0);
 const isUnread = c =>
   (c.unread_count || 0) > 0 && c.id !== openId.value && !readNow.value[c.id];
 
-const readNow = ref({});
+const readNow = ref(LS('read'));
 
 const unreadIn = key => setFor(key).filter(isUnread).length;
 
@@ -911,10 +911,10 @@ const bulk = name => {
 
 const markAllRead = () => {
   (rows.value || []).forEach(c => {
-    if ((c.unread_count || 0) > 0)
-      store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+    if ((c.unread_count || 0) > 0) markRead(c);
   });
   hmenu.value = false;
+  toast('All chats marked as read');
 };
 
 const applySort = k => {
@@ -987,11 +987,22 @@ const inboxName = id =>
   (inboxesList.value || []).find(i => i.id === id)?.name || '';
 
 /* ---------------- actions ---------------- */
-const openChat = c => {
-  if ((c.unread_count || 0) > 0) {
-    readNow.value = { ...readNow.value, [c.id]: true };
-    store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+const markRead = c => {
+  if (!c) return;
+  readNow.value = { ...readNow.value, [c.id]: true };
+  saveLS('read', readNow.value);
+  // store ka object bhi update karo warna API ka purana count
+  // pills aur badge mein dikhta rehta hai
+  try {
+    c.unread_count = 0;
+  } catch (e) {
+    /* ignore */
   }
+  store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+};
+
+const openChat = c => {
+  if ((c.unread_count || 0) > 0) markRead(c);
   router.push({
     name: 'inbox_conversation',
     params: { accountId: accountId.value, conversation_id: c.id },
@@ -1283,7 +1294,13 @@ const act = (name, arg) => {
   closeMenu();
   const d = (a, p) => store.dispatch(a, p)?.catch?.(() => {});
 
-  if (name === 'unread') d('markMessagesUnread', { id: c.id });
+  if (name === 'unread') {
+    const r = { ...readNow.value };
+    delete r[c.id];
+    readNow.value = r;
+    saveLS('read', r);
+    d('markMessagesUnread', { id: c.id });
+  }
   else if (name === 'resolved')
     d('toggleStatus', { conversationId: c.id, status: 'resolved' });
   else if (name === 'pending')
@@ -1604,11 +1621,17 @@ watch(
     firstUnreadId.value =
       u > 0 && M.length ? M[Math.max(0, M.length - u)]?.id : null;
     if (currentChat.value?.id) {
-      readNow.value = { ...readNow.value, [currentChat.value.id]: true };
-      if (u > 0) {
-        store
-          .dispatch('markMessagesRead', { id: currentChat.value.id })
-          ?.catch?.(() => {});
+      markRead(currentChat.value);
+      // list wala object alag ho sakta hai — usay bhi saaf karo
+      const inList = (allChats.value || []).find(
+        x => x.id === currentChat.value.id
+      );
+      if (inList && inList !== currentChat.value) {
+        try {
+          inList.unread_count = 0;
+        } catch (e) {
+          /* ignore */
+        }
       }
     }
   }
@@ -1968,8 +1991,8 @@ watch(
 
         <span class="cs-ic" title="Search in chat" @click.stop="showTq = !showTq">
           <svg
-            width="15"
-            height="15"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -5098,13 +5121,13 @@ watch(
 
 /* header icons: screenshot ke naap */
 .cs-th .cs-ic > svg {
-  width: 15px !important;
-  height: 15px !important;
+  width: 18px !important;
+  height: 18px !important;
   display: block;
 }
 .cs-th .cs-ic:has(svg) {
-  width: 15px !important;
-  height: 15px !important;
+  width: 18px !important;
+  height: 18px !important;
   display: grid;
   place-items: center;
 }
