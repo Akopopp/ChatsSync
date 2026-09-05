@@ -53,6 +53,18 @@ const recState = ref('');
 const recTime = ref('0:00');
 const sendAfterRec = ref(false);
 const pendingFiles = ref([]);
+const failed = ref([]);
+let failId = 0;
+
+const retryFail = f => {
+  failed.value = failed.value.filter(x => x.id !== f.id);
+  pushMessage(f.payload)
+    .then(scrollDown)
+    .catch(() => {
+      failed.value.push(f);
+      toast('Still failing', 'err');
+    });
+};
 const threadRef = ref(null);
 const loadingOlder = ref(false);
 const loadingMore = ref(false);
@@ -300,15 +312,20 @@ const aType = a => a.file_type || a.fileType || 'file';
 
 const plain = html => {
   if (!html) return '';
+  let out = '';
   try {
-    const f = new MessageFormatter(html);
-    if (f.plainText) return f.plainText;
+    const f = new MessageFormatter(String(html));
+    if (f.plainText) out = f.plainText;
   } catch (e) {
-    /* niche fallback */
+    /* fallback niche */
   }
-  return String(html)
-    .replace(/<[^>]*>/g, '')
-    .trim();
+  if (!out) {
+    out = String(html)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]*>/g, '');
+  }
+  return out.replace(/&nbsp;/g, ' ').replace(/[\s\u00a0]+$/g, '');
 };
 
 const previewOf = c => {
@@ -372,7 +389,53 @@ const blocks = computed(() => {
   return out;
 });
 
-const bodyHtml = m => new MessageFormatter(m.content || '').formattedMessage;
+/* content ke aakhir ki khali lines bubble ko oonchа kar deti thin
+   aur copy karne par bhi saath aati thin */
+const trimC = t => String(t || '').replace(/[\s\u00a0]+$/g, '');
+
+/* WhatsApp jaisa "Read more" — lamba message kata hua dikhta hai,
+   har click par agla hissa khulta hai */
+const CHUNK = 700;
+const expanded = ref({});
+
+const isLong = m => plain(m.content || '').length > CHUNK;
+
+const shownLen = m => (expanded.value[m.id] || 1) * CHUNK;
+
+const clippedHtml = m => {
+  const full = trimC(m.content);
+  if (!isLong(m)) return bodyHtml(m);
+  const txt = plain(m.content);
+  const lim = shownLen(m);
+  if (txt.length <= lim) return bodyHtml(m);
+  // lafz ke beech se na kaate
+  let cut = txt.lastIndexOf(' ', lim);
+  if (cut < lim * 0.7) cut = lim;
+  const part = txt.slice(0, cut);
+  return new MessageFormatter(part + '…').formattedMessage;
+};
+
+const moreLeft = m => {
+  const txt = plain(m.content || '');
+  return Math.max(0, txt.length - shownLen(m));
+};
+
+const readMore = m => {
+  expanded.value = {
+    ...expanded.value,
+    [m.id]: (expanded.value[m.id] || 1) + 1,
+  };
+};
+
+const readLess = m => {
+  const e = { ...expanded.value };
+  delete e[m.id];
+  expanded.value = e;
+};
+const bodyHtml = m => {
+  const h = new MessageFormatter(trimC(m.content)).formattedMessage;
+  return String(h).replace(/(<br\s*\/?>|\s|&nbsp;)+$/gi, '');
+};
 
 const contact = computed(() => currentChat.value?.meta?.sender || {});
 const contactStatus = computed(() => {
@@ -396,6 +459,53 @@ const replyTo = ref(null);
 const fwdMsg = ref(null);
 const fwdPick = ref([]);
 const infoMsg = ref(null);
+
+/* apna confirm dialog — browser wala nahi */
+const ask = ref(null);
+const confirmBox = (title, body, okText, onOk, danger = true) =>
+  new Promise(resolve => {
+    ask.value = {
+      title,
+      body,
+      okText: okText || 'Confirm',
+      danger,
+      ok: () => {
+        ask.value = null;
+        onOk?.();
+        resolve(true);
+      },
+      cancel: () => {
+        ask.value = null;
+        resolve(false);
+      },
+    };
+  });
+
+/* toast */
+const toasts = ref([]);
+let toastId = 0;
+const toast = (text, kind = 'ok') => {
+  const id = ++toastId;
+  toasts.value.push({ id, text, kind });
+  setTimeout(() => {
+    toasts.value = toasts.value.filter(t => t.id !== id);
+  }, 3200);
+};
+
+/* seedha API — Chatwoot ke action ka signature yaqeeni nahi tha
+   aur usne poori conversation uda di thi */
+const delMessage = (cid, mid) =>
+  fetch(
+    `/api/v1/accounts/${accountId.value}/conversations/${cid}/messages/${mid}`,
+    {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        api_access_token: currentUser.value?.access_token || '',
+      },
+    }
+  );
 const lightbox = ref(null);
 const fwdQ = ref('');
 const tq = ref('');
@@ -424,15 +534,27 @@ const exportChat = () => {
 
 const clearChat = () => {
   tmenu.value = false;
-  if (!confirm('Is chat ke saare messages hata dein? (sirf dashboard se)')) return;
-  messages.value.forEach(m => {
-    store
-      .dispatch('deleteMessage', {
-        conversationId: currentChat.value.id,
-        messageId: m.id,
-      })
-      ?.catch?.(() => {});
-  });
+  const cid = currentChat.value?.id;
+  if (!cid) return;
+  const n = messages.value.length;
+  confirmBox(
+    'Clear chat',
+    `Delete all ${n} messages from this conversation? The conversation itself stays. This only clears your dashboard — the customer still sees them on WhatsApp.`,
+    'Clear',
+    async () => {
+      let done = 0;
+      for (const m of [...messages.value]) {
+        try {
+          await delMessage(cid, m.id);
+          done += 1;
+        } catch (e) {
+          /* skip */
+        }
+      }
+      toast(`${done} messages cleared`);
+      store.dispatch('getConversation', cid)?.catch?.(() => {});
+    }
+  );
 };
 
 const tAct = (name, arg) => {
@@ -454,11 +576,66 @@ const tAct = (name, arg) => {
     saveLS('mute', muted.value);
   } else if (name === 'resolved')
     d('toggleStatus', { conversationId: c.id, status: 'resolved' });
-  else if (name === 'delete') d('deleteConversation', c.id);
+  else if (name === 'delete') {
+    confirmBox(
+      'Delete conversation',
+      'Delete this conversation? This cannot be undone.',
+      'Delete',
+      () => {
+        store
+          .dispatch('deleteConversation', c.id)
+          ?.then?.(() => toast('Conversation deleted'))
+          ?.catch?.(() => toast('Delete failed', 'err'));
+      }
+    );
+  }
 };
 const emojiQ = ref('');
 const showCanned = ref(false);
 const cannedQ = ref('');
+const newCanned = ref(null);
+
+const openNewCanned = () => {
+  showCanned.value = false;
+  newCanned.value = { short_code: '', content: draft.value.replace(/^\//, '') };
+};
+
+const saveCanned = () => {
+  const c = newCanned.value;
+  if (!c?.short_code?.trim() || !c?.content?.trim()) {
+    toast('Shortcode and message are required', 'err');
+    return;
+  }
+  store
+    .dispatch('createCannedResponse', {
+      short_code: c.short_code.trim().replace(/\s+/g, '_'),
+      content: c.content,
+    })
+    ?.then?.(() => {
+      toast('Canned response saved');
+      newCanned.value = null;
+      store.dispatch('getCannedResponse')?.catch?.(() => {});
+    })
+    ?.catch?.(() => toast('Could not save', 'err'));
+};
+
+/* channel connection errors — pills ke upar laal patti */
+const channelErrors = computed(() =>
+  (inboxesList.value || [])
+    .filter(
+      ib =>
+        ib.reauthorization_required ||
+        ib.health_status === 'unhealthy' ||
+        ib.connection_status === 'disconnected'
+    )
+    .map(ib => ({
+      id: ib.id,
+      name: ib.name,
+      msg: ib.reauthorization_required
+        ? 'Reconnect required — the channel token expired or the number is locked'
+        : 'Connection problem — messages may not be delivered',
+    }))
+);
 const cannedList = useMapGetter('getCannedResponses');
 
 const tqHits = computed(() => {
@@ -786,14 +963,20 @@ const doSend = () => {
   if (replyTo.value?.id) {
     payload.contentAttributes = { in_reply_to: replyTo.value.id };
   }
+  const sent = text;
+  const files = pendingFiles.value;
+  draft.value = '';
+  pendingFiles.value = [];
+  replyTo.value = null;
+  scrollDown();
+
   pushMessage(payload)
-    .then(() => {
-      draft.value = '';
-      pendingFiles.value = [];
-      replyTo.value = null;
-      scrollDown();
-    })
-    .catch(e => console.error('[ChatsSync] send fail', e));
+    .then(scrollDown)
+    .catch(e => {
+      console.error('[ChatsSync] send fail', e);
+      failed.value.push({ id: ++failId, text: sent, files, payload });
+      toast('Message not sent — tap Retry', 'err');
+    });
 };
 
 const onKey = e => {
@@ -824,47 +1007,13 @@ const audioFormat = computed(() => {
   return canOgg ? 'audio/ogg' : 'audio/mp3';
 });
 
-const recLocked = ref(false);
-let recTouchY = 0;
-let touchUsed = false;
 
 const startRec = () => {
   isRecording.value = true;
-  recLocked.value = false;
   recState.value = '';
   recTime.value = '0:00';
 };
 
-/* mobile: mic dabа kar rakho -> record, upar swipe -> lock,
-   ungli uthao -> bhej do (lock na ho to). Click event ko nahi
-   rokte, sirf flag se double-fire band karte hain. */
-const micDown = e => {
-  touchUsed = true;
-  recTouchY = e.touches?.[0]?.clientY || 0;
-  recLocked.value = false;
-  startRec();
-};
-const micMove = e => {
-  if (!isRecording.value || recLocked.value) return;
-  const y = e.touches?.[0]?.clientY || 0;
-  if (recTouchY - y > 60) {
-    recLocked.value = true;
-    if (navigator.vibrate) navigator.vibrate(14);
-  }
-};
-const micUp = () => {
-  if (!isRecording.value) return;
-  if (recLocked.value) return;
-  finishRec();
-};
-const micClick = () => {
-  // touch chala tha to click ignore karo
-  if (touchUsed) {
-    touchUsed = false;
-    return;
-  }
-  startRec();
-};
 const cancelRec = () => {
   sendAfterRec.value = false;
   try {
@@ -1051,10 +1200,13 @@ const act = (name, arg) => {
     saveLS('mute', muted.value);
     d(muted.value[c.id] ? 'muteConversation' : 'unmuteConversation', c.id);
   } else if (name === 'pin') {
-    setAttr(c, { cs_pinned: !isPinned(c) });
+    const v = !isPinned(c);
+    setAttr(c, { cs_pinned: v });
+    toast(v ? 'Chat pinned' : 'Chat unpinned');
   } else if (name === 'archive') {
     const next = !isArchived(c);
     setAttr(c, { cs_archived: next });
+    toast(next ? 'Chat archived' : 'Chat unarchived');
     // WhatsApp jaisa: archive karte hi mute ho jaye
     if (next && !isMuted(c)) {
       d('muteConversation', c.id);
@@ -1088,7 +1240,19 @@ const act = (name, arg) => {
     d('setLabels', { conversationId: c.id, labels: [...(c.labels || []), t] });
   } else if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id })
   else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
-  else if (name === 'delete') d('deleteConversation', c.id);
+  else if (name === 'delete') {
+    confirmBox(
+      'Delete conversation',
+      'Delete this conversation? This cannot be undone.',
+      'Delete',
+      () => {
+        store
+          .dispatch('deleteConversation', c.id)
+          ?.then?.(() => toast('Conversation deleted'))
+          ?.catch?.(() => toast('Delete failed', 'err'));
+      }
+    );
+  }
 };
 
 const copyText = t => {
@@ -1501,6 +1665,17 @@ watch(() => messages.value.length, scrollDown);
         </div>
       </div>
 
+      <div v-if="channelErrors.length" class="cs-cerr">
+        <span class="i-lucide-alert-triangle" />
+        <div class="cs-cerrb">
+          <div class="cs-cerrn">{{ channelErrors[0].name }}</div>
+          <div class="cs-cerrm">{{ channelErrors[0].msg }}</div>
+        </div>
+        <span v-if="channelErrors.length > 1" class="cs-cerrc">
+          +{{ channelErrors.length - 1 }}
+        </span>
+      </div>
+
       <div class="cs-list" @scroll="onListScroll">
         <div
           v-if="!q"
@@ -1575,6 +1750,16 @@ watch(() => messages.value.length, scrollDown);
             </div>
           </div>
         </div>
+
+        <template v-if="listLoading && !rows.length">
+          <div v-for="i in 7" :key="i" class="cs-sk">
+            <div class="cs-ska" />
+            <div class="cs-skb">
+              <div class="cs-skl w60" />
+              <div class="cs-skl w85" />
+            </div>
+          </div>
+        </template>
 
         <div v-if="!rows.length && !listLoading" class="cs-empty-list">
           No chats, contacts or messages found
@@ -1703,7 +1888,7 @@ watch(() => messages.value.length, scrollDown);
               <div class="cs-lbnew">
                 <input
                   v-model="newLabel"
-                  placeholder="New label..."
+                  placeholder="New label"
                   @keydown.enter.stop="
                     menu.chat = currentChat;
                     act('newlabel');
@@ -1734,7 +1919,7 @@ watch(() => messages.value.length, scrollDown);
                 />
               </div>
               <div v-if="!labelsList.length" class="cs-mi">
-                <span>Upar likh kar naya banao</span>
+                <span>Type above to create</span>
               </div>
             </div>
           </div>
@@ -1940,7 +2125,25 @@ watch(() => messages.value.length, scrollDown);
                 </template>
               </template>
 
-              <div v-if="b.m.content" class="cs-tx" v-html="bodyHtml(b.m)" />
+              <div
+                v-if="b.m.content"
+                class="cs-tx"
+                v-html="clippedHtml(b.m)"
+              />
+              <span
+                v-if="b.m.content && isLong(b.m) && moreLeft(b.m) > 0"
+                class="cs-more"
+                @click.stop="readMore(b.m)"
+              >
+                Read more
+              </span>
+              <span
+                v-else-if="b.m.content && isLong(b.m) && expanded[b.m.id]"
+                class="cs-more"
+                @click.stop="readLess(b.m)"
+              >
+                Read less
+              </span>
               <a
                 v-if="firstLink(b.m)"
                 class="cs-lp"
@@ -1970,6 +2173,17 @@ watch(() => messages.value.length, scrollDown);
             </div>
           </div>
         </template>
+      </div>
+
+      <div v-if="failed.length" class="cs-failbar">
+        <span class="i-lucide-alert-circle" />
+        <span class="cs-failt">{{ failed.length }} message(s) failed to send</span>
+        <button class="cs-sb" @click="failed.forEach(retryFail)">
+          <span class="i-lucide-rotate-cw" /><span>Retry</span>
+        </button>
+        <button class="cs-sb dgr" @click="failed = []">
+          <span class="i-lucide-x" /><span>Discard</span>
+        </button>
       </div>
 
       <div
@@ -2003,14 +2217,6 @@ watch(() => messages.value.length, scrollDown);
               :class="{ pz: recState === 'recording-paused' }"
             />
             <span class="cs-rt">{{ recTime }}</span>
-            <span
-              v-if="isMobile && !recLocked"
-              class="cs-lockhint"
-              @click="recLocked = true"
-            >
-              ↑ lock
-            </span>
-            <span v-else-if="recLocked" class="cs-lockon i-lucide-lock" />
             <span class="cs-sp" />
             <span
               class="cs-ci"
@@ -2056,8 +2262,12 @@ watch(() => messages.value.length, scrollDown);
         </div>
 
         <div v-if="showCanned && !isRecording" class="cs-tplbox">
+          <div class="cs-tplnew" @click="openNewCanned">
+            <span class="i-lucide-plus" />
+            <span>New canned response</span>
+          </div>
           <div v-if="!cannedHits.length" class="cs-tplempty">
-            Koi canned response nahi mila
+            No canned responses found
           </div>
           <div
             v-for="c in cannedHits"
@@ -2072,7 +2282,7 @@ watch(() => messages.value.length, scrollDown);
 
         <div v-if="showTpl && !isRecording" class="cs-tplbox">
           <div v-if="!templates.length" class="cs-tplempty">
-            Is inbox mein koi template nahi
+            No templates in this inbox
           </div>
           <div
             v-for="t in templates"
@@ -2145,11 +2355,7 @@ watch(() => messages.value.length, scrollDown);
           <span
             v-if="!draft.trim() && !pendingFiles.length"
             class="cs-ci i-lucide-mic"
-            @click="micClick"
-            @touchstart="micDown"
-            @touchmove="micMove"
-            @touchend="micUp"
-            @touchcancel="micUp"
+            @click="startRec"
           />
           <span v-else class="cs-snd2 i-lucide-send" @click="doSend" />
         </div>
@@ -2254,6 +2460,48 @@ watch(() => messages.value.length, scrollDown);
       </div>
     </div>
 
+    <!-- ============ CONFIRM ============ -->
+    <div v-if="ask" class="cs-fw" @click.self="ask.cancel()">
+      <div class="cs-ask">
+        <div class="cs-askt">{{ ask.title }}</div>
+        <div class="cs-askb">{{ ask.body }}</div>
+        <div class="cs-askf">
+          <button class="cs-fwbtn ghost" @click="ask.cancel()">Cancel</button>
+          <button class="cs-fwbtn" :class="{ dgr: ask.danger }" @click="ask.ok()">
+            {{ ask.okText }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ NEW CANNED ============ -->
+    <div v-if="newCanned" class="cs-fw" @click.self="newCanned = null">
+      <div class="cs-ask cs-cnew">
+        <div class="cs-askt">New canned response</div>
+        <label class="cs-fl">Shortcode</label>
+        <input v-model="newCanned.short_code" class="cs-fi" placeholder="greeting" />
+        <label class="cs-fl">Message</label>
+        <textarea
+          v-model="newCanned.content"
+          class="cs-fi cs-fta"
+          rows="6"
+          placeholder="Hello! How can I help you today?"
+        />
+        <div class="cs-hint">Line breaks are kept exactly as typed.</div>
+        <div class="cs-askf">
+          <button class="cs-fwbtn ghost" @click="newCanned = null">Cancel</button>
+          <button class="cs-fwbtn" @click="saveCanned">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TOASTS ============ -->
+    <div class="cs-toasts">
+      <div v-for="t in toasts" :key="t.id" class="cs-toast" :class="t.kind">
+        {{ t.text }}
+      </div>
+    </div>
+
     <!-- ============ IMAGE LIGHTBOX ============ -->
     <div v-if="lightbox" class="cs-lb" @click="lightbox = null">
       <span class="cs-lbx i-lucide-x" />
@@ -2329,7 +2577,7 @@ watch(() => messages.value.length, scrollDown);
           </div>
         </div>
         <div class="cs-fwf">
-          <span class="cs-fwc">Delete sirf tumhare dashboard se hataata hai</span>
+          <span class="cs-fwc">Delete only removes it from your dashboard</span>
           <button class="cs-fwbtn" @click="copyText(plain(infoMsg.content || ''))">
             Copy
           </button>
@@ -2628,7 +2876,7 @@ watch(() => messages.value.length, scrollDown);
             />
           </div>
           <div v-if="!labelsList.length" class="cs-mi">
-            <span>Koi label nahi — upar likh kar banao</span>
+            <span>No labels yet — type above to create</span>
           </div>
         </div>
       </div>
@@ -4641,16 +4889,6 @@ watch(() => messages.value.length, scrollDown);
   user-select: none;
 }
 
-.cs-lockhint {
-  font-size: 11.5px;
-  color: var(--tx3);
-  white-space: nowrap;
-}
-.cs-lockon {
-  width: 15px;
-  height: 15px;
-  color: var(--g);
-}
 
 /* thread ka apna menu — button ke neeche, DAAYEN taraf */
 .cs-th {
@@ -4682,8 +4920,8 @@ watch(() => messages.value.length, scrollDown);
 
 /* header icons: screenshot ke naap */
 .cs-th .cs-ic {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
   padding: 8px;
   box-sizing: content-box;
 }
@@ -4782,12 +5020,243 @@ watch(() => messages.value.length, scrollDown);
     overflow-y: auto;
     border-radius: 12px;
   }
-  .cs-lockhint {
-    background: var(--inp);
-    padding: 4px 9px;
-    border-radius: 12px;
-    cursor: pointer;
+}
+
+/* confirm dialog */
+.cs-ask {
+  width: 400px;
+  max-width: 92vw;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 22px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.cs-askt {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--tx);
+  margin-bottom: 10px;
+}
+.cs-askb {
+  font-size: 14px;
+  color: var(--tx2);
+  line-height: 1.5;
+}
+.cs-askf {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.cs-fwbtn.dgr {
+  background: var(--red);
+}
+
+/* new canned */
+.cs-cnew {
+  width: 480px;
+}
+.cs-fl {
+  display: block;
+  font-size: 12.5px;
+  color: var(--g);
+  margin: 14px 0 6px;
+}
+.cs-fi {
+  width: 100%;
+  background: var(--inp);
+  border: 1px solid var(--ln);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--tx);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.cs-fta {
+  resize: vertical;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.cs-hint {
+  font-size: 12px;
+  color: var(--tx3);
+  margin-top: 7px;
+}
+.cs-tplnew {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--g);
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tplnew:hover {
+  background: var(--hov);
+}
+.cs-tplnew span:first-child {
+  width: 16px;
+  height: 16px;
+}
+.cs-tplt {
+  white-space: pre-wrap !important;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* toasts */
+.cs-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 10002;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.cs-toast {
+  background: var(--menu);
+  color: var(--tx);
+  font-size: 13.5px;
+  padding: 10px 18px;
+  border-radius: 20px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  animation: cstin 0.18s ease-out;
+}
+.cs-toast.err {
+  background: var(--red);
+  color: #fff;
+}
+@keyframes cstin {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
+}
+
+/* channel error */
+.cs-cerr {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 12px 10px;
+  padding: 10px 13px;
+  background: rgba(241, 92, 109, 0.14);
+  border: 1px solid rgba(241, 92, 109, 0.4);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.cs-cerr > span:first-child {
+  width: 18px;
+  height: 18px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-cerrb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-cerrn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+}
+.cs-cerrm {
+  font-size: 12px;
+  color: var(--tx2);
+  line-height: 1.35;
+}
+.cs-cerrc {
+  font-size: 12px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+
+/* failed messages */
+.cs-failbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  background: rgba(241, 92, 109, 0.14);
+  border-top: 1px solid rgba(241, 92, 109, 0.35);
+  flex-shrink: 0;
+}
+.cs-failbar > span:first-child {
+  width: 17px;
+  height: 17px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-failt {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx);
+}
+
+/* loading skeleton */
+.cs-sk {
+  display: flex;
+  gap: 14px;
+  padding: 11px 20px 11px 16px;
+  align-items: center;
+}
+.cs-ska {
+  width: 49px;
+  height: 49px;
+  border-radius: 50%;
+  background: var(--fld);
+  flex-shrink: 0;
+  animation: cspulse 1.3s ease-in-out infinite;
+}
+.cs-skb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-skl {
+  height: 11px;
+  border-radius: 6px;
+  background: var(--fld);
+  margin-bottom: 8px;
+  animation: cspulse 1.3s ease-in-out infinite;
+}
+.cs-skl.w60 {
+  width: 60%;
+}
+.cs-skl.w85 {
+  width: 85%;
+  height: 9px;
+  margin-bottom: 0;
+}
+@keyframes cspulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Read more */
+.cs-more {
+  display: inline-block;
+  color: var(--b);
+  font-size: 13.5px;
+  cursor: pointer;
+  margin-top: 3px;
+  user-select: none;
+}
+.cs-more:hover {
+  text-decoration: underline;
 }
 
 /* ===== CONTEXT MENU ===== */
