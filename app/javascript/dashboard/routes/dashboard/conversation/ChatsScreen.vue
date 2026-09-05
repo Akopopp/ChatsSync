@@ -54,12 +54,57 @@ const recTime = ref('0:00');
 const sendAfterRec = ref(false);
 const pendingFiles = ref([]);
 const threadRef = ref(null);
+const loadingOlder = ref(false);
+const loadingMore = ref(false);
+const showDown = ref(false);
+const firstUnreadId = ref(null);
+
+const onThreadScroll = e => {
+  const el = e.target;
+  showDown.value = el.scrollHeight - el.scrollTop - el.clientHeight > 320;
+  if (el.scrollTop < 90 && !loadingOlder.value && messages.value.length >= 20) {
+    loadingOlder.value = true;
+    const before = messages.value[0]?.id;
+    const h0 = el.scrollHeight;
+    store
+      .dispatch('fetchPreviousMessages', {
+        conversationId: currentChat.value.id,
+        before,
+      })
+      ?.finally?.(() => {
+        loadingOlder.value = false;
+        nextTick(() => {
+          el.scrollTop = el.scrollHeight - h0;
+        });
+      });
+  }
+};
+
+const onListScroll = e => {
+  const el = e.target;
+  if (
+    el.scrollHeight - el.scrollTop - el.clientHeight < 240 &&
+    !loadingMore.value
+  ) {
+    loadingMore.value = true;
+    store
+      .dispatch('fetchAllConversations')
+      ?.finally?.(() => {
+        loadingMore.value = false;
+      });
+  }
+};
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
 const isMobile = ref(window.innerWidth <= 768);
 const isLight = ref(false);
 const showArchived = ref(false);
+/* mobile par panel tabhi chhupao jab thread WAQAI khulа ho,
+   warna dono chhup jaate the aur screen kaali ho jaati thi */
+const threadOpen = computed(
+  () => !!props.conversationId && !!currentChat.value?.id
+);
 const LS = k => {
   try {
     return JSON.parse(localStorage.getItem('cs_' + k) || '{}');
@@ -353,6 +398,119 @@ const fwdPick = ref([]);
 const infoMsg = ref(null);
 const lightbox = ref(null);
 const fwdQ = ref('');
+const tq = ref('');
+const showTq = ref(false);
+const emojiQ = ref('');
+const showCanned = ref(false);
+const cannedQ = ref('');
+const cannedList = useMapGetter('getCannedResponses');
+
+const tqHits = computed(() => {
+  const k = tq.value.trim().toLowerCase();
+  if (!k) return [];
+  return messages.value.filter(m =>
+    plain(m.content || '').toLowerCase().includes(k)
+  );
+});
+
+const jumpTo = id => {
+  const el = document.getElementById('csm' + id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1400);
+};
+
+const EMOJI_NAMES = {
+  '👍': 'thumbs up like ok', '❤️': 'heart love red', '😂': 'laugh lol funny',
+  '🙏': 'thanks pray please', '🔥': 'fire hot', '✅': 'check done tick',
+  '❌': 'cross no wrong', '🎉': 'party celebrate', '😊': 'smile happy',
+  '😢': 'sad cry', '😮': 'wow surprised', '💯': 'hundred perfect',
+};
+const emojiHits = computed(() => {
+  const k = emojiQ.value.trim().toLowerCase();
+  if (!k) return EMOJIS;
+  return EMOJIS.filter(e => (EMOJI_NAMES[e] || '').includes(k));
+});
+
+const cannedHits = computed(() => {
+  const k = cannedQ.value.trim().toLowerCase();
+  const L = cannedList.value || [];
+  if (!k) return L.slice(0, 30);
+  return L.filter(c =>
+    `${c.short_code || ''} ${c.content || ''}`.toLowerCase().includes(k)
+  ).slice(0, 30);
+});
+
+const useCanned = c => {
+  draft.value = plain(c.content || '');
+  showCanned.value = false;
+  cannedQ.value = '';
+};
+
+/* "/" likhte hi canned khul jaye */
+watch(draft, v => {
+  if (v === '/') {
+    showCanned.value = true;
+    store.dispatch('getCannedResponse')?.catch?.(() => {});
+  } else if (!v.startsWith('/')) {
+    showCanned.value = false;
+  } else {
+    cannedQ.value = v.slice(1);
+  }
+});
+
+/* drag-drop aur paste */
+const dragOver = ref(false);
+const onDrop = e => {
+  dragOver.value = false;
+  [...(e.dataTransfer?.files || [])].forEach(f =>
+    pendingFiles.value.push({ file: f, name: f.name })
+  );
+};
+const onPaste = e => {
+  const items = [...(e.clipboardData?.items || [])];
+  items.forEach(it => {
+    if (it.kind === 'file') {
+      const f = it.getAsFile();
+      if (f) pendingFiles.value.push({ file: f, name: f.name || 'pasted.png' });
+    }
+  });
+};
+const thumbOf = f => {
+  if (!f.file?.type?.startsWith('image/')) return null;
+  if (!f._url) f._url = URL.createObjectURL(f.file);
+  return f._url;
+};
+
+/* snooze */
+const snooze = hrs => {
+  const c = menu.value.chat;
+  closeMenu();
+  if (!c) return;
+  const until = Math.floor(Date.now() / 1000) + hrs * 3600;
+  store
+    .dispatch('toggleStatus', {
+      conversationId: c.id,
+      status: 'snoozed',
+      snoozedUntil: until,
+    })
+    ?.catch?.(() => {});
+};
+
+/* link preview */
+const firstLink = m => {
+  const t = plain(m.content || '');
+  const mm = t.match(/https?:\/\/[^\s<>"']+/);
+  return mm ? mm[0] : null;
+};
+const hostOf = u => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch (e) {
+    return u;
+  }
+};
 const newLabel = ref('');
 const showAllPills = ref(false);
 const hmenu = ref(false);
@@ -506,6 +664,9 @@ const inboxName = id =>
 
 /* ---------------- actions ---------------- */
 const openChat = c => {
+  if ((c.unread_count || 0) > 0) {
+    store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+  }
   router.push({
     name: 'inbox_conversation',
     params: { accountId: accountId.value, conversation_id: c.id },
@@ -574,6 +735,11 @@ const doSend = () => {
 };
 
 const onKey = e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    doSend();
+    return;
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     doSend();
@@ -596,10 +762,34 @@ const audioFormat = computed(() => {
   return canOgg ? 'audio/ogg' : 'audio/mp3';
 });
 
+const recLocked = ref(false);
+let recTouchY = 0;
+
 const startRec = () => {
   isRecording.value = true;
+  recLocked.value = false;
   recState.value = '';
   recTime.value = '0:00';
+};
+
+/* mobile: mic dabа kar rakho, upar swipe = lock */
+const micDown = e => {
+  if (!isMobile.value) return;
+  recTouchY = e.touches?.[0]?.clientY || 0;
+  startRec();
+};
+const micMove = e => {
+  if (!isRecording.value || recLocked.value) return;
+  const y = e.touches?.[0]?.clientY || 0;
+  if (recTouchY - y > 70) {
+    recLocked.value = true;
+    if (navigator.vibrate) navigator.vibrate(14);
+  }
+};
+const micUp = () => {
+  if (!isMobile.value || !isRecording.value) return;
+  if (recLocked.value) return; // lock hai to chalti rahe
+  finishRec();
 };
 const cancelRec = () => {
   sendAfterRec.value = false;
@@ -655,6 +845,27 @@ const onRecDone = file => {
 
 /* right-click */
 const sub = ref('');
+/* mobile: long press = right click */
+let lpTimer = null;
+let lpMoved = false;
+const lpStart = (e, fn, arg) => {
+  if (!isMobile.value) return;
+  lpMoved = false;
+  const t = e.touches?.[0];
+  const x = t?.clientX || 0;
+  const y = t?.clientY || 0;
+  lpTimer = setTimeout(() => {
+    if (lpMoved) return;
+    if (navigator.vibrate) navigator.vibrate(18);
+    fn({ preventDefault() {}, stopPropagation() {}, clientX: x, clientY: y }, arg);
+  }, 480);
+};
+const lpMove = () => {
+  lpMoved = true;
+  clearTimeout(lpTimer);
+};
+const lpEnd = () => clearTimeout(lpTimer);
+
 const openMenu = (e, c) => {
   e.preventDefault();
   sub.value = '';
@@ -946,6 +1157,28 @@ onMounted(() => {
   store.dispatch('fetchAllConversations');
   document.addEventListener('click', closeMenu);
 
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeMenu();
+      showProfile.value = false;
+      fwdMsg.value = null;
+      infoMsg.value = null;
+      lightbox.value = null;
+      showFilter.value = false;
+      showTq.value = false;
+      showEmoji.value = false;
+      showCanned.value = false;
+      if (selectMode.value) {
+        selectMode.value = false;
+        picked.value = [];
+      }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      document.querySelector('.cs-psr input')?.focus();
+    }
+  });
+
   const onResize = () => {
     isMobile.value = window.innerWidth <= 768;
   };
@@ -1000,11 +1233,26 @@ watch(
   }
 );
 
+watch(
+  () => currentChat.value?.id,
+  () => {
+    const u = currentChat.value?.unread_count || 0;
+    const M = messages.value;
+    firstUnreadId.value =
+      u > 0 && M.length ? M[Math.max(0, M.length - u)]?.id : null;
+    if (currentChat.value?.id && u > 0) {
+      store
+        .dispatch('markMessagesRead', { id: currentChat.value.id })
+        ?.catch?.(() => {});
+    }
+  }
+);
+
 watch(() => messages.value.length, scrollDown);
 </script>
 
 <template>
-  <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: !!conversationId }">
+  <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: threadOpen }">
     <!-- ============ LEFT: CHATS PANEL ============ -->
     <div class="cs-panel">
       <div v-if="selectMode" class="cs-ph cs-phsel">
@@ -1155,7 +1403,7 @@ watch(() => messages.value.length, scrollDown);
         </div>
       </div>
 
-      <div class="cs-list">
+      <div class="cs-list" @scroll="onListScroll">
         <div
           v-if="!q"
           class="cs-arch"
@@ -1177,6 +1425,9 @@ watch(() => messages.value.length, scrollDown);
           }"
           @click="selectMode ? togglePick(c.id) : openChat(c)"
           @contextmenu="openMenu($event, c)"
+          @touchstart="lpStart($event, openMenu, c)"
+          @touchmove="lpMove"
+          @touchend="lpEnd"
         >
           <span
             v-if="selectMode"
@@ -1260,26 +1511,103 @@ watch(() => messages.value.length, scrollDown);
             <span>{{ inboxName(currentChat.inbox_id) }}</span>
           </div>
         </div>
+
+        <span
+          v-if="currentChat.meta?.assignee?.name"
+          class="cs-asg"
+          @click.stop="menu = { open: true, x: 260, y: 90, chat: currentChat, up: false }; sub = 'ag'"
+        >
+          <span class="cs-asgd" />
+          {{ currentChat.meta.assignee.name }}
+        </span>
+        <span
+          v-else
+          class="cs-asg none"
+          @click.stop="menu = { open: true, x: 260, y: 90, chat: currentChat, up: false }; sub = 'ag'"
+        >
+          Unassigned
+        </span>
+
+        <span
+          class="cs-ic i-lucide-search"
+          title="Search in chat"
+          @click.stop="showTq = !showTq"
+        />
+        <span
+          class="cs-ic i-lucide-check"
+          title="Resolve"
+          @click="store.dispatch('toggleStatus', { conversationId: currentChat.id, status: 'resolved' })"
+        />
+        <span
+          class="cs-ic i-lucide-more-vertical"
+          title="More"
+          @click.stop="menu = { open: true, x: window.innerWidth - 250, y: 64, chat: currentChat, up: false }"
+        />
       </div>
 
-      <div ref="threadRef" class="cs-thread">
+      <span
+        v-if="showDown"
+        class="cs-down i-lucide-chevron-down"
+        @click="scrollDown"
+      />
+
+      <div v-if="showTq" class="cs-tqbar">
+        <span class="i-lucide-search" />
+        <input v-model="tq" placeholder="Search in this chat" autofocus />
+        <span class="cs-tqc">{{ tqHits.length }}</span>
+        <span
+          class="i-lucide-x"
+          @click="
+            showTq = false;
+            tq = '';
+          "
+        />
+      </div>
+      <div v-if="showTq && tq" class="cs-tqlist">
+        <div
+          v-for="m in tqHits"
+          :key="m.id"
+          class="cs-tqr"
+          @click="jumpTo(m.id)"
+        >
+          <span class="cs-tqt">{{ clock(m.created_at) }}</span>
+          <span class="cs-tqx">{{ plain(m.content || '') }}</span>
+        </div>
+      </div>
+
+      <div ref="threadRef" class="cs-thread" @scroll="onThreadScroll">
+        <div v-if="loadingOlder" class="cs-older">Loading older…</div>
         <template v-for="b in blocks" :key="b.id">
           <div v-if="b.kind === 'day'" class="cs-day">{{ b.text }}</div>
           <div v-else-if="b.kind === 'sys'" class="cs-sysm">{{ b.text }}</div>
           <div
-            v-else
+            v-if="b.kind === 'msg' && b.m.id === firstUnreadId"
+            class="cs-unrdiv"
+          >
+            <span>Unread messages</span>
+          </div>
+          <div
+            v-if="b.kind === 'msg'"
+            :id="'csm' + b.m.id"
             class="cs-msg"
             :class="[
               b.m.message_type === 1 ? 'out' : 'in',
               { pv: b.m.private, f1: b.first, grp: !b.first },
             ]"
+            @touchstart="lpStart($event, openMsgMenu, b.m)"
+            @touchmove="lpMove"
+            @touchend="lpEnd"
           >
             <div class="cs-bub" @contextmenu="openMsgMenu($event, b.m)">
               <div v-if="b.showName" class="cs-snd">
                 {{ b.m.sender?.name || 'You' }}
               </div>
 
-              <div v-if="quotedOf(b.m)" class="cs-q">
+              <div
+                v-if="quotedOf(b.m)"
+                class="cs-q"
+                @click.stop="jumpTo(quotedOf(b.m).id)"
+              >
                 <div class="cs-qbar" />
                 <div class="cs-qb">
                   <div class="cs-qn">
@@ -1340,6 +1668,16 @@ watch(() => messages.value.length, scrollDown);
               </template>
 
               <div v-if="b.m.content" class="cs-tx" v-html="bodyHtml(b.m)" />
+              <a
+                v-if="firstLink(b.m)"
+                class="cs-lp"
+                :href="firstLink(b.m)"
+                target="_blank"
+                @click.stop
+              >
+                <span class="i-lucide-link-2" />
+                <span class="cs-lph">{{ hostOf(firstLink(b.m)) }}</span>
+              </a>
 
               <div v-if="reactionsOf(b.m).length" class="cs-rx">
                 <span v-for="(r, i) in reactionsOf(b.m)" :key="i" class="cs-rxi">
@@ -1361,7 +1699,14 @@ watch(() => messages.value.length, scrollDown);
         </template>
       </div>
 
-      <div class="cs-comp">
+      <div
+        class="cs-comp"
+        :class="{ drag: dragOver }"
+        @dragover.prevent="dragOver = true"
+        @dragleave="dragOver = false"
+        @drop.prevent="onDrop"
+        @paste="onPaste"
+      >
         <template v-if="isRecording">
           <!-- waveform poori chaudai ki apni patti mein — yahi shakl
                pehle chal rahi thi. Bar ke andar dalne se WaveSurfer
@@ -1385,6 +1730,10 @@ watch(() => messages.value.length, scrollDown);
               :class="{ pz: recState === 'recording-paused' }"
             />
             <span class="cs-rt">{{ recTime }}</span>
+            <span v-if="isMobile && !recLocked" class="cs-lockhint">
+              swipe up to lock ↑
+            </span>
+            <span v-else-if="recLocked" class="cs-lockon i-lucide-lock" />
             <span class="cs-sp" />
             <span
               class="cs-ci"
@@ -1412,15 +1761,36 @@ watch(() => messages.value.length, scrollDown);
           </button>
         </div>
 
-        <div v-if="showEmoji && !isRecording" class="cs-emoji">
-          <span
-            v-for="(e, i) in EMOJIS"
-            :key="i"
-            class="cs-em"
-            @click="addEmoji(e)"
+        <div v-if="showEmoji && !isRecording" class="cs-emojiw">
+          <div class="cs-search cs-emsr">
+            <span class="cs-search__ic i-lucide-search" />
+            <input v-model="emojiQ" placeholder="Search emoji" />
+          </div>
+          <div class="cs-emoji">
+            <span
+              v-for="(e, i) in emojiHits"
+              :key="i"
+              class="cs-em"
+              @click="addEmoji(e)"
+            >
+              {{ e }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="showCanned && !isRecording" class="cs-tplbox">
+          <div v-if="!cannedHits.length" class="cs-tplempty">
+            Koi canned response nahi mila
+          </div>
+          <div
+            v-for="c in cannedHits"
+            :key="c.id"
+            class="cs-tpl"
+            @click="useCanned(c)"
           >
-            {{ e }}
-          </span>
+            <div class="cs-tpln">/{{ c.short_code }}</div>
+            <div class="cs-tplt">{{ plain(c.content || '') }}</div>
+          </div>
         </div>
 
         <div v-if="showTpl && !isRecording" class="cs-tplbox">
@@ -1498,16 +1868,21 @@ watch(() => messages.value.length, scrollDown);
           <span
             v-if="!draft.trim() && !pendingFiles.length"
             class="cs-ci i-lucide-mic"
-            @click="startRec"
+            @click="!isMobile && startRec()"
+            @touchstart.prevent="micDown"
+            @touchmove="micMove"
+            @touchend="micUp"
           />
           <span v-else class="cs-snd2 i-lucide-send" @click="doSend" />
         </div>
 
         <div v-if="pendingFiles.length" class="cs-files">
-          <span v-for="(f, i) in pendingFiles" :key="i" class="cs-fchip">
-            {{ f.name }}
-            <span class="i-lucide-x" @click="pendingFiles.splice(i, 1)" />
-          </span>
+          <div v-for="(f, i) in pendingFiles" :key="i" class="cs-fp">
+            <img v-if="thumbOf(f)" :src="thumbOf(f)" class="cs-fpi" />
+            <span v-else class="cs-fpf i-lucide-file" />
+            <span class="cs-fpn">{{ f.name }}</span>
+            <span class="cs-fpx i-lucide-x" @click="pendingFiles.splice(i, 1)" />
+          </div>
         </div>
       </div>
     </div>
@@ -1913,6 +2288,19 @@ watch(() => messages.value.length, scrollDown);
       </div>
       <div class="cs-mi" @click="act('open')">
         <span class="i-lucide-rotate-ccw" /><span>Reopen</span>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'sn' ? '' : 'sn'"
+      >
+        <span class="i-lucide-alarm-clock" /><span>Snooze</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'sn'" class="cs-sub" @click.stop>
+          <div class="cs-mi" @click.stop="snooze(1)"><span>1 hour</span></div>
+          <div class="cs-mi" @click.stop="snooze(3)"><span>3 hours</span></div>
+          <div class="cs-mi" @click.stop="snooze(12)"><span>Tomorrow</span></div>
+          <div class="cs-mi" @click.stop="snooze(168)"><span>Next week</span></div>
+        </div>
       </div>
       <hr />
       <div
@@ -3742,6 +4130,263 @@ watch(() => messages.value.length, scrollDown);
   background: transparent;
   color: var(--tx2);
   border: 1px solid var(--ln);
+}
+
+/* header quick actions */
+.cs-asg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--tx2);
+  background: var(--fld);
+  padding: 5px 11px;
+  border-radius: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-asg.none {
+  color: var(--tx3);
+}
+.cs-asgd {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--g);
+  flex-shrink: 0;
+}
+
+/* chat ke andar search */
+.cs-tqbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--head);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-tqbar > span {
+  width: 18px;
+  height: 18px;
+  color: var(--tx3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-tqbar input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 14px;
+  font-family: inherit;
+}
+.cs-tqc {
+  font-size: 12px !important;
+  color: var(--g) !important;
+  width: auto !important;
+}
+.cs-tqlist {
+  max-height: 190px;
+  overflow-y: auto;
+  background: var(--panel);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-tqr {
+  display: flex;
+  gap: 12px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tqr:hover {
+  background: var(--hov);
+}
+.cs-tqt {
+  font-size: 11.5px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-tqx {
+  font-size: 13.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* jump flash */
+.cs-msg.flash .cs-bub {
+  animation: csflash 1.3s ease;
+}
+@keyframes csflash {
+  0%,
+  100% {
+    filter: none;
+  }
+  30% {
+    filter: brightness(1.5);
+  }
+}
+
+/* unread divider */
+.cs-unrdiv {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+  color: var(--g);
+  font-size: 12px;
+}
+.cs-unrdiv::before,
+.cs-unrdiv::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--g);
+  opacity: 0.35;
+}
+
+/* scroll down */
+.cs-down {
+  position: absolute;
+  right: 22px;
+  bottom: 96px;
+  width: 22px;
+  height: 22px;
+  padding: 11px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: var(--head);
+  color: var(--tx2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  z-index: 5;
+}
+.cs-main {
+  position: relative;
+}
+.cs-older {
+  align-self: center;
+  font-size: 12px;
+  color: var(--tx3);
+  padding: 6px 0;
+}
+
+/* link preview */
+.cs-lp {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  padding: 7px 9px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--b);
+  font-size: 12.5px;
+}
+.cs-app.lite .cs-lp {
+  background: rgba(0, 0, 0, 0.05);
+}
+.cs-lp span:first-child {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-lph {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* emoji search */
+.cs-emojiw {
+  background: var(--fld);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  overflow: hidden;
+}
+.cs-emsr {
+  margin: 8px 8px 4px !important;
+  background: var(--inp) !important;
+}
+.cs-emojiw .cs-emoji {
+  background: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* attachment preview */
+.cs-fp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--fld);
+  border-radius: 8px;
+  padding: 5px 9px 5px 5px;
+  max-width: 220px;
+}
+.cs-fpi {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.cs-fpf {
+  width: 22px;
+  height: 22px;
+  margin: 6px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-fpn {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--tx2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fpx {
+  width: 15px;
+  height: 15px;
+  color: var(--tx3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-comp.drag {
+  outline: 2px dashed var(--g);
+  outline-offset: -6px;
+}
+
+/* mobile: long press ke liye text select band */
+.cs-app.mob .cs-row,
+.cs-app.mob .cs-msg {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.cs-lockhint {
+  font-size: 11.5px;
+  color: var(--tx3);
+  white-space: nowrap;
+}
+.cs-lockon {
+  width: 15px;
+  height: 15px;
+  color: var(--g);
 }
 
 /* ===== CONTEXT MENU ===== */
