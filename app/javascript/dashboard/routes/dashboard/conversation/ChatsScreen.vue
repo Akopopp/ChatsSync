@@ -7,7 +7,7 @@
    ===================================================================== */
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
 import { emitter } from 'shared/helpers/mitt';
 import { BUS_EVENTS } from 'shared/constants/busEvents';
@@ -21,7 +21,6 @@ const props = defineProps({
 });
 
 const store = useStore();
-const route = useRoute();
 const router = useRouter();
 
 /* ---------------- store ---------------- */
@@ -108,7 +107,7 @@ const onThreadScroll = e => {
         });
       });
     };
-    const r = store.dispatch('fetchPreviousMessages', {
+    const r = safeD('fetchPreviousMessages', {
       conversationId: currentChat.value.id,
       before,
     });
@@ -142,16 +141,25 @@ const showArchived = ref(false);
 const threadOpen = computed(
   () => !!props.conversationId && !!currentChat.value?.id
 );
+/* key mein account id — warna doosre account par purana
+   pin/archive/read data takra jaata hai */
+const lsKey = k => {
+  const aid =
+    accountId.value ||
+    (window.location.pathname.match(/\/accounts\/(\d+)/) || [])[1] ||
+    '0';
+  return `cs_${aid}_${k}`;
+};
 const LS = k => {
   try {
-    return JSON.parse(localStorage.getItem('cs_' + k) || '{}');
+    return JSON.parse(localStorage.getItem(lsKey(k)) || '{}');
   } catch (e) {
     return {};
   }
 };
 const saveLS = (k, v) => {
   try {
-    localStorage.setItem('cs_' + k, JSON.stringify(v));
+    localStorage.setItem(lsKey(k), JSON.stringify(v));
   } catch (e) {
     /* ignore */
   }
@@ -224,7 +232,6 @@ const chipFor = inboxId => {
 };
 
 /* ---------------- list ---------------- */
-const stats = useMapGetter('conversationStats/getStats');
 
 /* har pill ka apna set — count asli conversations se aata hai,
    fake nahi. unread = jitni chats mein bina padhe message hain.
@@ -253,8 +260,19 @@ const setFor = key => {
    chahe API ka unread_count abhi refresh na hua ho */
 const openId = computed(() => Number(props.conversationId) || 0);
 
-const isUnread = c =>
-  (c.unread_count || 0) > 0 && c.id !== openId.value && !readNow.value[c.id];
+/* forceUnread: "Mark as unread" ka sabse upar haq — chahe
+   chat khuli ho ya API kuch bhi kahe */
+const forceUnread = ref(LS('unread'));
+
+const isUnread = c => {
+  if (!c) return false;
+  if (forceUnread.value[c.id]) return true;
+  return (
+    (c.unread_count || 0) > 0 &&
+    c.id !== openId.value &&
+    !readNow.value[c.id]
+  );
+};
 
 const readNow = ref(LS('read'));
 
@@ -415,10 +433,6 @@ const previewOf = c => {
 const lastOf = c =>
   c?.messages?.length ? c.messages[c.messages.length - 1] : null;
 
-const isOut = c => {
-  const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
-  return m?.message_type === 1;
-};
 
 /* ---------------- thread ---------------- */
 const messages = computed(() => currentChat.value?.messages || []);
@@ -505,17 +519,6 @@ const bodyHtml = m => {
 };
 
 const contact = computed(() => currentChat.value?.meta?.sender || {});
-const contactStatus = computed(() => {
-  const c = contact.value;
-  return (
-    c.phone_number ||
-    c.email ||
-    c.identifier ||
-    (inboxesList.value || []).find(i => i.id === currentChat.value?.inbox_id)
-      ?.name ||
-    ''
-  );
-});
 
 /* contact profile drawer */
 const showProfile = ref(false);
@@ -599,8 +602,7 @@ const toggleAgm = () => {
 
 const pickAgent = a => {
   agm.value = false;
-  store
-    .dispatch('assignAgent', {
+  safeD('assignAgent', {
       conversationId: currentChat.value.id,
       agentId: a?.id || null,
     })
@@ -648,7 +650,7 @@ const clearChat = () => {
         }
       }
       toast(`${done} messages cleared`);
-      store.dispatch('getConversation', cid)?.catch?.(() => {});
+      safeD('getConversation', cid)?.catch?.(() => {});
     }
   );
 };
@@ -658,7 +660,7 @@ const tAct = (name, arg) => {
   if (!c) return;
   tmenu.value = false;
   tsub.value = '';
-  const d = (a, p) => store.dispatch(a, p)?.catch?.(() => {});
+  const d = (a, p) => safeD(a, p).catch(() => {});
   if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id });
   else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
   else if (name === 'label') {
@@ -702,15 +704,14 @@ const saveCanned = () => {
     toast('Shortcode and message are required', 'err');
     return;
   }
-  store
-    .dispatch('createCannedResponse', {
+  safeD('createCannedResponse', {
       short_code: c.short_code.trim().replace(/\s+/g, '_'),
       content: c.content,
     })
     ?.then?.(() => {
       toast('Canned response saved');
       newCanned.value = null;
-      store.dispatch('getCannedResponse')?.catch?.(() => {});
+      safeD('getCannedResponse')?.catch?.(() => {});
     })
     ?.catch?.(() => toast('Could not save', 'err'));
 };
@@ -781,7 +782,7 @@ const useCanned = c => {
 watch(draft, v => {
   if (v === '/') {
     showCanned.value = true;
-    store.dispatch('getCannedResponse')?.catch?.(() => {});
+    safeD('getCannedResponse')?.catch?.(() => {});
   } else if (!v.startsWith('/')) {
     showCanned.value = false;
   } else {
@@ -818,8 +819,7 @@ const snooze = hrs => {
   closeMenu();
   if (!c) return;
   const until = Math.floor(Date.now() / 1000) + hrs * 3600;
-  store
-    .dispatch('toggleStatus', {
+  safeD('toggleStatus', {
       conversationId: c.id,
       status: 'snoozed',
       snoozedUntil: until,
@@ -904,11 +904,11 @@ const bulk = name => {
   ids.forEach(id => {
     const c = (allChats.value || []).find(x => x.id === id);
     if (!c) return;
-    if (name === 'read') store.dispatch('markMessagesRead', { id });
+    if (name === 'read') safeD('markMessagesRead', { id });
     else if (name === 'resolved')
-      store.dispatch('toggleStatus', { conversationId: id, status: 'resolved' });
+      safeD('toggleStatus', { conversationId: id, status: 'resolved' });
     else if (name === 'archive') setAttr(c, { cs_archived: true });
-    else if (name === 'delete') store.dispatch('deleteConversation', id);
+    else if (name === 'delete') safeD('deleteConversation', id);
   });
   picked.value = [];
   selectMode.value = false;
@@ -926,7 +926,7 @@ const applySort = k => {
   sortBy.value = k;
   hmenu.value = false;
   hsub.value = '';
-  store.dispatch('setChatSortFilter', k);
+  safeD('setChatSortFilter', k);
 };
 
 const goSettings = () => {
@@ -936,7 +936,7 @@ const goSettings = () => {
 
 const doLogout = () => {
   hmenu.value = false;
-  store.dispatch('logout')?.catch?.(() => {
+  safeD('logout')?.catch?.(() => {
     window.location.href = '/app/login';
   });
 };
@@ -996,6 +996,12 @@ const markRead = c => {
   if (!c) return;
   readNow.value = { ...readNow.value, [c.id]: true };
   saveLS('read', readNow.value);
+  if (forceUnread.value[c.id]) {
+    const f = { ...forceUnread.value };
+    delete f[c.id];
+    forceUnread.value = f;
+    saveLS('unread', f);
+  }
   // store ka object bhi update karo warna API ka purana count
   // pills aur badge mein dikhta rehta hai
   try {
@@ -1003,11 +1009,12 @@ const markRead = c => {
   } catch (e) {
     /* ignore */
   }
-  store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
+  safeD('markMessagesRead', { id: c.id })?.catch?.(() => {});
 };
 
 const openChat = c => {
-  if ((c.unread_count || 0) > 0) markRead(c);
+  // dobara click = padh liya (force unread bhi hat jaata hai)
+  if ((c.unread_count || 0) > 0 || forceUnread.value[c.id]) markRead(c);
   router.push({
     name: 'inbox_conversation',
     params: { accountId: accountId.value, conversation_id: c.id },
@@ -1041,6 +1048,29 @@ const scrollDown = () => {
 
 /* Chatwoot ke version ke hisaab se action ka naam alag hota hai.
    Jo mojood ho wahi use karo — andaza mat lagao. */
+/* Chatwoot ke version ke saath action ke naam badalte hain.
+   Jo mojood na ho uspar Vuex chup-chaap "unknown action type"
+   phenk deta hai aur .then kabhi nahi chalta. Isliye pehle check. */
+const warned = {};
+const has = name => !!(store._actions && store._actions[name]);
+
+const safeD = (name, payload) => {
+  if (!has(name)) {
+    if (!warned[name]) {
+      warned[name] = 1;
+      console.warn('[ChatsSync] action not found:', name);
+    }
+    return Promise.resolve(null);
+  }
+  try {
+    const r = store.dispatch(name, payload);
+    return r && typeof r.then === 'function' ? r : Promise.resolve(r);
+  } catch (e) {
+    console.warn('[ChatsSync] dispatch failed:', name, e);
+    return Promise.reject(e);
+  }
+};
+
 const sendAction = () => {
   const names = Object.keys(store._actions || {});
   return (
@@ -1050,10 +1080,7 @@ const sendAction = () => {
   );
 };
 
-const pushMessage = payload => {
-  const r = store.dispatch(sendAction(), payload);
-  return r && typeof r.then === 'function' ? r : Promise.resolve(r);
-};
+const pushMessage = payload => safeD(sendAction(), payload);
 
 const doSend = () => {
   const text = draft.value.trim();
@@ -1071,6 +1098,7 @@ const doSend = () => {
   if (replyTo.value?.id) {
     payload.contentAttributes = { in_reply_to: replyTo.value.id };
   }
+  if (forceUnread.value[currentChat.value.id]) markRead(currentChat.value);
   const sent = text;
   const files = pendingFiles.value;
   draft.value = '';
@@ -1247,7 +1275,6 @@ const closeMenu = () => {
 };
 
 /* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
-const menuRef = ref(null);
 const fitMenu = el => {
   if (!el) return;
   nextTick(() => {
@@ -1273,7 +1300,7 @@ const setAttr = (c, patch) => {
   if (c.custom_attributes) Object.assign(c.custom_attributes, patch);
   else c.custom_attributes = { ...patch };
 
-  const r = store.dispatch('updateCustomAttributes', {
+  const r = safeD('updateCustomAttributes', {
     conversationId: c.id,
     customAttributes: merged,
   });
@@ -1297,14 +1324,24 @@ const act = (name, arg) => {
   const c = menu.value.chat;
   if (!c) return;
   closeMenu();
-  const d = (a, p) => store.dispatch(a, p)?.catch?.(() => {});
+  const d = (a, p) => safeD(a, p).catch(() => {});
 
   if (name === 'unread') {
     const r = { ...readNow.value };
     delete r[c.id];
     readNow.value = r;
     saveLS('read', r);
+    forceUnread.value = { ...forceUnread.value, [c.id]: true };
+    saveLS('unread', forceUnread.value);
+    if (!(c.unread_count > 0)) {
+      try {
+        c.unread_count = 1;
+      } catch (e) {
+        /* ignore */
+      }
+    }
     d('markMessagesUnread', { id: c.id });
+    toast('Marked as unread');
   }
   else if (name === 'resolved')
     d('toggleStatus', { conversationId: c.id, status: 'resolved' });
@@ -1535,7 +1572,7 @@ onMounted(() => {
     page: 1,
   });
   store.dispatch('setChatStatusFilter', 'all');
-  store.dispatch('fetchAllConversations');
+  safeD('fetchAllConversations');
   document.addEventListener('click', closeMenu);
 
   document.addEventListener('keydown', e => {
@@ -1596,7 +1633,7 @@ watch(
         scrollDown();
       });
     } else if (!c) {
-      store.dispatch('getConversation', id);
+      safeD('getConversation', id);
     }
   },
   { immediate: true }
@@ -1625,7 +1662,7 @@ watch(
     const M = messages.value;
     firstUnreadId.value =
       u > 0 && M.length ? M[Math.max(0, M.length - u)]?.id : null;
-    if (currentChat.value?.id) {
+    if (currentChat.value?.id && !forceUnread.value[currentChat.value.id]) {
       markRead(currentChat.value);
       // list wala object alag ho sakta hai — usay bhi saaf karo
       const inList = (allChats.value || []).find(
@@ -4215,12 +4252,7 @@ watch(
 }
 
 /* submenu ab menu ke upar — chhupta nahi tha */
-.cs-cmenu {
-  overflow: visible !important;
-}
-.cs-cmenu {
-  z-index: 9999;
-}
+
 .cs-sub {
   z-index: 10000 !important;
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.55) !important;
@@ -5665,6 +5697,10 @@ watch(
   line-height: 1;
 }
 /* ===== CONTEXT MENU ===== */
+/* desktop: overflow visible taake submenu flyout kata na jaye —
+   fitMenu menu ko khud screen ke andar khinch leta hai.
+   mobile: submenu andar khulta hai, isliye wahan scroll safe hai
+   (neeche media query mein). */
 .cs-cmenu {
   position: fixed;
   z-index: 9999;
@@ -5673,8 +5709,7 @@ watch(
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
   padding: 7px 0;
   min-width: 224px;
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
+  overflow: visible;
   overscroll-behavior: contain;
 }
 .cs-cmenu::-webkit-scrollbar {
