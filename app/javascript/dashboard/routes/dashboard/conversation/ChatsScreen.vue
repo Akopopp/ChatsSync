@@ -72,6 +72,8 @@ const showDown = ref(false);
 const firstUnreadId = ref(null);
 
 const atBottom = ref(true);
+const noMoreOlder = ref(false);
+let lastFetch = 0;
 
 const onThreadScroll = e => {
   const el = e.target;
@@ -79,7 +81,14 @@ const onThreadScroll = e => {
   atBottom.value = gap < 80;
   showDown.value = gap > 320;
 
-  if (el.scrollTop < 120 && !loadingOlder.value && messages.value.length >= 15) {
+  if (
+    el.scrollTop < 120 &&
+    !loadingOlder.value &&
+    !noMoreOlder.value &&
+    Date.now() - lastFetch > 900 &&
+    messages.value.length >= 15
+  ) {
+    lastFetch = Date.now();
     loadingOlder.value = true;
     const before = messages.value[0]?.id;
     const h0 = el.scrollHeight;
@@ -87,9 +96,12 @@ const onThreadScroll = e => {
     // smooth scroll ko band karo warna position bahal karte waqt
     // browser animate karta hai aur chat upar-neeche koodti hai
     el.style.scrollBehavior = 'auto';
+    const n0 = messages.value.length;
     const done = () => {
       nextTick(() => {
         requestAnimationFrame(() => {
+          // kuch naya nahi aaya -> aur purane hain hi nahi, ab mat poochho
+          if (messages.value.length === n0) noMoreOlder.value = true;
           el.scrollTop = t0 + (el.scrollHeight - h0);
           el.style.scrollBehavior = '';
           loadingOlder.value = false;
@@ -1174,6 +1186,10 @@ const closeMenu = () => {
   hsub.value = '';
   tmenu.value = false;
   tsub.value = '';
+  agm.value = false;
+  showEmoji.value = false;
+  showTpl.value = false;
+  showCanned.value = false;
 };
 
 /* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
@@ -1542,6 +1558,8 @@ watch(
   () => currentChat.value?.id,
   () => {
     atBottom.value = true;
+    noMoreOlder.value = false;
+    lastFetch = 0;
     lastCount = 0;
     const u = currentChat.value?.unread_count || 0;
     const M = messages.value;
@@ -5027,11 +5045,13 @@ watch(
 }
 
 /* header icons: screenshot ke naap */
-.cs-th .cs-ic {
-  width: 14px;
-  height: 14px;
-  padding: 9px;
-  box-sizing: content-box;
+.cs-th .cs-ic,
+.cs-th span.cs-ic {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  padding: 8px !important;
+  box-sizing: content-box !important;
 }
 
 /* message select */
@@ -5058,31 +5078,33 @@ watch(
 }
 
 /* scroll-down: chhota aur saaf */
+/* dark theme -> HALKA button | light theme -> GEHRA button */
 .cs-down {
   position: absolute;
   right: 22px;
   bottom: 108px;
   width: 18px !important;
   height: 18px !important;
-  padding: 10px !important;
+  padding: 11px !important;
   box-sizing: content-box;
   border-radius: 50%;
-  background: var(--panel);
-  color: var(--tx2);
-  border: 1px solid var(--ln);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  background: #e9edef;
+  color: #111b21;
+  border: none;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   z-index: 6;
 }
 .cs-down:hover {
-  color: var(--g);
-  border-color: var(--g);
+  background: #ffffff;
 }
 .cs-app.lite .cs-down {
-  background: #ffffff;
-  color: #54656f;
-  border-color: #d9dfe2;
-  box-shadow: 0 2px 10px rgba(11, 20, 26, 0.16);
+  background: #202c33;
+  color: #e9edef;
+  box-shadow: 0 3px 12px rgba(11, 20, 26, 0.3);
+}
+.cs-app.lite .cs-down:hover {
+  background: #111b21;
 }
 @media (max-width: 768px) {
   .cs-down {
