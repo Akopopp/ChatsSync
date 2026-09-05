@@ -1146,6 +1146,16 @@ const doSend = () => {
     });
 };
 
+/* textarea likhne ke saath khud bara ho — WhatsApp jaisa */
+const growBox = () => {
+  const el = document.querySelector('.cs-cin');
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 132) + 'px';
+};
+
+watch(draft, () => nextTick(growBox));
+
 const onKey = e => {
   if (e.key !== 'Enter') return;
   // Ctrl/Cmd+Enter hamesha bhejta hai
@@ -1269,6 +1279,18 @@ const closeAll = () => {
   sub.value = '';
   hsub.value = '';
   tsub.value = '';
+};
+
+/* Chatwoot ka mobile sidebar khol do — uska apna floating
+   button hum chhupa dete hain (target design mein hamburger
+   header ke andar hai, neeche tairta hua button nahi) */
+const openRail = () => {
+  const b =
+    document.querySelector('#mobile-sidebar-launcher') ||
+    document.querySelector('[data-testid="mobile-sidebar-launcher"]') ||
+    document.querySelector('button[aria-label*="sidebar" i]');
+  if (b) b.click();
+  else toast('Menu button not found', 'err');
 };
 
 const toggleHm = () => {
@@ -1822,6 +1844,17 @@ watch(
       </div>
 
       <div v-else class="cs-ph">
+        <span
+          v-if="isMobile"
+          class="cs-ic cs-ham"
+          title="Menu"
+          @click.stop="openRail"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+            <path d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+        </span>
         <h1>Chats</h1>
         <span class="cs-ic" title="Menu" @click.stop="toggleHm">
           <svg
@@ -2677,6 +2710,7 @@ watch(
             rows="1"
             :placeholder="isNote ? 'Private note...' : 'Type a message'"
             @keydown="onKey"
+            @input="growBox"
           />
           <span
             v-if="!draft.trim() && !pendingFiles.length"
@@ -4099,11 +4133,15 @@ watch(
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
   padding: 11px 17px;
   min-height: 48px;
   width: 100%;
+}
+.cs-cbar .cs-ci,
+.cs-cbar .cs-snd2 {
+  margin-bottom: 1px;
 }
 .cs-ci {
   width: 23px;
@@ -4122,6 +4160,7 @@ watch(
   flex: 1 1 0 !important;
   width: auto !important;
   min-width: 0;
+  overflow-y: auto;
   background: none !important;
   border: none !important;
   outline: none !important;
@@ -4135,10 +4174,10 @@ watch(
   margin: 0 !important;
   height: 21px;
   min-height: 21px;
-  max-height: 105px;
+  max-height: 132px;
   display: block;
-  overflow-y: auto;
   align-self: center;
+  transition: height 0.08s ease;
 }
 .cs-cin::placeholder {
   color: var(--tx3);
@@ -5798,6 +5837,22 @@ watch(
   border-radius: 3px;
 }
 
+/* mobile: Chatwoot ka tairta hua hamburger chhupao —
+   hamara header wala hamburger uski jagah lega */
+@media (max-width: 768px) {
+  :global(#mobile-sidebar-launcher),
+  :global([data-testid='mobile-sidebar-launcher']) {
+    display: none !important;
+  }
+}
+.cs-ham {
+  margin-right: 2px;
+}
+.cs-ph .cs-ham > svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
 /* ===== CONTEXT MENU ===== */
 /* desktop: overflow visible taake submenu flyout kata na jaye —
    fitMenu menu ko khud screen ke andar khinch leta hai.
@@ -5811,7 +5866,9 @@ watch(
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
   padding: 7px 0;
   min-width: 224px;
-  overflow: visible;
+  max-height: min(78vh, calc(100vh - 24px));
+  overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
 }
 .cs-cmenu::-webkit-scrollbar {
