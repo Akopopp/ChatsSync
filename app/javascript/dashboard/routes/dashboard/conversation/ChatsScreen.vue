@@ -246,8 +246,16 @@ const setFor = key => {
   return L;
 };
 
-const unreadIn = key =>
-  setFor(key).filter(c => (c.unread_count || 0) > 0).length;
+/* jo chat abhi khuli hai woh padhi hui hai — usay unread mat gino,
+   chahe API ka unread_count abhi refresh na hua ho */
+const openId = computed(() => Number(props.conversationId) || 0);
+
+const isUnread = c =>
+  (c.unread_count || 0) > 0 && c.id !== openId.value && !readNow.value[c.id];
+
+const readNow = ref({});
+
+const unreadIn = key => setFor(key).filter(isUnread).length;
 
 const totalIn = key => setFor(key).length;
 
@@ -308,7 +316,7 @@ const rows = computed(() => {
   }
 
   const f = filt.value;
-  if (f === 'unread') L = L.filter(c => (c.unread_count || 0) > 0);
+  if (f === 'unread') L = L.filter(isUnread);
   else if (f === 'mine')
     L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
   else if (f === 'unassigned') L = L.filter(c => !c.meta?.assignee);
@@ -981,6 +989,7 @@ const inboxName = id =>
 /* ---------------- actions ---------------- */
 const openChat = c => {
   if ((c.unread_count || 0) > 0) {
+    readNow.value = { ...readNow.value, [c.id]: true };
     store.dispatch('markMessagesRead', { id: c.id })?.catch?.(() => {});
   }
   router.push({
@@ -1594,10 +1603,13 @@ watch(
     const M = messages.value;
     firstUnreadId.value =
       u > 0 && M.length ? M[Math.max(0, M.length - u)]?.id : null;
-    if (currentChat.value?.id && u > 0) {
-      store
-        .dispatch('markMessagesRead', { id: currentChat.value.id })
-        ?.catch?.(() => {});
+    if (currentChat.value?.id) {
+      readNow.value = { ...readNow.value, [currentChat.value.id]: true };
+      if (u > 0) {
+        store
+          .dispatch('markMessagesRead', { id: currentChat.value.id })
+          ?.catch?.(() => {});
+      }
     }
   }
 );
@@ -1800,7 +1812,7 @@ watch(
           class="cs-row"
           :class="{
             on: Number(conversationId) === c.id,
-            unrd: (c.unread_count || 0) > 0,
+            unrd: isUnread(c),
           }"
           @click="selectMode ? togglePick(c.id) : openChat(c)"
           @contextmenu="openMenu($event, c)"
@@ -1850,7 +1862,7 @@ watch(
               <span class="cs-m">{{ previewOf(c) }}</span>
               <span v-if="isMuted(c)" class="cs-mk i-lucide-bell-off" />
               <span v-if="isPinned(c)" class="cs-mk i-lucide-pin" />
-              <span v-if="(c.unread_count || 0) > 0" class="cs-un">
+              <span v-if="isUnread(c)" class="cs-un">
                 {{ c.unread_count }}
               </span>
             </div>
@@ -1954,11 +1966,21 @@ watch(
           </div>
         </div>
 
-        <span
-          class="cs-ic i-lucide-search"
-          title="Search in chat"
-          @click.stop="showTq = !showTq"
-        />
+        <span class="cs-ic" title="Search in chat" @click.stop="showTq = !showTq">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </span>
         <span
           class="cs-ic i-lucide-more-vertical"
           title="More"
@@ -5075,6 +5097,17 @@ watch(
 }
 
 /* header icons: screenshot ke naap */
+.cs-th .cs-ic > svg {
+  width: 15px !important;
+  height: 15px !important;
+  display: block;
+}
+.cs-th .cs-ic:has(svg) {
+  width: 15px !important;
+  height: 15px !important;
+  display: grid;
+  place-items: center;
+}
 .cs-th .cs-ic,
 .cs-th span.cs-ic,
 .cs-th .i-lucide-search,
