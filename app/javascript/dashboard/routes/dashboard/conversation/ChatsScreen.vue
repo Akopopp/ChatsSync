@@ -1016,6 +1016,7 @@ watch(() => messages.value.length, scrollDown);
           "
         />
         <h1 class="cs-selh">{{ picked.length }} selected</h1>
+        <div class="cs-sbrow">
         <button
           class="cs-sb"
           :disabled="!picked.length"
@@ -1048,6 +1049,7 @@ watch(() => messages.value.length, scrollDown);
           <span class="i-lucide-trash-2" />
           <span>Delete</span>
         </button>
+        </div>
       </div>
 
       <div v-else class="cs-ph">
@@ -1301,12 +1303,24 @@ watch(() => messages.value.length, scrollDown);
                     class="cs-img"
                     @click.stop="lightbox = aUrl(a)"
                   />
-                  <AudioChip
+                  <div
                     v-else-if="aType(a) === 'audio' && aUrl(a)"
-                    :attachment="attach(a)"
-                    :show-transcribed-text="false"
-                    class="cs-aud"
-                  />
+                    class="cs-audwrap"
+                  >
+                    <AudioChip
+                      :attachment="attach(a)"
+                      :show-transcribed-text="false"
+                      class="cs-aud"
+                    />
+                    <a
+                      class="cs-auddl i-lucide-download"
+                      :href="aUrl(a)"
+                      :download="a.file_name || a.fileName || 'voice.ogg'"
+                      target="_blank"
+                      title="Download"
+                      @click.stop
+                    />
+                  </div>
                   <video
                     v-else-if="aType(a) === 'video' && aUrl(a)"
                     :src="aUrl(a)"
@@ -1826,6 +1840,7 @@ watch(() => messages.value.length, scrollDown);
     <!-- ============ MESSAGE MENU ============ -->
     <div
       v-if="mmenu.open"
+      :ref="fitMenu"
       class="cs-cmenu"
       :style="{ left: mmenu.x + 'px', top: mmenu.y + 'px' }"
       @click.stop
@@ -2629,12 +2644,26 @@ watch(() => messages.value.length, scrollDown);
   border-radius: 8px;
   margin-bottom: 6px;
 }
-.cs-aud {
-  min-width: 210px;
-  display: block;
-  margin-bottom: 2px;
-}
 /* ===== VOICE bubble — WhatsApp jaisa ===== */
+.cs-audwrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+.cs-auddl {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.5;
+  cursor: pointer;
+  align-self: center;
+  transition: opacity 0.12s;
+}
+.cs-auddl:hover {
+  opacity: 0.95;
+}
 .cs-aud {
   width: 100%;
   min-width: 0;
@@ -2647,7 +2676,7 @@ watch(() => messages.value.length, scrollDown);
   width: min(330px, 100%);
 }
 .cs-msg:has(.cs-aud) .cs-bub {
-  padding: 8px 10px 7px;
+  padding: 8px 10px 20px;
   min-width: 0;
   width: 100%;
 }
@@ -3541,8 +3570,19 @@ watch(() => messages.value.length, scrollDown);
   letter-spacing: 0 !important;
 }
 .cs-phsel {
-  gap: 6px;
+  gap: 8px;
   padding: 13px 14px 10px;
+  flex-wrap: wrap;
+}
+.cs-phsel .cs-selh {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cs-phsel .cs-sbrow {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 7px;
+  margin-top: 2px;
 }
 .cs-sb {
   display: flex;
@@ -3874,5 +3914,88 @@ watch(() => messages.value.length, scrollDown);
   margin: 6px 0;
   border: none;
   border-top: 1px solid var(--ln);
+}
+</style>
+
+<style>
+/* NON-SCOPED: chips/Audio.vue ki apni scoped CSS ko sirf isi
+   tareeqe se hara sakte hain. Ye rules sirf .cs-aud ke andar
+   lagti hain, isliye baqi app par asar nahi. */
+.cs-aud .cs-voice__row {
+  gap: 11px !important;
+  align-items: center !important;
+}
+.cs-aud .cs-voice__play {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  flex: 0 0 40px !important;
+  opacity: 1 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.13) !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+}
+.cs-app.lite .cs-aud .cs-voice__play {
+  background: rgba(0, 0, 0, 0.07) !important;
+}
+.cs-aud .cs-voice__play svg,
+.cs-aud .cs-voice__play span,
+.cs-aud .cs-voice__play i {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  font-size: 24px !important;
+}
+.cs-aud .cs-voice__wave {
+  height: 30px !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+  overflow: hidden !important;
+}
+.cs-aud .cs-voice__bar {
+  min-width: 2px !important;
+  border-radius: 999px !important;
+  opacity: 0.4;
+}
+.cs-aud .cs-voice__bar--on {
+  opacity: 1;
+  background: #53bdeb !important;
+}
+.cs-app.lite .cs-aud .cs-voice__bar--on {
+  background: #027eb5 !important;
+}
+.cs-aud .cs-voice__meta {
+  padding-left: 51px !important;
+  margin-top: 3px !important;
+  gap: 8px !important;
+}
+.cs-aud .cs-voice__time {
+  font-size: 11.5px !important;
+  opacity: 0.8 !important;
+}
+.cs-aud .cs-voice__speed {
+  font-size: 11px !important;
+  opacity: 0.65 !important;
+}
+.cs-aud .cs-voice__dl {
+  display: grid !important;
+  place-items: center !important;
+  width: 17px !important;
+  height: 17px !important;
+  opacity: 0.45 !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: opacity 0.12s;
+}
+.cs-aud .cs-voice__dl:hover {
+  opacity: 0.95 !important;
+}
+.cs-aud .cs-voice__dl svg,
+.cs-aud .cs-voice__dl span {
+  width: 15px !important;
+  height: 15px !important;
 }
 </style>
