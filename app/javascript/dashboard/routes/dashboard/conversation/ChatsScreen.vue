@@ -400,6 +400,62 @@ const lightbox = ref(null);
 const fwdQ = ref('');
 const tq = ref('');
 const showTq = ref(false);
+const tmenu = ref(false);
+const tsub = ref('');
+const msgSelect = ref(false);
+const msgPicked = ref([]);
+
+const exportChat = () => {
+  tmenu.value = false;
+  const lines = messages.value.map(m => {
+    const who =
+      m.message_type === 1 ? m.sender?.name || 'Agent' : contact.value.name || 'Customer';
+    const t = `${dayLabel(m.created_at)} ${clock(m.created_at)}`;
+    const body = plain(m.content || '') || `[${aType(m.attachments?.[0] || {})}]`;
+    return `[${t}] ${who}: ${body}`;
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${contact.value.name || 'chat'}-${currentChat.value.id}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+const clearChat = () => {
+  tmenu.value = false;
+  if (!confirm('Is chat ke saare messages hata dein? (sirf dashboard se)')) return;
+  messages.value.forEach(m => {
+    store
+      .dispatch('deleteMessage', {
+        conversationId: currentChat.value.id,
+        messageId: m.id,
+      })
+      ?.catch?.(() => {});
+  });
+};
+
+const tAct = (name, arg) => {
+  const c = currentChat.value;
+  if (!c) return;
+  tmenu.value = false;
+  tsub.value = '';
+  const d = (a, p) => store.dispatch(a, p)?.catch?.(() => {});
+  if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id });
+  else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
+  else if (name === 'label') {
+    const cur = c.labels || [];
+    const next = cur.includes(arg) ? cur.filter(x => x !== arg) : [...cur, arg];
+    d('setLabels', { conversationId: c.id, labels: next });
+  } else if (name === 'mute') {
+    const m = !isMuted(c);
+    d(m ? 'muteConversation' : 'unmuteConversation', c.id);
+    muted.value = { ...muted.value, [c.id]: m };
+    saveLS('mute', muted.value);
+  } else if (name === 'resolved')
+    d('toggleStatus', { conversationId: c.id, status: 'resolved' });
+  else if (name === 'delete') d('deleteConversation', c.id);
+};
 const emojiQ = ref('');
 const showCanned = ref(false);
 const cannedQ = ref('');
@@ -688,7 +744,13 @@ const onRecError = () => {
 
 const scrollDown = () => {
   nextTick(() => {
-    if (threadRef.value) threadRef.value.scrollTop = threadRef.value.scrollHeight;
+    const el = threadRef.value;
+    if (!el) return;
+    el.style.scrollBehavior = 'auto';
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      el.style.scrollBehavior = '';
+    });
   });
 };
 
@@ -764,6 +826,7 @@ const audioFormat = computed(() => {
 
 const recLocked = ref(false);
 let recTouchY = 0;
+let touchUsed = false;
 
 const startRec = () => {
   isRecording.value = true;
@@ -772,24 +835,35 @@ const startRec = () => {
   recTime.value = '0:00';
 };
 
-/* mobile: mic dabа kar rakho, upar swipe = lock */
+/* mobile: mic dabа kar rakho -> record, upar swipe -> lock,
+   ungli uthao -> bhej do (lock na ho to). Click event ko nahi
+   rokte, sirf flag se double-fire band karte hain. */
 const micDown = e => {
-  if (!isMobile.value) return;
+  touchUsed = true;
   recTouchY = e.touches?.[0]?.clientY || 0;
+  recLocked.value = false;
   startRec();
 };
 const micMove = e => {
   if (!isRecording.value || recLocked.value) return;
   const y = e.touches?.[0]?.clientY || 0;
-  if (recTouchY - y > 70) {
+  if (recTouchY - y > 60) {
     recLocked.value = true;
     if (navigator.vibrate) navigator.vibrate(14);
   }
 };
 const micUp = () => {
-  if (!isMobile.value || !isRecording.value) return;
-  if (recLocked.value) return; // lock hai to chalti rahe
+  if (!isRecording.value) return;
+  if (recLocked.value) return;
   finishRec();
+};
+const micClick = () => {
+  // touch chala tha to click ignore karo
+  if (touchUsed) {
+    touchUsed = false;
+    return;
+  }
+  startRec();
 };
 const cancelRec = () => {
   sendAfterRec.value = false;
@@ -866,9 +940,30 @@ const lpMove = () => {
 };
 const lpEnd = () => clearTimeout(lpTimer);
 
+const closeAll = () => {
+  menu.value.open = false;
+  mmenu.value.open = false;
+  hmenu.value = false;
+  tmenu.value = false;
+  sub.value = '';
+  hsub.value = '';
+  tsub.value = '';
+};
+
+const toggleHm = () => {
+  const w = hmenu.value;
+  closeAll();
+  hmenu.value = !w;
+};
+const toggleTm = () => {
+  const w = tmenu.value;
+  closeAll();
+  tmenu.value = !w;
+};
+
 const openMenu = (e, c) => {
   e.preventDefault();
-  sub.value = '';
+  closeAll();
   const H = 470; // menu ki taqreeban unchai
   const y = Math.max(8, Math.min(e.clientY, window.innerHeight - H - 8));
   menu.value = {
@@ -885,6 +980,8 @@ const closeMenu = () => {
   sub.value = '';
   hmenu.value = false;
   hsub.value = '';
+  tmenu.value = false;
+  tsub.value = '';
 };
 
 /* menu render hone ke baad asli naap le kar screen ke andar khinch lo */
@@ -1021,6 +1118,7 @@ const mmenu = ref({ open: false, x: 0, y: 0, msg: null });
 const openMsgMenu = (e, m) => {
   e.preventDefault();
   e.stopPropagation();
+  closeAll();
   mmenu.value = {
     open: true,
     x: Math.max(8, Math.min(e.clientX, window.innerWidth - 224)),
@@ -1302,7 +1400,7 @@ watch(() => messages.value.length, scrollDown);
 
       <div v-else class="cs-ph">
         <h1>Chats</h1>
-        <span class="cs-ic i-lucide-more-vertical" @click.stop="hmenu = !hmenu" />
+        <span class="cs-ic i-lucide-more-vertical" @click.stop="toggleHm" />
         <div
           v-if="hmenu"
           :ref="fitHm"
@@ -1534,15 +1632,133 @@ watch(() => messages.value.length, scrollDown);
           @click.stop="showTq = !showTq"
         />
         <span
-          class="cs-ic i-lucide-check"
-          title="Resolve"
-          @click="store.dispatch('toggleStatus', { conversationId: currentChat.id, status: 'resolved' })"
-        />
-        <span
           class="cs-ic i-lucide-more-vertical"
           title="More"
-          @click.stop="menu = { open: true, x: window.innerWidth - 250, y: 64, chat: currentChat, up: false }"
+          @click.stop="toggleTm"
         />
+
+        <div v-if="tmenu" class="cs-tm" @click.stop>
+          <div class="cs-mi" @click="tmenu = false; showProfile = true">
+            <span class="i-lucide-info" /><span>Contact info</span>
+          </div>
+          <div class="cs-mi" @click="tmenu = false; showTq = true">
+            <span class="i-lucide-search" /><span>Search in chat</span>
+          </div>
+          <div
+            class="cs-mi"
+            @click="
+              tmenu = false;
+              msgSelect = true;
+              msgPicked = [];
+            "
+          >
+            <span class="i-lucide-check-square" /><span>Select messages</span>
+          </div>
+          <hr />
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="tsub = tsub === 'ag' ? '' : 'ag'"
+          >
+            <span class="i-lucide-user" /><span>Assign agent</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="tsub === 'ag'" class="cs-sub cs-sub--tall left" @click.stop>
+              <div class="cs-mi" @click.stop="tAct('agent', { id: null })">
+                <span>Unassign</span>
+              </div>
+              <div
+                v-for="a in agentsList"
+                :key="a.id"
+                class="cs-mi"
+                @click.stop="tAct('agent', a)"
+              >
+                <span>{{ a.name }}</span>
+              </div>
+            </div>
+          </div>
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="tsub = tsub === 'tm' ? '' : 'tm'"
+          >
+            <span class="i-lucide-users" /><span>Assign team</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="tsub === 'tm'" class="cs-sub cs-sub--tall left" @click.stop>
+              <div
+                v-for="t in teamsList"
+                :key="t.id"
+                class="cs-mi"
+                @click.stop="tAct('team', t)"
+              >
+                <span>{{ t.name }}</span>
+              </div>
+              <div v-if="!teamsList.length" class="cs-mi"><span>No teams</span></div>
+            </div>
+          </div>
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="tsub = tsub === 'lb' ? '' : 'lb'"
+          >
+            <span class="i-lucide-tag" /><span>Add label</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="tsub === 'lb'" class="cs-sub cs-sub--tall left" @click.stop>
+              <div class="cs-lbnew">
+                <input
+                  v-model="newLabel"
+                  placeholder="New label..."
+                  @keydown.enter.stop="
+                    menu.chat = currentChat;
+                    act('newlabel');
+                    tmenu = false;
+                  "
+                  @click.stop
+                />
+                <span
+                  class="i-lucide-plus"
+                  @click.stop="
+                    menu.chat = currentChat;
+                    act('newlabel');
+                    tmenu = false;
+                  "
+                />
+              </div>
+              <div
+                v-for="l in labelsList"
+                :key="l.id"
+                class="cs-mi"
+                @click.stop="tAct('label', l.title)"
+              >
+                <span class="cs-pld" :style="{ background: l.color }" />
+                <span>{{ l.title }}</span>
+                <span
+                  v-if="(currentChat.labels || []).includes(l.title)"
+                  class="cs-arw i-lucide-check"
+                />
+              </div>
+              <div v-if="!labelsList.length" class="cs-mi">
+                <span>Upar likh kar naya banao</span>
+              </div>
+            </div>
+          </div>
+          <hr />
+          <div class="cs-mi" @click="tAct('mute')">
+            <span class="i-lucide-bell-off" />
+            <span>
+              {{ isMuted(currentChat) ? 'Unmute notifications' : 'Mute notifications' }}
+            </span>
+          </div>
+          <div class="cs-mi" @click="exportChat">
+            <span class="i-lucide-download" /><span>Export chat</span>
+          </div>
+          <div class="cs-mi" @click="tAct('resolved')">
+            <span class="i-lucide-check" /><span>Mark as resolved</span>
+          </div>
+          <hr />
+          <div class="cs-mi danger" @click="clearChat">
+            <span class="i-lucide-eraser" /><span>Clear chat</span>
+          </div>
+          <div class="cs-mi danger" @click="tAct('delete')">
+            <span class="i-lucide-trash-2" /><span>Delete conversation</span>
+          </div>
+        </div>
       </div>
 
       <span
@@ -1550,6 +1766,51 @@ watch(() => messages.value.length, scrollDown);
         class="cs-down i-lucide-chevron-down"
         @click="scrollDown"
       />
+
+      <div v-if="msgSelect" class="cs-msel">
+        <span
+          class="cs-ic i-lucide-x"
+          @click="
+            msgSelect = false;
+            msgPicked = [];
+          "
+        />
+        <span class="cs-mselc">{{ msgPicked.length }} selected</span>
+        <button
+          class="cs-sb"
+          :disabled="!msgPicked.length"
+          @click="
+            copyText(
+              messages
+                .filter(m => msgPicked.includes(m.id))
+                .map(m => plain(m.content || ''))
+                .join('\n')
+            );
+            msgSelect = false;
+            msgPicked = [];
+          "
+        >
+          <span class="i-lucide-copy" /><span>Copy</span>
+        </button>
+        <button
+          class="cs-sb dgr"
+          :disabled="!msgPicked.length"
+          @click="
+            msgPicked.forEach(id =>
+              store
+                .dispatch('deleteMessage', {
+                  conversationId: currentChat.id,
+                  messageId: id,
+                })
+                ?.catch?.(() => {})
+            );
+            msgSelect = false;
+            msgPicked = [];
+          "
+        >
+          <span class="i-lucide-trash-2" /><span>Delete</span>
+        </button>
+      </div>
 
       <div v-if="showTq" class="cs-tqbar">
         <span class="i-lucide-search" />
@@ -1589,10 +1850,22 @@ watch(() => messages.value.length, scrollDown);
           <div
             v-if="b.kind === 'msg'"
             :id="'csm' + b.m.id"
+            @click="
+              msgSelect
+                ? msgPicked.includes(b.m.id)
+                  ? msgPicked.splice(msgPicked.indexOf(b.m.id), 1)
+                  : msgPicked.push(b.m.id)
+                : null
+            "
             class="cs-msg"
             :class="[
               b.m.message_type === 1 ? 'out' : 'in',
-              { pv: b.m.private, f1: b.first, grp: !b.first },
+              {
+                pv: b.m.private,
+                f1: b.first,
+                grp: !b.first,
+                msel: msgSelect && msgPicked.includes(b.m.id),
+              },
             ]"
             @touchstart="lpStart($event, openMsgMenu, b.m)"
             @touchmove="lpMove"
@@ -1730,8 +2003,12 @@ watch(() => messages.value.length, scrollDown);
               :class="{ pz: recState === 'recording-paused' }"
             />
             <span class="cs-rt">{{ recTime }}</span>
-            <span v-if="isMobile && !recLocked" class="cs-lockhint">
-              swipe up to lock ↑
+            <span
+              v-if="isMobile && !recLocked"
+              class="cs-lockhint"
+              @click="recLocked = true"
+            >
+              ↑ lock
             </span>
             <span v-else-if="recLocked" class="cs-lockon i-lucide-lock" />
             <span class="cs-sp" />
@@ -1868,10 +2145,11 @@ watch(() => messages.value.length, scrollDown);
           <span
             v-if="!draft.trim() && !pendingFiles.length"
             class="cs-ci i-lucide-mic"
-            @click="!isMobile && startRec()"
-            @touchstart.prevent="micDown"
+            @click="micClick"
+            @touchstart="micDown"
             @touchmove="micMove"
             @touchend="micUp"
+            @touchcancel="micUp"
           />
           <span v-else class="cs-snd2 i-lucide-send" @click="doSend" />
         </div>
@@ -4256,21 +4534,6 @@ watch(() => messages.value.length, scrollDown);
 }
 
 /* scroll down */
-.cs-down {
-  position: absolute;
-  right: 22px;
-  bottom: 96px;
-  width: 22px;
-  height: 22px;
-  padding: 11px;
-  box-sizing: content-box;
-  border-radius: 50%;
-  background: var(--head);
-  color: var(--tx2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-  z-index: 5;
-}
 .cs-main {
   position: relative;
 }
@@ -4387,6 +4650,144 @@ watch(() => messages.value.length, scrollDown);
   width: 15px;
   height: 15px;
   color: var(--g);
+}
+
+/* thread ka apna menu — button ke neeche, DAAYEN taraf */
+.cs-th {
+  position: relative;
+}
+.cs-tm {
+  position: absolute;
+  top: 50px;
+  right: 12px;
+  z-index: 70;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  min-width: 240px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  overflow: visible;
+}
+.cs-app.lite .cs-tm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+/* submenu andar ki taraf khule, screen se bahar nahi */
+.cs-sub.left {
+  left: auto !important;
+  right: calc(100% + 4px) !important;
+}
+
+/* header icons: screenshot ke naap */
+.cs-th .cs-ic {
+  width: 20px;
+  height: 20px;
+  padding: 8px;
+  box-sizing: content-box;
+}
+
+/* message select */
+.cs-msel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--head);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-mselc {
+  flex: 1;
+  font-size: 14px;
+  color: var(--tx);
+}
+.cs-msg.msel .cs-bub {
+  outline: 2px solid var(--g);
+  outline-offset: 2px;
+}
+.cs-msg.msel {
+  opacity: 0.92;
+}
+
+/* scroll-down: chhota aur saaf */
+.cs-down {
+  position: absolute;
+  right: 20px;
+  bottom: 92px;
+  width: 18px !important;
+  height: 18px !important;
+  padding: 9px !important;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: var(--head);
+  color: var(--tx2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  z-index: 5;
+  opacity: 0.92;
+}
+.cs-down:hover {
+  opacity: 1;
+  color: var(--tx);
+}
+
+/* ===== MOBILE MENUS ===== */
+@media (max-width: 768px) {
+  .cs-sub,
+  .cs-sub.left,
+  .cs-sub--tall {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: var(--menu-hov) !important;
+    padding: 4px 0 !important;
+    margin: 4px 0 !important;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .cs-sub .cs-mi {
+    padding-left: 44px !important;
+  }
+  .cs-has-sub {
+    flex-wrap: wrap;
+  }
+  .cs-arw {
+    margin-left: auto;
+  }
+  .cs-cmenu {
+    max-width: calc(100vw - 20px);
+    min-width: 210px !important;
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+  .cs-hm,
+  .cs-tm {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 10px !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: 74vh;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+  .cs-lockhint {
+    background: var(--inp);
+    padding: 4px 9px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
 }
 
 /* ===== CONTEXT MENU ===== */
