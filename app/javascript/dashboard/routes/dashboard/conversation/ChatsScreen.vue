@@ -226,12 +226,37 @@ const chipFor = inboxId => {
 /* ---------------- list ---------------- */
 const stats = useMapGetter('conversationStats/getStats');
 
+/* har pill ka apna set — count asli conversations se aata hai,
+   fake nahi. unread = jitni chats mein bina padhe message hain.
+   Chat kholte hi unread_count 0 ho jaata hai to number khud ghat jata hai. */
+const setFor = key => {
+  const L = (allChats.value || []).filter(c => !isArchived(c));
+  if (key === 'all' || key === 'unread') return L;
+  if (key === 'mine')
+    return L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
+  if (key === 'unassigned') return L.filter(c => !c.meta?.assignee);
+  if (key.startsWith('in-')) {
+    const id = Number(key.slice(3));
+    return L.filter(c => c.inbox_id === id);
+  }
+  if (key.startsWith('lb-')) {
+    const t = key.slice(3);
+    return L.filter(c => (c.labels || []).includes(t));
+  }
+  return L;
+};
+
+const unreadIn = key =>
+  setFor(key).filter(c => (c.unread_count || 0) > 0).length;
+
+const totalIn = key => setFor(key).length;
+
 const pills = computed(() => {
   const base = [
     { k: 'all', n: 'All' },
     { k: 'unread', n: 'Unread' },
-    { k: 'mine', n: 'Mine', c: stats.value?.mineCount },
-    { k: 'unassigned', n: 'Unassigned', c: stats.value?.unAssignedCount },
+    { k: 'mine', n: 'Mine' },
+    { k: 'unassigned', n: 'Unassigned' },
   ];
   (inboxesList.value || []).forEach(ib => {
     base.push({ k: `in-${ib.id}`, n: ib.name });
@@ -239,7 +264,11 @@ const pills = computed(() => {
   (labelsList.value || []).forEach(l => {
     base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
   });
-  return base;
+  return base.map(p => ({
+    ...p,
+    unread: unreadIn(p.k),
+    total: totalIn(p.k),
+  }));
 });
 
 const PILL_LIMIT = 5;
@@ -1722,7 +1751,8 @@ watch(
             :style="{ background: p.color || 'var(--g)' }"
           />
           <span>{{ p.n }}</span>
-          <span v-if="p.c" class="cs-plc">{{ p.c }}</span>
+          <span v-if="p.unread" class="cs-plu">{{ p.unread }}</span>
+          <span v-else-if="p.total" class="cs-plt">{{ p.total }}</span>
         </div>
         <div
           v-if="hiddenPillCount && !showAllPills"
@@ -5046,12 +5076,21 @@ watch(
 
 /* header icons: screenshot ke naap */
 .cs-th .cs-ic,
-.cs-th span.cs-ic {
+.cs-th span.cs-ic,
+.cs-th .i-lucide-search,
+.cs-th .i-lucide-more-vertical,
+.cs-th .i-lucide-arrow-left {
   width: 16px !important;
   height: 16px !important;
   min-width: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  font-size: 16px !important;
+  line-height: 16px !important;
   padding: 8px !important;
   box-sizing: content-box !important;
+  flex: 0 0 auto !important;
+  background-size: 16px 16px !important;
 }
 
 /* message select */
@@ -5509,6 +5548,32 @@ watch(
     width: auto;
     border-radius: 12px;
   }
+}
+
+/* pill ke counts */
+.cs-plu {
+  background: var(--badge);
+  color: var(--badge-tx);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cs-plt {
+  font-size: 11.5px;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.cs-pill--on .cs-plt,
+.cs-pl.on .cs-plt {
+  opacity: 0.75;
 }
 
 /* ===== CONTEXT MENU ===== */
