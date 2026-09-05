@@ -235,7 +235,9 @@ const setFor = key => {
   if (key === 'unread') return L.filter(isUnread);
   if (key === 'mine')
     return L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
-  if (key === 'unassigned') return L.filter(c => !c.meta?.assignee);
+  // "Unassigned" = jo meri nahi (kisi ki nahi + doosron ki)
+  if (key === 'unassigned')
+    return L.filter(c => c.meta?.assignee?.id !== currentUser.value?.id);
   if (key.startsWith('in-')) {
     const id = Number(key.slice(3));
     return L.filter(c => c.inbox_id === id);
@@ -271,7 +273,14 @@ const pills = computed(() => {
   (labelsList.value || []).forEach(l => {
     base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
   });
-  return base.map(p => ({ ...p, unread: unreadIn(p.k) }));
+  return base.map(p => ({
+    ...p,
+    unread: unreadIn(p.k),
+    total: setFor(p.k).length,
+    // All par sirf total, Unread par sirf unread, baqi par dono
+    showTotal: p.k !== 'unread',
+    showUnread: p.k !== 'all',
+  }));
 });
 
 const PILL_LIMIT = 5;
@@ -314,7 +323,8 @@ const rows = computed(() => {
   if (f === 'unread') L = L.filter(isUnread);
   else if (f === 'mine')
     L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
-  else if (f === 'unassigned') L = L.filter(c => !c.meta?.assignee);
+  else if (f === 'unassigned')
+    L = L.filter(c => c.meta?.assignee?.id !== currentUser.value?.id);
   else if (f.startsWith('lb-')) {
     const t = f.slice(3);
     L = L.filter(c => (c.labels || []).includes(t));
@@ -1792,7 +1802,12 @@ watch(
             :style="{ background: p.color || 'var(--g)' }"
           />
           <span>{{ p.n }}</span>
-          <span v-if="p.unread" class="cs-plu">{{ p.unread }}</span>
+          <span v-if="p.showUnread && p.unread" class="cs-plu">
+            {{ p.unread }}
+          </span>
+          <span v-if="p.showTotal && p.total" class="cs-plt">
+            {{ p.total }}
+          </span>
         </div>
         <div
           v-if="hiddenPillCount && !showAllPills"
@@ -5619,6 +5634,22 @@ watch(
 }
 
 /* pill ke counts */
+.cs-plt {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tx3);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cs-pl.on .cs-plt {
+  color: var(--g);
+  opacity: 0.85;
+}
+.cs-plu + .cs-plt {
+  opacity: 0.55;
+}
 .cs-plu {
   background: var(--badge);
   color: var(--badge-tx);
