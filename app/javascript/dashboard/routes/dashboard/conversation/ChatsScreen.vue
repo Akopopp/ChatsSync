@@ -116,16 +116,35 @@ const onThreadScroll = e => {
   }
 };
 
+/* Pehle page number bheja hi nahi jaata tha, isliye server hamesha
+   page 1 wapas deta tha aur 25 se aage kabhi kuch nahi aata tha. */
+const listPage = ref(1);
+const noMoreChats = ref(false);
+
 const onListScroll = e => {
   const el = e.target;
   if (
     el.scrollHeight - el.scrollTop - el.clientHeight < 240 &&
-    !loadingMore.value
+    !loadingMore.value &&
+    !noMoreChats.value
   ) {
     loadingMore.value = true;
-    store
-      .dispatch('fetchAllConversations')
-      ?.finally?.(() => {
+    const before = (allChats.value || []).length;
+    const page = listPage.value + 1;
+    safeD('fetchAllConversations', {
+      page,
+      status: 'all',
+      assigneeType: 'all',
+    })
+      .then(() => {
+        // kuch naya nahi aaya -> list khatam, ab mat poochho
+        if ((allChats.value || []).length > before) listPage.value = page;
+        else noMoreChats.value = true;
+      })
+      .catch(() => {
+        noMoreChats.value = true;
+      })
+      .finally(() => {
         loadingMore.value = false;
       });
   }
@@ -242,9 +261,8 @@ const setFor = key => {
   if (key === 'unread') return L.filter(isUnread);
   if (key === 'mine')
     return L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
-  // "Unassigned" = jo meri nahi (kisi ki nahi + doosron ki)
-  if (key === 'unassigned')
-    return L.filter(c => c.meta?.assignee?.id !== currentUser.value?.id);
+  // "Unassigned" = jiska koi assignee hi nahi
+  if (key === 'unassigned') return L.filter(c => !c.meta?.assignee?.id);
   if (key.startsWith('in-')) {
     const id = Number(key.slice(3));
     return L.filter(c => c.inbox_id === id);
@@ -341,8 +359,7 @@ const rows = computed(() => {
   if (f === 'unread') L = L.filter(isUnread);
   else if (f === 'mine')
     L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
-  else if (f === 'unassigned')
-    L = L.filter(c => c.meta?.assignee?.id !== currentUser.value?.id);
+  else if (f === 'unassigned') L = L.filter(c => !c.meta?.assignee?.id);
   else if (f.startsWith('lb-')) {
     const t = f.slice(3);
     L = L.filter(c => (c.labels || []).includes(t));
@@ -387,6 +404,7 @@ const rows = computed(() => {
    dobara render hota tha (bajti hui voice ruk sakti thi). */
 const attachCache = new Map();
 const attach = a => {
+  if (attachCache.size > 600) attachCache.clear();
   const k = a.id || a.data_url || a.dataUrl;
   const hit = attachCache.get(k);
   if (hit) return hit;
@@ -503,7 +521,7 @@ const clippedHtml = m => {
   let cut = txt.lastIndexOf(' ', lim);
   if (cut < lim * 0.7) cut = lim;
   const part = txt.slice(0, cut);
-  return new MessageFormatter(part + '…').formattedMessage;
+  return tidyHtml(new MessageFormatter(part + '…').formattedMessage);
 };
 
 const moreLeft = m => {
@@ -523,10 +541,22 @@ const readLess = m => {
   delete e[m.id];
   expanded.value = e;
 };
-const bodyHtml = m => {
-  const h = new MessageFormatter(trimC(m.content)).formattedMessage;
-  return String(h).replace(/(<br\s*\/?>|\s|&nbsp;)+$/gi, '');
+/* Formatter ek line break ke liye <br> deta hai MAGAR HTML source mein
+   asli \n bhi chhod deta hai. .cs-tx par white-space:pre-wrap laga hai,
+   isliye woh \n DOOSRA line break ban jaata tha — har line ke beech
+   ek khali line. Yahan sirf woh fazool \n hataye jaate hain. */
+const BLOCK_TAG = '(?:p|div|ul|ol|li|blockquote|h[1-6])';
+const tidyHtml = h => {
+  let out = String(h || '');
+  out = out
+    .replace(/<br\s*\/?>[^\S\r\n]*\r?\n/gi, '<br>')
+    .replace(/\r?\n[^\S\r\n]*<br\s*\/?>/gi, '<br>')
+    .replace(new RegExp('(</?' + BLOCK_TAG + '[^>]*>)[^\\S\\r\\n]*\\r?\\n', 'gi'), '$1')
+    .replace(new RegExp('\\r?\\n[^\\S\\r\\n]*(</?' + BLOCK_TAG + '[^>]*>)', 'gi'), '$1');
+  return out.replace(/(<br\s*\/?>|\s|&nbsp;)+$/gi, '');
 };
+
+const bodyHtml = m => tidyHtml(new MessageFormatter(trimC(m.content)).formattedMessage);
 
 const contact = computed(() => currentChat.value?.meta?.sender || {});
 
@@ -572,34 +602,102 @@ const toast = (text, kind = 'ok') => {
   }, 3200);
 };
 
-/* seedha API — Chatwoot ke action ka signature yaqeeni nahi tha
-   aur usne poori conversation uda di thi */
-/* Labels: Chatwoot ka setLabels action har version mein nahi hota.
-   Ye endpoint documented hai aur hamesha chalta hai. */
+/* ===================================================================
+   API auth — pehle sirf currentUser.access_token bhejta tha jo har
+   version mein mojood nahi hota. Uske bagair server 401 deta tha,
+   catch chup-chaap gir jaata tha aur label kabhi save nahi hota tha.
+   Ab devise ki cookie se poore headers bhi jaate hain.
+   =================================================================== */
+const authHeaders = () => {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const raw = (document.cookie.match(
+      /(?:^|;\s*)cw_d_session_info=([^;]+)/
+    ) || [])[1];
+    if (raw) {
+      let txt = decodeURIComponent(raw);
+      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
+      const sess = JSON.parse(txt);
+      if (sess['access-token']) {
+        h['access-token'] = sess['access-token'];
+        h['token-type'] = sess['token-type'] || 'Bearer';
+        h.client = sess.client;
+        h.expiry = sess.expiry;
+        h.uid = sess.uid;
+        h.api_access_token = sess['access-token'];
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const tok = currentUser.value?.access_token;
+  if (tok) h.api_access_token = tok;
+  return h;
+};
+
+/* Chatwoot ka documented endpoint. labels ki POORI list bhejni hoti
+   hai — server usi ko final maan leta hai (replace, add nahi). */
 const setLabelsApi = (cid, labels) =>
   fetch(`/api/v1/accounts/${accountId.value}/conversations/${cid}/labels`, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: {
-      'Content-Type': 'application/json',
-      api_access_token: currentUser.value?.access_token || '',
-    },
+    headers: authHeaders(),
     body: JSON.stringify({ labels }),
   }).then(r => {
     if (!r.ok) throw new Error('labels ' + r.status);
     return r;
   });
 
+/* HAR label ka raasta yahin se guzarta hai.
+   1. REST API  2. na chale to Chatwoot ka conversationLabels/update
+   Dono fail hon to UI wapas purani haalat par — jhooti tick nahi. */
 const applyLabels = (c, labels) => {
-  const next = [...new Set(labels)];
+  if (!c || !c.id) return Promise.reject(new Error('no chat'));
+  const next = [...new Set((labels || []).filter(Boolean))];
+  const prev = Array.isArray(c.labels) ? [...c.labels] : [];
   try {
     c.labels = next;
   } catch (e) {
     /* ignore */
   }
-  return setLabelsApi(c.id, next).catch(() =>
-    safeD('setLabels', { conversationId: c.id, labels: next })
-  );
+  return setLabelsApi(c.id, next)
+    .catch(err => {
+      if (has('conversationLabels/update')) {
+        return safeD('conversationLabels/update', {
+          conversationId: c.id,
+          labels: next,
+        });
+      }
+      throw err;
+    })
+    .then(res => {
+      // list wala object aur khuli hui chat alag ho sakte hain
+      const twin = (allChats.value || []).find(x => x.id === c.id);
+      if (twin && twin !== c) {
+        try {
+          twin.labels = next;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      if (currentChat.value && currentChat.value.id === c.id && currentChat.value !== c) {
+        try {
+          currentChat.value.labels = next;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      return res;
+    })
+    .catch(err => {
+      try {
+        c.labels = prev;
+      } catch (e) {
+        /* ignore */
+      }
+      console.warn('[ChatsSync] label save failed', err);
+      throw err;
+    });
 };
 
 const delMessage = (cid, mid) =>
@@ -608,12 +706,12 @@ const delMessage = (cid, mid) =>
     {
       method: 'DELETE',
       credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        api_access_token: currentUser.value?.access_token || '',
-      },
+      headers: authHeaders(),
     }
-  );
+  ).then(r => {
+    if (!r.ok) throw new Error('delete ' + r.status);
+    return r;
+  });
 const lightbox = ref(null);
 const fwdQ = ref('');
 const tq = ref('');
@@ -660,12 +758,26 @@ const exportChat = () => {
     const body = plain(m.content || '') || `[${aType(m.attachments?.[0] || {})}]`;
     return `[${t}] ${who}: ${body}`;
   });
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const blob = new Blob([lines.join('\n')], {
+    type: 'text/plain;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `${contact.value.name || 'chat'}-${currentChat.value.id}.txt`;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  // foran revoke karne se download cancel ho jaata tha
+  setTimeout(() => {
+    try {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      /* ignore */
+    }
+  }, 1500);
+  toast(`Chat exported — ${lines.length} messages`);
 };
 
 const clearChat = () => {
@@ -704,10 +816,11 @@ const tAct = (name, arg) => {
   else if (name === 'label') {
     const cur = c.labels || [];
     const next = cur.includes(arg) ? cur.filter(x => x !== arg) : [...cur, arg];
-    d('setLabels', { conversationId: c.id, labels: next });
+    applyLabels(c, next).catch(() => toast('Could not update labels', 'err'));
   } else if (name === 'mute') {
     const m = !isMuted(c);
     d(m ? 'muteConversation' : 'unmuteConversation', c.id);
+    setAttr(c, { cs_muted: m });
     muted.value = { ...muted.value, [c.id]: m };
     saveLS('mute', muted.value);
   } else if (name === 'resolved')
@@ -818,13 +931,13 @@ const useCanned = c => {
 
 /* "/" likhte hi canned khul jaye */
 watch(draft, v => {
-  if (v === '/') {
+  const on = v.startsWith('/') && !v.includes('\n');
+  if (on) {
+    if (!showCanned.value) safeD('getCannedResponse')?.catch?.(() => {});
     showCanned.value = true;
-    safeD('getCannedResponse')?.catch?.(() => {});
-  } else if (!v.startsWith('/')) {
-    showCanned.value = false;
-  } else {
     cannedQ.value = v.slice(1);
+  } else if (showCanned.value) {
+    showCanned.value = false;
   }
 });
 
@@ -845,22 +958,35 @@ const onPaste = e => {
     }
   });
 };
-const dropFile = i => {
-  const f = pendingFiles.value[i];
-  if (f?._url) {
+/* preview URL reactive object ke BAHAR rakho — pehle template ke
+   andar f._url set hota tha jo render ke dauran reactivity trigger
+   karta tha */
+const thumbCache = new Map();
+const revokeThumb = f => {
+  const u = thumbCache.get(f?.file);
+  if (u) {
     try {
-      URL.revokeObjectURL(f._url);
+      URL.revokeObjectURL(u);
     } catch (e) {
       /* ignore */
     }
+    thumbCache.delete(f.file);
   }
+};
+
+const dropFile = i => {
+  revokeThumb(pendingFiles.value[i]);
   pendingFiles.value.splice(i, 1);
 };
 
 const thumbOf = f => {
-  if (!f.file?.type?.startsWith('image/')) return null;
-  if (!f._url) f._url = URL.createObjectURL(f.file);
-  return f._url;
+  if (!f?.file?.type?.startsWith('image/')) return null;
+  let u = thumbCache.get(f.file);
+  if (!u) {
+    u = URL.createObjectURL(f.file);
+    thumbCache.set(f.file, u);
+  }
+  return u;
 };
 
 /* snooze */
@@ -893,69 +1019,105 @@ const hostOf = u => {
 const newLabel = ref('');
 
 /* ===== LABEL PICKER =====
-   single  = ek chat, click par foran lagta/hat-ta hai
-   bulk    = kai chats, tick karo phir Apply */
+   single  = ek chat. Click par foran lagta/hat-ta hai, tick nazar aati hai.
+   bulk    = kai chats. Tick karo -> Add. Purane labels barqarar rehte hain.
+   remove  = kai chats. Tick karo -> Remove. Sirf ticked labels hattay hain. */
 const lp = ref({ open: false, mode: 'single', chats: [], sel: [], q: '' });
 
 const lpOpen = (mode, chats) => {
   closeAll();
-  const list = Array.isArray(chats) ? chats : [chats];
+  const list = (Array.isArray(chats) ? chats : [chats]).filter(Boolean);
+  if (!list.length) return;
   lp.value = {
     open: true,
     mode,
     chats: list,
     q: '',
-    // bulk mein woh labels pehle se tick jo SAARI chats par hain
-    sel:
-      mode === 'single'
-        ? [...(list[0]?.labels || [])]
-        : (labelsList.value || [])
-            .map(l => l.title)
-            .filter(t => list.every(c => (c.labels || []).includes(t))),
+    // single mein chat ke mojooda labels pehle se tick.
+    // bulk/remove khaali se shuru — warna aadhe chats ke labels ud jaate the.
+    sel: mode === 'single' ? [...(list[0]?.labels || [])] : [],
   };
 };
 
 const lpHits = computed(() => {
   const k = lp.value.q.trim().toLowerCase();
-  const L = labelsList.value || [];
-  return k ? L.filter(l => l.title.toLowerCase().includes(k)) : L;
+  let L = [...(labelsList.value || [])];
+  if (lp.value.mode === 'remove') {
+    // sirf woh labels jo selected chats par WAQAI lagay huay hain
+    const on = new Set();
+    lp.value.chats.forEach(c => (c.labels || []).forEach(t => on.add(t)));
+    L = L.filter(l => on.has(l.title));
+    on.forEach(t => {
+      if (!L.some(l => l.title === t)) L.push({ title: t, color: '#8696a0' });
+    });
+  }
+  return k ? L.filter(l => (l.title || '').toLowerCase().includes(k)) : L;
 });
 
+/* kitni selected chats par ye label pehle se laga hai */
+const lpCount = t =>
+  lp.value.chats.filter(c => (c.labels || []).includes(t)).length;
+
 const lpToggle = t => {
-  const sel = lp.value.sel;
+  const sel = [...lp.value.sel];
   const i = sel.indexOf(t);
   if (i >= 0) sel.splice(i, 1);
   else sel.push(t);
+  lp.value.sel = sel;
 
-  // single chat: foran lagao
+  // single chat: foran server par bhejo
   if (lp.value.mode === 'single') {
     const c = lp.value.chats[0];
-    applyLabels(c, [...sel])
+    applyLabels(c, sel)
       .then(() => toast(i >= 0 ? `"${t}" removed` : `"${t}" added`))
-      .catch(() => toast('Could not update labels', 'err'));
+      .catch(() => {
+        lp.value.sel = [...(c.labels || [])];
+        toast('Could not update labels', 'err');
+      });
   }
 };
 
-const lpApply = () => {
-  const sel = [...lp.value.sel];
-  const chats = lp.value.chats;
-  Promise.all(chats.map(c => applyLabels(c, sel)))
-    .then(() => toast(`Labels updated — ${chats.length} chat(s)`))
-    .catch(() => toast('Some labels failed', 'err'));
+const lpDone = () => {
   lp.value.open = false;
   picked.value = [];
   selectMode.value = false;
 };
 
+/* BULK ADD — mojooda labels ke SAATH naye jodo */
+const lpApply = () => {
+  const sel = [...lp.value.sel];
+  const chats = [...lp.value.chats];
+  lpDone();
+  if (!sel.length || !chats.length) return;
+  Promise.all(
+    chats.map(c => applyLabels(c, [...new Set([...(c.labels || []), ...sel])]))
+  )
+    .then(() => toast(`${sel.length} label(s) added — ${chats.length} chat(s)`))
+    .catch(() => toast('Some labels failed', 'err'));
+};
+
+/* BULK REMOVE — sirf ticked labels hatao, baqi jyon ke tyon */
+const lpRemove = () => {
+  const sel = [...lp.value.sel];
+  const chats = [...lp.value.chats];
+  lpDone();
+  if (!sel.length || !chats.length) return;
+  Promise.all(
+    chats.map(c =>
+      applyLabels(c, (c.labels || []).filter(t => !sel.includes(t)))
+    )
+  )
+    .then(() => toast(`${sel.length} label(s) removed — ${chats.length} chat(s)`))
+    .catch(() => toast('Some labels failed', 'err'));
+};
+
 const lpClearAll = () => {
-  const chats = lp.value.chats;
+  const chats = [...lp.value.chats];
+  lp.value.sel = [];
+  lpDone();
   Promise.all(chats.map(c => applyLabels(c, [])))
     .then(() => toast(`All labels removed — ${chats.length} chat(s)`))
     .catch(() => toast('Failed', 'err'));
-  lp.value.open = false;
-  lp.value.sel = [];
-  picked.value = [];
-  selectMode.value = false;
 };
 
 const lpNew = () => {
@@ -968,7 +1130,10 @@ const lpNew = () => {
   };
   const exists = (labelsList.value || []).some(l => l.title === t);
   if (exists) after();
-  else safeD('labels/create', { title: t, color: '#00A884' }).then(after).catch(after);
+  else
+    safeD('labels/create', { title: t, color: '#00A884' })
+      .then(after)
+      .catch(after);
 };
 const showAllPills = ref(false);
 const hmenu = ref(false);
@@ -1090,12 +1255,7 @@ const bulk = (name, arg) => {
         name === 'label'
           ? [...new Set([...cur, arg])]
           : cur.filter(x => x !== arg);
-      try {
-        c.labels = next;
-      } catch (e) {
-        /* ignore */
-      }
-      safeD('setLabels', { conversationId: c.id, labels: next });
+      applyLabels(c, next).catch(() => {});
     }
   });
 
@@ -1135,9 +1295,14 @@ const goSettings = () => {
 
 const doLogout = () => {
   hmenu.value = false;
-  safeD('logout')?.catch?.(() => {
+  const go = () => {
     window.location.href = '/app/login';
-  });
+  };
+  if (!has('logout')) {
+    go();
+    return;
+  }
+  safeD('logout').then(go).catch(go);
 };
 const labelsList = useMapGetter('labels/getLabels');
 
@@ -1189,13 +1354,9 @@ const tickOf = m => {
 
 const dropLabel = (c, l) => {
   const next = (c.labels || []).filter(x => x !== l);
-  try {
-    c.labels = next;
-  } catch (e) {
-    /* ignore */
-  }
-  safeD('setLabels', { conversationId: c.id, labels: next }).catch(() => {});
-  toast(`Label "${l}" removed`);
+  applyLabels(c, next)
+    .then(() => toast(`Label "${l}" removed`))
+    .catch(() => toast('Could not remove label', 'err'));
 };
 
 const inboxName = id =>
@@ -1311,15 +1472,7 @@ const doSend = () => {
   if (forceUnread.value[currentChat.value.id]) markRead(currentChat.value);
   const sent = text;
   const files = pendingFiles.value;
-  files.forEach(f => {
-    if (f._url) {
-      try {
-        URL.revokeObjectURL(f._url);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  });
+  files.forEach(revokeThumb);
   draft.value = '';
   pendingFiles.value = [];
   replyTo.value = null;
@@ -1591,6 +1744,10 @@ const setAttr = (c, patch) => {
         archived.value = { ...archived.value, [c.id]: patch.cs_archived };
         saveLS('arch', archived.value);
       }
+      if (patch.cs_muted !== undefined) {
+        muted.value = { ...muted.value, [c.id]: patch.cs_muted };
+        saveLS('mute', muted.value);
+      }
     });
   }
   return r;
@@ -1629,26 +1786,28 @@ const act = (name, arg) => {
   else if (name === 'priority')
     d('assignPriority', { conversationId: c.id, priority: arg });
   else if (name === 'mute') {
-    muted.value = { ...muted.value, [c.id]: !muted.value[c.id] };
+    const v = !isMuted(c);
+    muted.value = { ...muted.value, [c.id]: v };
     saveLS('mute', muted.value);
-    d(muted.value[c.id] ? 'muteConversation' : 'unmuteConversation', c.id);
+    setAttr(c, { cs_muted: v });
+    d(v ? 'muteConversation' : 'unmuteConversation', c.id);
+    toast(v ? 'Chat muted' : 'Chat unmuted');
   } else if (name === 'pin') {
     const v = !isPinned(c);
     setAttr(c, { cs_pinned: v });
     toast(v ? 'Chat pinned' : 'Chat unpinned');
   } else if (name === 'archive') {
     const next = !isArchived(c);
-    setAttr(c, { cs_archived: next });
+    // WhatsApp jaisa: archive karte hi mute. Dono ek hi patch mein,
+    // warna doosri call pehli ka merge overwrite kar deti thi.
+    const patch = { cs_archived: next };
+    if (next !== isMuted(c)) patch.cs_muted = next;
+    setAttr(c, patch);
     toast(next ? 'Chat archived' : 'Chat unarchived');
-    // WhatsApp jaisa: archive karte hi mute ho jaye
-    if (next && !isMuted(c)) {
-      d('muteConversation', c.id);
-      muted.value = { ...muted.value, [c.id]: true };
+    if (patch.cs_muted !== undefined) {
+      muted.value = { ...muted.value, [c.id]: patch.cs_muted };
       saveLS('mute', muted.value);
-    } else if (!next && isMuted(c)) {
-      d('unmuteConversation', c.id);
-      muted.value = { ...muted.value, [c.id]: false };
-      saveLS('mute', muted.value);
+      d(patch.cs_muted ? 'muteConversation' : 'unmuteConversation', c.id);
     }
   } else if (name === 'copy') {
     copyText(
@@ -1663,12 +1822,7 @@ const act = (name, arg) => {
     const cur = Array.isArray(c.labels) ? [...c.labels] : [];
     const on = cur.includes(arg);
     const next = on ? cur.filter(x => x !== arg) : [...cur, arg];
-    try {
-      c.labels = next;
-    } catch (e) {
-      /* ignore */
-    }
-    safeD('setLabels', { conversationId: c.id, labels: next })
+    applyLabels(c, next)
       .then(() => toast(on ? `Label "${arg}" removed` : `Label "${arg}" added`))
       .catch(() => toast('Could not update labels', 'err'));
     return; // menu khula rehne do taake aur labels laga sako
@@ -1678,12 +1832,7 @@ const act = (name, arg) => {
     newLabel.value = '';
     const next = [...new Set([...(c.labels || []), t])];
     const apply = () => {
-      try {
-        c.labels = next;
-      } catch (e) {
-        /* ignore */
-      }
-      safeD('setLabels', { conversationId: c.id, labels: next })
+      applyLabels(c, next)
         .then(() => {
           toast(`Label "${t}" added`);
           safeD('labels/get');
@@ -1779,13 +1928,26 @@ const msgAct = (name, arg) => {
     isNote.value = true;
     draft.value = plain(m.content || '');
   } else if (name === 'delete') {
-    store
-      .dispatch('deleteMessage', {
-        conversationId: currentChat.value.id,
-        messageId: m.id,
+    const cid = currentChat.value?.id;
+    if (!cid) return;
+    delMessage(cid, m.id)
+      .then(() => {
+        toast('Message deleted');
+        safeD('getConversation', cid)?.catch?.(() => {});
       })
-      ?.catch?.(() => {});
+      .catch(() => toast('Could not delete message', 'err'));
   }
+};
+
+/* bulk message delete — wahi REST endpoint, deleteMessage action nahi */
+const removeMessages = ids => {
+  const cid = currentChat.value?.id;
+  const list = [...(ids || [])];
+  if (!cid || !list.length) return;
+  Promise.all(list.map(id => delMessage(cid, id).catch(() => null))).then(() => {
+    toast(`${list.length} message(s) deleted`);
+    safeD('getConversation', cid)?.catch?.(() => {});
+  });
 };
 
 const act2 = name => {
@@ -1834,7 +1996,7 @@ const isArchived = c =>
     archived.value[c?.id]
   );
 const isMuted = c =>
-  !!(c?.muted || c?.custom_attributes?.cs_archived || muted.value[c?.id]);
+  !!(c?.muted || c?.custom_attributes?.cs_muted || muted.value[c?.id]);
 
 /* reply ka quote dhoondo */
 const quotedOf = m => {
@@ -1950,15 +2112,8 @@ onBeforeUnmount(() => {
   clearTimeout(recWatchdog);
   toasts.value = [];
   // file preview ke object URL free karo
-  pendingFiles.value.forEach(f => {
-    if (f._url) {
-      try {
-        URL.revokeObjectURL(f._url);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  });
+  pendingFiles.value.forEach(revokeThumb);
+  closeRail();
 });
 
 watch(
@@ -1970,10 +2125,12 @@ watch(
     }
     const c = (allChats.value || []).find(x => x.id === Number(id));
     if (c && c.id !== currentChat.value?.id) {
-      store.dispatch('setActiveChat', { data: c }).then(() => {
-        emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE, {});
-        scrollDown();
-      });
+      Promise.resolve(store.dispatch('setActiveChat', { data: c }))
+        .then(() => {
+          emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE, {});
+          scrollDown();
+        })
+        .catch(() => {});
     } else if (!c) {
       safeD('getConversation', id);
     }
@@ -1988,7 +2145,9 @@ watch(
     if (!id) return;
     const c = (allChats.value || []).find(x => x.id === id);
     if (c && c.id !== currentChat.value?.id) {
-      store.dispatch('setActiveChat', { data: c }).then(scrollDown);
+      Promise.resolve(store.dispatch('setActiveChat', { data: c }))
+        .then(scrollDown)
+        .catch(() => {});
     }
   }
 );
@@ -2136,7 +2295,19 @@ watch(
                 );
               "
             >
-              <span class="i-lucide-tag" /><span>Labels</span>
+              <span class="i-lucide-tag" /><span>Add labels</span>
+            </div>
+            <div
+              class="cs-mi"
+              @click="
+                bmenu = false;
+                lpOpen(
+                  'remove',
+                  picked.map(id => allChats.find(x => x.id === id)).filter(Boolean)
+                );
+              "
+            >
+              <span class="i-lucide-tag" /><span>Remove labels</span>
             </div>
             <div
               class="cs-mi cs-has-sub"
@@ -2300,28 +2471,7 @@ watch(
         </div>
       </div>
 
-      <div v-if="activeFilterCount || filt !== 'all' || q" class="cs-fbar">
-        <span class="i-lucide-list-filter" />
-        <div class="cs-fbt">
-          <span v-if="filt !== 'all'" class="cs-fbc">
-            {{ pills.find(p => p.k === filt)?.n || filt }}
-          </span>
-          <span v-if="fStatus !== 'all'" class="cs-fbc">{{ fStatus }}</span>
-          <span v-if="fAssignee !== 'all'" class="cs-fbc">
-            {{ fAssignee === 'me' ? 'Mine' : 'Unassigned' }}
-          </span>
-          <span v-if="fPriority !== 'all'" class="cs-fbc">{{ fPriority }}</span>
-          <span v-if="fUnreplied" class="cs-fbc">Needs reply</span>
-          <span v-if="fHasAttach" class="cs-fbc">Has attachment</span>
-          <span v-if="q" class="cs-fbc">"{{ q }}"</span>
-        </div>
-        <span class="cs-fbn">{{ rows.length }}</span>
-        <span
-          class="cs-fbx i-lucide-x"
-          title="Clear filters"
-          @click="clearAllFilters"
-        />
-      </div>
+      <!-- pills ke neeche wali filter patti hata di gayi -->
 
       <div v-if="channelErrors.length" class="cs-cerr">
         <span class="i-lucide-alert-triangle" />
@@ -2672,14 +2822,7 @@ watch(
           class="cs-sb dgr"
           :disabled="!msgPicked.length"
           @click="
-            msgPicked.forEach(id =>
-              store
-                .dispatch('deleteMessage', {
-                  conversationId: currentChat.id,
-                  messageId: id,
-                })
-                ?.catch?.(() => {})
-            );
+            removeMessages(msgPicked);
             msgSelect = false;
             msgPicked = [];
           "
@@ -2935,7 +3078,7 @@ watch(
           </button>
         </div>
 
-        <div v-if="showEmoji && !isRecording" class="cs-emojiw">
+        <div v-if="showEmoji && !isRecording" class="cs-emojiw" @click.stop>
           <div class="cs-search cs-emsr">
             <span class="cs-search__ic i-lucide-search" />
             <input v-model="emojiQ" placeholder="Search emoji" />
@@ -2952,7 +3095,7 @@ watch(
           </div>
         </div>
 
-        <div v-if="showCanned && !isRecording" class="cs-tplbox">
+        <div v-if="showCanned && !isRecording" class="cs-tplbox" @click.stop>
           <div class="cs-tplnew" @click="openNewCanned">
             <span class="i-lucide-plus" />
             <span>New canned response</span>
@@ -2971,7 +3114,7 @@ watch(
           </div>
         </div>
 
-        <div v-if="showTpl && !isRecording" class="cs-tplbox">
+        <div v-if="showTpl && !isRecording" class="cs-tplbox" @click.stop>
           <div v-if="!templates.length" class="cs-tplempty">
             No templates in this inbox
           </div>
@@ -3016,17 +3159,19 @@ watch(
           <span
             class="cs-ci i-lucide-smile"
             :class="{ act: showEmoji }"
-            @click="
+            @click.stop="
               showEmoji = !showEmoji;
               showTpl = false;
+              showCanned = false;
             "
           />
           <span
             class="cs-ci i-lucide-layout-template"
             :class="{ act: showTpl }"
-            @click="
+            @click.stop="
               showTpl = !showTpl;
               showEmoji = false;
+              showCanned = false;
             "
           />
           <input
@@ -3161,16 +3306,23 @@ watch(
           <span class="cs-ic i-lucide-x" @click="lp.open = false" />
           <span>
             {{
-              lp.mode === 'bulk'
-                ? `Labels — ${lp.chats.length} chats`
-                : 'Labels'
+              lp.mode === 'remove'
+                ? `Remove labels — ${lp.chats.length} chats`
+                : lp.mode === 'bulk'
+                  ? `Add labels — ${lp.chats.length} chats`
+                  : 'Labels'
             }}
           </span>
         </div>
 
         <div class="cs-search cs-lpsr">
           <span class="cs-search__ic i-lucide-search" />
-          <input v-model="lp.q" placeholder="Search or create label" />
+          <input
+            v-model="lp.q"
+            :placeholder="
+              lp.mode === 'remove' ? 'Search labels' : 'Search or create label'
+            "
+          />
         </div>
 
         <div class="cs-lpl">
@@ -3183,6 +3335,9 @@ watch(
           >
             <span class="cs-pld" :style="{ background: l.color || '#00A884' }" />
             <span class="cs-lpn">{{ l.title }}</span>
+            <span v-if="lp.mode !== 'single'" class="cs-lpcnt">
+              {{ lpCount(l.title) }}/{{ lp.chats.length }}
+            </span>
             <span
               v-if="lp.sel.includes(l.title)"
               class="cs-lpck i-lucide-check"
@@ -3190,7 +3345,13 @@ watch(
           </div>
 
           <div
-            v-if="lp.q.trim() && !lpHits.some(l => l.title === lp.q.trim().toLowerCase())"
+            v-if="
+              lp.mode !== 'remove' &&
+              lp.q.trim() &&
+              !lpHits.some(
+                l => l.title === lp.q.trim().replace(/\s+/g, '-').toLowerCase()
+              )
+            "
             class="cs-lpr new"
             @click="
               newLabel = lp.q;
@@ -3205,25 +3366,38 @@ watch(
           </div>
 
           <div v-if="!lpHits.length && !lp.q" class="cs-agempty">
-            No labels yet — type above to create one
+            {{
+              lp.mode === 'remove'
+                ? 'These chats have no labels'
+                : 'No labels yet — type above to create one'
+            }}
           </div>
         </div>
 
         <div class="cs-lpf">
           <span class="cs-lpc">{{ lp.sel.length }} selected</span>
           <button
-            v-if="lp.sel.length"
+            v-if="lp.mode === 'single' && lp.sel.length"
             class="cs-fwbtn ghost"
             @click="lpClearAll"
           >
             Remove all
           </button>
           <button
-            v-if="lp.mode === 'bulk'"
+            v-if="lp.mode === 'remove'"
+            class="cs-fwbtn dgr"
+            :disabled="!lp.sel.length"
+            @click="lpRemove"
+          >
+            Remove from {{ lp.chats.length }} chat(s)
+          </button>
+          <button
+            v-else-if="lp.mode === 'bulk'"
             class="cs-fwbtn"
+            :disabled="!lp.sel.length"
             @click="lpApply"
           >
-            Apply to {{ lp.chats.length }} chat(s)
+            Add to {{ lp.chats.length }} chat(s)
           </button>
           <button v-else class="cs-fwbtn" @click="lp.open = false">Done</button>
         </div>
@@ -3273,8 +3447,8 @@ watch(
     </div>
 
     <!-- ============ IMAGE LIGHTBOX ============ -->
-    <div v-if="lightbox" class="cs-lb" @click="lightbox = null">
-      <span class="cs-lbx i-lucide-x" />
+    <div v-if="lightbox" class="cs-lbox" @click="lightbox = null">
+      <span class="cs-lboxx i-lucide-x" />
       <img :src="lightbox" @click.stop />
       <a class="cs-lbd" :href="lightbox" target="_blank" @click.stop>
         <span class="i-lucide-download" />
@@ -5088,8 +5262,10 @@ watch(
   font-style: italic;
 }
 
-/* lightbox */
-.cs-lb {
+/* lightbox — naam .cs-lbox hai, .cs-lb NAHI.
+   .cs-lb list ke label chip ka naam hai; dono ek hi naam par thay
+   aur chip ko position:fixed; inset:0 mil rahi thi -> poori screen kaali. */
+.cs-lbox {
   position: fixed;
   inset: 0;
   z-index: 10001;
@@ -5098,13 +5274,13 @@ watch(
   place-items: center;
   cursor: zoom-out;
 }
-.cs-lb img {
+.cs-lbox img {
   max-width: 92vw;
   max-height: 88vh;
   object-fit: contain;
   border-radius: 4px;
 }
-.cs-lbx,
+.cs-lboxx,
 .cs-lbd {
   position: absolute;
   top: 18px;
@@ -5113,7 +5289,7 @@ watch(
   color: #e9edef;
   cursor: pointer;
 }
-.cs-lbx {
+.cs-lboxx {
   left: 20px;
 }
 .cs-lbd {
@@ -6529,6 +6705,11 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.cs-lpcnt {
+  font-size: 11px;
+  color: var(--tx3);
+  flex-shrink: 0;
 }
 .cs-lpck {
   width: 17px;
