@@ -574,6 +574,34 @@ const toast = (text, kind = 'ok') => {
 
 /* seedha API — Chatwoot ke action ka signature yaqeeni nahi tha
    aur usne poori conversation uda di thi */
+/* Labels: Chatwoot ka setLabels action har version mein nahi hota.
+   Ye endpoint documented hai aur hamesha chalta hai. */
+const setLabelsApi = (cid, labels) =>
+  fetch(`/api/v1/accounts/${accountId.value}/conversations/${cid}/labels`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      api_access_token: currentUser.value?.access_token || '',
+    },
+    body: JSON.stringify({ labels }),
+  }).then(r => {
+    if (!r.ok) throw new Error('labels ' + r.status);
+    return r;
+  });
+
+const applyLabels = (c, labels) => {
+  const next = [...new Set(labels)];
+  try {
+    c.labels = next;
+  } catch (e) {
+    /* ignore */
+  }
+  return setLabelsApi(c.id, next).catch(() =>
+    safeD('setLabels', { conversationId: c.id, labels: next })
+  );
+};
+
 const delMessage = (cid, mid) =>
   fetch(
     `/api/v1/accounts/${accountId.value}/conversations/${cid}/messages/${mid}`,
@@ -863,6 +891,85 @@ const hostOf = u => {
   }
 };
 const newLabel = ref('');
+
+/* ===== LABEL PICKER =====
+   single  = ek chat, click par foran lagta/hat-ta hai
+   bulk    = kai chats, tick karo phir Apply */
+const lp = ref({ open: false, mode: 'single', chats: [], sel: [], q: '' });
+
+const lpOpen = (mode, chats) => {
+  closeAll();
+  const list = Array.isArray(chats) ? chats : [chats];
+  lp.value = {
+    open: true,
+    mode,
+    chats: list,
+    q: '',
+    // bulk mein woh labels pehle se tick jo SAARI chats par hain
+    sel:
+      mode === 'single'
+        ? [...(list[0]?.labels || [])]
+        : (labelsList.value || [])
+            .map(l => l.title)
+            .filter(t => list.every(c => (c.labels || []).includes(t))),
+  };
+};
+
+const lpHits = computed(() => {
+  const k = lp.value.q.trim().toLowerCase();
+  const L = labelsList.value || [];
+  return k ? L.filter(l => l.title.toLowerCase().includes(k)) : L;
+});
+
+const lpToggle = t => {
+  const sel = lp.value.sel;
+  const i = sel.indexOf(t);
+  if (i >= 0) sel.splice(i, 1);
+  else sel.push(t);
+
+  // single chat: foran lagao
+  if (lp.value.mode === 'single') {
+    const c = lp.value.chats[0];
+    applyLabels(c, [...sel])
+      .then(() => toast(i >= 0 ? `"${t}" removed` : `"${t}" added`))
+      .catch(() => toast('Could not update labels', 'err'));
+  }
+};
+
+const lpApply = () => {
+  const sel = [...lp.value.sel];
+  const chats = lp.value.chats;
+  Promise.all(chats.map(c => applyLabels(c, sel)))
+    .then(() => toast(`Labels updated — ${chats.length} chat(s)`))
+    .catch(() => toast('Some labels failed', 'err'));
+  lp.value.open = false;
+  picked.value = [];
+  selectMode.value = false;
+};
+
+const lpClearAll = () => {
+  const chats = lp.value.chats;
+  Promise.all(chats.map(c => applyLabels(c, [])))
+    .then(() => toast(`All labels removed — ${chats.length} chat(s)`))
+    .catch(() => toast('Failed', 'err'));
+  lp.value.open = false;
+  lp.value.sel = [];
+  picked.value = [];
+  selectMode.value = false;
+};
+
+const lpNew = () => {
+  const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
+  if (!t) return;
+  newLabel.value = '';
+  const after = () => {
+    safeD('labels/get');
+    if (!lp.value.sel.includes(t)) lpToggle(t);
+  };
+  const exists = (labelsList.value || []).some(l => l.title === t);
+  if (exists) after();
+  else safeD('labels/create', { title: t, color: '#00A884' }).then(after).catch(after);
+};
 const showAllPills = ref(false);
 const hmenu = ref(false);
 const hsub = ref('');
@@ -935,6 +1042,7 @@ const togglePick = id => {
 const bmenu = ref(false);
 const bsub = ref('');
 
+/* Bulk label panel — ChatsSync jaisa: search + tick + confirm */
 const bulk = (name, arg) => {
   const ids = [...picked.value];
   if (!ids.length) return;
@@ -1491,7 +1599,8 @@ const setAttr = (c, patch) => {
 const act = (name, arg) => {
   const c = menu.value.chat;
   if (!c) return;
-  closeMenu();
+  // label lagate waqt menu band mat karo — ek se zyada laga sako
+  if (name !== 'label' && name !== 'newlabel') closeMenu();
   const d = (a, p) => safeD(a, p).catch(() => {});
 
   if (name === 'unread') {
@@ -1551,7 +1660,7 @@ const act = (name, arg) => {
       blocked: !c.meta?.sender?.blocked,
     });
   } else if (name === 'label') {
-    const cur = c.labels || [];
+    const cur = Array.isArray(c.labels) ? [...c.labels] : [];
     const on = cur.includes(arg);
     const next = on ? cur.filter(x => x !== arg) : [...cur, arg];
     try {
@@ -1562,6 +1671,7 @@ const act = (name, arg) => {
     safeD('setLabels', { conversationId: c.id, labels: next })
       .then(() => toast(on ? `Label "${arg}" removed` : `Label "${arg}" added`))
       .catch(() => toast('Could not update labels', 'err'));
+    return; // menu khula rehne do taake aur labels laga sako
   } else if (name === 'newlabel') {
     const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
     if (!t) return;
@@ -2017,43 +2127,16 @@ watch(
               </div>
             </div>
             <div
-              class="cs-mi cs-has-sub"
-              @click.stop="bsub = bsub === 'lb' ? '' : 'lb'"
+              class="cs-mi"
+              @click="
+                bmenu = false;
+                lpOpen(
+                  'bulk',
+                  picked.map(id => allChats.find(x => x.id === id)).filter(Boolean)
+                );
+              "
             >
-              <span class="i-lucide-tag" /><span>Add label</span>
-              <span class="cs-arw i-lucide-chevron-right" />
-              <div v-if="bsub === 'lb'" class="cs-sub cs-sub--tall" @click.stop>
-                <div
-                  v-for="l in labelsList"
-                  :key="l.id"
-                  class="cs-mi"
-                  @click.stop="bulk('label', l.title)"
-                >
-                  <span class="cs-pld" :style="{ background: l.color }" />
-                  <span>{{ l.title }}</span>
-                </div>
-                <div v-if="!labelsList.length" class="cs-mi">
-                  <span>No labels</span>
-                </div>
-              </div>
-            </div>
-            <div
-              class="cs-mi cs-has-sub"
-              @click.stop="bsub = bsub === 'rl' ? '' : 'rl'"
-            >
-              <span class="i-lucide-tag" /><span>Remove label</span>
-              <span class="cs-arw i-lucide-chevron-right" />
-              <div v-if="bsub === 'rl'" class="cs-sub cs-sub--tall" @click.stop>
-                <div
-                  v-for="l in labelsList"
-                  :key="l.id"
-                  class="cs-mi"
-                  @click.stop="bulk('unlabel', l.title)"
-                >
-                  <span class="cs-pld" :style="{ background: l.color }" />
-                  <span>{{ l.title }}</span>
-                </div>
-              </div>
+              <span class="i-lucide-tag" /><span>Labels</span>
             </div>
             <div
               class="cs-mi cs-has-sub"
@@ -2528,50 +2611,8 @@ watch(
               <div v-if="!teamsList.length" class="cs-mi"><span>No teams</span></div>
             </div>
           </div>
-          <div
-            class="cs-mi cs-has-sub"
-            @click.stop="tsub = tsub === 'lb' ? '' : 'lb'"
-          >
-            <span class="i-lucide-tag" /><span>Add label</span>
-            <span class="cs-arw i-lucide-chevron-right" />
-            <div v-if="tsub === 'lb'" class="cs-sub cs-sub--tall left" @click.stop>
-              <div class="cs-lbnew">
-                <input
-                  v-model="newLabel"
-                  placeholder="New label"
-                  @keydown.enter.stop="
-                    menu.chat = currentChat;
-                    act('newlabel');
-                    tmenu = false;
-                  "
-                  @click.stop
-                />
-                <span
-                  class="i-lucide-plus"
-                  @click.stop="
-                    menu.chat = currentChat;
-                    act('newlabel');
-                    tmenu = false;
-                  "
-                />
-              </div>
-              <div
-                v-for="l in labelsList"
-                :key="l.id"
-                class="cs-mi"
-                @click.stop="tAct('label', l.title)"
-              >
-                <span class="cs-pld" :style="{ background: l.color }" />
-                <span>{{ l.title }}</span>
-                <span
-                  v-if="(currentChat.labels || []).includes(l.title)"
-                  class="cs-arw i-lucide-check"
-                />
-              </div>
-              <div v-if="!labelsList.length" class="cs-mi">
-                <span>Type above to create</span>
-              </div>
-            </div>
+          <div class="cs-mi" @click="lpOpen('single', currentChat)">
+            <span class="i-lucide-tag" /><span>Labels</span>
           </div>
           <hr />
           <div class="cs-mi" @click="tAct('mute')">
@@ -3113,6 +3154,82 @@ watch(
 
     <div v-if="railOpen" class="cs-railbg" @click="closeRail" />
 
+    <!-- ============ LABEL PICKER ============ -->
+    <div v-if="lp.open" class="cs-fw" @click.self="lp.open = false">
+      <div class="cs-lpb">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="lp.open = false" />
+          <span>
+            {{
+              lp.mode === 'bulk'
+                ? `Labels — ${lp.chats.length} chats`
+                : 'Labels'
+            }}
+          </span>
+        </div>
+
+        <div class="cs-search cs-lpsr">
+          <span class="cs-search__ic i-lucide-search" />
+          <input v-model="lp.q" placeholder="Search or create label" />
+        </div>
+
+        <div class="cs-lpl">
+          <div
+            v-for="l in lpHits"
+            :key="l.id || l.title"
+            class="cs-lpr"
+            :class="{ on: lp.sel.includes(l.title) }"
+            @click="lpToggle(l.title)"
+          >
+            <span class="cs-pld" :style="{ background: l.color || '#00A884' }" />
+            <span class="cs-lpn">{{ l.title }}</span>
+            <span
+              v-if="lp.sel.includes(l.title)"
+              class="cs-lpck i-lucide-check"
+            />
+          </div>
+
+          <div
+            v-if="lp.q.trim() && !lpHits.some(l => l.title === lp.q.trim().toLowerCase())"
+            class="cs-lpr new"
+            @click="
+              newLabel = lp.q;
+              lp.q = '';
+              lpNew();
+            "
+          >
+            <span class="i-lucide-plus" />
+            <span class="cs-lpn">
+              Create "{{ lp.q.trim().replace(/\s+/g, '-').toLowerCase() }}"
+            </span>
+          </div>
+
+          <div v-if="!lpHits.length && !lp.q" class="cs-agempty">
+            No labels yet — type above to create one
+          </div>
+        </div>
+
+        <div class="cs-lpf">
+          <span class="cs-lpc">{{ lp.sel.length }} selected</span>
+          <button
+            v-if="lp.sel.length"
+            class="cs-fwbtn ghost"
+            @click="lpClearAll"
+          >
+            Remove all
+          </button>
+          <button
+            v-if="lp.mode === 'bulk'"
+            class="cs-fwbtn"
+            @click="lpApply"
+          >
+            Apply to {{ lp.chats.length }} chat(s)
+          </button>
+          <button v-else class="cs-fwbtn" @click="lp.open = false">Done</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ CONFIRM ============ -->
     <div v-if="ask" class="cs-fw" @click.self="ask.cancel()">
       <div class="cs-ask">
@@ -3499,39 +3616,8 @@ watch(
           </div>
         </div>
       </div>
-      <div
-        class="cs-mi cs-has-sub"
-        @click.stop="sub = sub === 'lb' ? '' : 'lb'"
-      >
-        <span class="i-lucide-tag" /><span>Assign label</span>
-        <span class="cs-arw i-lucide-chevron-right" />
-        <div v-if="sub === 'lb'" class="cs-sub cs-sub--tall" @click.stop>
-          <div class="cs-lbnew">
-            <input
-              v-model="newLabel"
-              placeholder="New label..."
-              @keydown.enter.stop="act('newlabel')"
-              @click.stop
-            />
-            <span class="i-lucide-plus" @click.stop="act('newlabel')" />
-          </div>
-          <div
-            v-for="l in labelsList"
-            :key="l.id"
-            class="cs-mi"
-            @click.stop="act('label', l.title)"
-          >
-            <span class="cs-pld" :style="{ background: l.color }" />
-            <span>{{ l.title }}</span>
-            <span
-              v-if="(menu.chat?.labels || []).includes(l.title)"
-              class="cs-arw i-lucide-check"
-            />
-          </div>
-          <div v-if="!labelsList.length" class="cs-mi">
-            <span>No labels yet — type above to create</span>
-          </div>
-        </div>
+      <div class="cs-mi" @click="lpOpen('single', menu.chat)">
+        <span class="i-lucide-tag" /><span>Labels</span>
       </div>
       <div
         class="cs-mi cs-has-sub"
@@ -6321,6 +6407,147 @@ watch(
     min-width: 0;
     border-radius: 12px;
   }
+}
+
+/* bulk label panel (ChatsSync jaisa) */
+.cs-lbp {
+  padding: 8px 0 10px;
+}
+.cs-lbsr {
+  margin: 0 10px 8px !important;
+  background: var(--inp) !important;
+}
+.cs-lbsr input {
+  padding: 8px 0 !important;
+  font-size: 13.5px !important;
+}
+.cs-lbl {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0 6px;
+}
+.cs-lbr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cs-lbr:hover {
+  background: var(--menu-hov);
+}
+.cs-lbr.on {
+  background: var(--g-tint);
+}
+.cs-lbn {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-lbck {
+  width: 16px;
+  height: 16px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-lbbtn {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 10px 10px 0;
+  padding: 9px 0;
+  border: 0;
+  border-radius: 7px;
+  background: var(--g);
+  color: #fff;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cs-lbbtn.dgr {
+  background: var(--red);
+}
+.cs-lbbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* label picker */
+.cs-lpb {
+  width: 400px;
+  max-width: 92vw;
+  max-height: 76vh;
+  background: var(--panel);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cs-lpsr {
+  margin: 12px 14px 8px !important;
+  background: var(--fld) !important;
+}
+.cs-lpl {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+.cs-lpr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.cs-lpr:hover {
+  background: var(--hov);
+}
+.cs-lpr.on {
+  background: var(--g-tint);
+}
+.cs-lpr.new {
+  color: var(--g);
+}
+.cs-lpr.new > span:first-child {
+  width: 15px;
+  height: 15px;
+}
+.cs-lpr .cs-pld {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+.cs-lpn {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-lpck {
+  width: 17px;
+  height: 17px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-lpf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ln2);
+  flex-shrink: 0;
+}
+.cs-lpc {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx3);
 }
 
 /* ===== CONTEXT MENU ===== */
