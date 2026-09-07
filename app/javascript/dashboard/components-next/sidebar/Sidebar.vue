@@ -8,7 +8,14 @@
    Tabs ki list wahi hai jo pehle thi + ek naya "Dashboard".
    Rail: 62px · 42px gol icons · active par hara tint · search icon.
    ===================================================================== */
-import { ref, computed, onMounted, watch } from 'vue';
+import {
+  ref,
+  computed,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+} from 'vue';
 import { useRoute } from 'vue-router';
 import { useStore } from 'vuex';
 import { useI18n } from 'vue-i18n';
@@ -50,8 +57,24 @@ const isFeatureEnabledonAccount = useMapGetter(
 
 const { width: windowWidth } = useWindowSize();
 const isMobile = computed(() => windowWidth.value < 768);
+
+/* Screens ka hamburger #mobile-sidebar-launcher dhoondta tha jo har
+   version mein nahi hota — isliye mobile par tabs khulte hi nahi the.
+   Ab woh seedha ye event bhejti hain. */
+const mobileOpen = ref(false);
+const onRailToggle = () => {
+  mobileOpen.value = !mobileOpen.value;
+};
+onMounted(() => window.addEventListener('chatssync:toggle-rail', onRailToggle));
+onBeforeUnmount(() =>
+  window.removeEventListener('chatssync:toggle-rail', onRailToggle)
+);
+
 /* mobile par drawer poora khulta hai, desktop par hamesha rail */
-const expanded = computed(() => isMobile.value && props.isMobileSidebarOpen);
+const drawerOpen = computed(
+  () => isMobile.value && (props.isMobileSidebarOpen || mobileOpen.value)
+);
+const expanded = computed(() => drawerOpen.value);
 
 /* SidebarProfileMenu waghera context inject karte hain — dena zaroori hai */
 const expandedItem = ref(null);
@@ -99,6 +122,7 @@ watch(
 );
 
 const closeMobileSidebar = () => {
+  mobileOpen.value = false;
   if (!props.isMobileSidebarOpen) return;
   emit('closeMobileSidebar');
 };
@@ -348,8 +372,29 @@ const isActive = item => (item.activeOn || []).includes(route.name);
 
 /* rail par children ka flyout, drawer mein andar hi khulta hai */
 const openFly = ref(null);
-const toggleFly = name => {
-  openFly.value = openFly.value === name ? null : name;
+const flyPos = ref({ top: 0, left: 0 });
+
+/* Flyout pehle .cs-rl-nav ke andar absolute tha, aur us par
+   overflow-y:auto laga hai — CSS overflow-x ko bhi auto kar deta hai,
+   isliye Reports/Settings ke options kat jaate the. Ab fixed hai. */
+const toggleFly = (name, ev) => {
+  if (openFly.value === name) {
+    openFly.value = null;
+    return;
+  }
+  openFly.value = name;
+  if (expanded.value || !ev?.currentTarget) return;
+  const r = ev.currentTarget.getBoundingClientRect();
+  flyPos.value = { top: r.top - 4, left: r.right + 8 };
+  nextTick(() => {
+    const el = document.querySelector('.cs-rl-sub');
+    if (!el) return;
+    const h = el.offsetHeight;
+    let top = r.top - 4;
+    if (top + h > window.innerHeight - 12)
+      top = Math.max(12, window.innerHeight - h - 12);
+    flyPos.value = { top, left: r.right + 8 };
+  });
 };
 const closeFly = () => {
   openFly.value = null;
@@ -383,7 +428,7 @@ watch(
     class="cs-rail"
     :class="{
       open: expanded,
-      'cs-rail--hidden': isMobile && !isMobileSidebarOpen,
+      'cs-rail--hidden': isMobile && !drawerOpen,
     }"
   >
     <!-- brand + search -->
@@ -432,7 +477,7 @@ watch(
             class="cs-rl-item"
             :class="{ on: isActive(item), fly: openFly === item.name }"
             :title="expanded ? null : item.label"
-            @click.stop="toggleFly(item.name)"
+            @click.stop="toggleFly(item.name, $event)"
           >
             <span class="cs-rl-ic" :class="item.icon" />
             <span v-if="expanded" class="cs-rl-lbl">{{ item.label }}</span>
@@ -448,6 +493,11 @@ watch(
             v-if="openFly === item.name"
             class="cs-rl-sub"
             :class="{ inline: expanded }"
+            :style="
+              expanded
+                ? null
+                : { top: flyPos.top + 'px', left: flyPos.left + 'px' }
+            "
             @click.stop
           >
             <div v-if="!expanded" class="cs-rl-subh">{{ item.label }}</div>
@@ -494,6 +544,7 @@ watch(
   width: 62px;
   height: 100%;
   background: var(--rl-bg);
+  border-inline-end: 1px solid var(--rl-ln);
   display: flex;
   flex-direction: column;
   font-size: 14px;
@@ -587,7 +638,6 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overflow-x: visible;
   padding: 4px 10px 14px;
   display: flex;
   flex-direction: column;
@@ -702,9 +752,7 @@ watch(
 
 /* submenu */
 .cs-rl-sub {
-  position: absolute;
-  inset-inline-start: 52px;
-  top: -4px;
+  position: fixed;
   min-width: 216px;
   background: var(--rl-menu);
   border-radius: 10px;
