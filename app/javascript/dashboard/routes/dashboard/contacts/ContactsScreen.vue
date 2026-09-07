@@ -1576,6 +1576,8 @@ watch(detailOpen, v => {
       </div>
     </div>
 
+    <div v-if="isMobile && (hmenu || cmenu || lblMenu)" class="cs-sheetbg" />
+
     <!-- ============ TOASTS ============ -->
     <div class="cs-toasts">
       <div
@@ -2785,6 +2787,14 @@ watch(detailOpen, v => {
   background: var(--red);
 }
 
+/* mobile sheet ka parda */
+.cs-sheetbg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 9390;
+}
+
 /* toasts */
 .cs-toasts {
   position: fixed;
@@ -2851,15 +2861,25 @@ watch(detailOpen, v => {
     padding: 12px 10px 12px 12px;
   }
   .cs-hm,
-  .cs-tm {
+  .cs-tm,
+  .cs-cmenu {
     position: fixed;
-    left: 10px;
-    right: 10px;
+    left: 0;
+    right: 0;
     top: auto;
-    bottom: 10px;
+    bottom: 0;
     min-width: 0;
-    max-height: 74vh;
-    border-radius: 12px;
+    max-width: none;
+    max-height: 76vh;
+    border-radius: 14px 14px 0 0;
+    /* pehle 700 tha — contact detail ke andar wala menu dab jaata tha */
+    z-index: 9400;
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  .cs-mi {
+    padding: 13px 20px;
+    font-size: 15px;
   }
   .cs-sub {
     position: static;
@@ -2868,8 +2888,26 @@ watch(detailOpen, v => {
     border-radius: 0;
     margin-top: 4px;
   }
-  .cs-cal {
+  .cs-fw {
+    padding: 12px;
+  }
+  .cs-cal,
+  .cs-form,
+  .cs-lpb,
+  .cs-ask {
     width: 100%;
+    max-width: 100%;
+  }
+  .cs-form {
+    max-height: 90vh;
+  }
+  /* City + Country ek hi row mein tang parte the */
+  .cs-frow {
+    flex-direction: column;
+    gap: 0;
+  }
+  .cs-ff .cs-btn {
+    flex: 1;
   }
   .cs-iacts {
     gap: 26px;
