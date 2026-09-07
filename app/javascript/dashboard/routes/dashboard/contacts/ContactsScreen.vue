@@ -180,30 +180,60 @@ const countryOf = c => attrs(c).country || '';
 const companyOf = c => attrs(c).company_name || '';
 const bioOf = c => attrs(c).description || '';
 
-/* channel: contact_inboxes se */
-const chOf = c => {
-  const ib = (c?.contact_inboxes || [])[0]?.inbox;
-  const t = ib?.channel_type || '';
-  if (/Whatsapp/i.test(t)) return 'wa';
-  if (/FacebookPage/i.test(t)) return 'fb';
-  if (/Instagram/i.test(t)) return 'ig';
-  if (/Sms|Twilio/i.test(t)) return 'sms';
-  if (/Email/i.test(t)) return 'em';
-  return '';
+/* channel_type se kism nikalo — inbox ka naam kuch bhi ho,
+   rang channel ka hi rahega (WhatsApp hara, Facebook neela, ...) */
+const chKind = t => {
+  const s0 = String(t || '');
+  if (/Whatsapp/i.test(s0)) return 'wa';
+  if (/FacebookPage/i.test(s0)) return 'fb';
+  if (/Instagram/i.test(s0)) return 'ig';
+  if (/Sms|Twilio/i.test(s0)) return 'sms';
+  if (/Telegram/i.test(s0)) return 'tg';
+  if (/Email/i.test(s0)) return 'em';
+  if (/WebWidget/i.test(s0)) return 'web';
+  if (/Api/i.test(s0)) return 'api';
+  return 'other';
+};
+const CH_COLOR = {
+  wa: '#25D366',
+  fb: '#0866FF',
+  ig: '#E1306C',
+  sms: '#7C4DFF',
+  tg: '#26A5E4',
+  em: '#F59E0B',
+  web: '#0EA5E9',
+  api: '#94A3B8',
+  other: '#8696A0',
 };
 const CH_NAME = {
   wa: 'WhatsApp',
   fb: 'Facebook',
   ig: 'Instagram',
   sms: 'SMS',
+  tg: 'Telegram',
   em: 'Email',
+  web: 'Website',
+  api: 'API',
+  other: 'Channel',
+};
+const CH_TAG = {
+  wa: 'WA', fb: 'FB', ig: 'IG', sms: 'SMS',
+  tg: 'TG', em: 'MAIL', web: 'WEB', api: 'API', other: '',
+};
+
+const inboxesOf = c =>
+  (c?.contact_inboxes || []).map(x => x.inbox).filter(Boolean);
+const inboxIdsOf = c => inboxesOf(c).map(ib => ib.id).filter(Boolean);
+const chOf = c => {
+  const ib = inboxesOf(c)[0];
+  return ib ? chKind(ib.channel_type) : '';
 };
 const chChip = c => {
   const k = chOf(c);
-  if (!k) return null;
-  return { k, t: k === 'sms' ? 'SMS' : k === 'em' ? 'MAIL' : k.toUpperCase() };
+  if (!k || !CH_TAG[k]) return null;
+  return { k, t: CH_TAG[k], color: CH_COLOR[k] };
 };
-const inboxOf = c => (c?.contact_inboxes || [])[0]?.inbox?.name || '';
+const inboxOf = c => inboxesOf(c)[0]?.name || '';
 const isActive = c => (c?.availability_status || '') === 'online';
 const labelsOf = c => (Array.isArray(c?.labels) ? c.labels : []);
 const subOf = c => phoneOf(c) || emailOf(c) || cityOf(c) || companyOf(c) || '—';
@@ -314,8 +344,10 @@ const rows = computed(() => {
   }
   const f = filt.value;
   if (f === 'active') L = L.filter(isActive);
-  else if (f.startsWith('ch-')) L = L.filter(c => chOf(c) === f.slice(3));
-  else if (f.startsWith('lb-')) {
+  else if (f.startsWith('in-')) {
+    const id = Number(f.slice(3));
+    L = L.filter(c => inboxIdsOf(c).includes(id));
+  } else if (f.startsWith('lb-')) {
     const t = f.slice(3);
     L = L.filter(c => labelsOf(c).includes(t));
   }
@@ -342,14 +374,20 @@ const grouped = computed(() => {
   return out;
 });
 
+/* Pills: All / Active + HAR ASAL INBOX (jo account mein juRa hai)
+   + har label. Inbox ka apna naam, rang uske channel ka. */
 const pills = computed(() => {
   const base = [
     { k: 'all', n: 'All' },
     { k: 'active', n: 'Active' },
-    { k: 'ch-wa', n: 'WhatsApp', dot: '#25D366' },
-    { k: 'ch-fb', n: 'Facebook', dot: '#0866FF' },
-    { k: 'ch-ig', n: 'Instagram', dot: '#E1306C' },
   ];
+  (inboxesList.value || []).forEach(ib => {
+    base.push({
+      k: `in-${ib.id}`,
+      n: ib.name,
+      dot: CH_COLOR[chKind(ib.channel_type)],
+    });
+  });
   (labelsList.value || []).forEach(l => {
     base.push({ k: `lb-${l.title}`, n: l.title, dot: l.color || '#00A884' });
   });
@@ -636,14 +674,11 @@ const saveContact = () => {
     toast('Name is required', 'err');
     return;
   }
-  if (e.phone_number && !/^\+?[0-9\s-]{6,}$/.test(e.phone_number.trim())) {
-    toast('Phone must be in E.164 form, e.g. +923001234567', 'err');
-    return;
-  }
   const body = {
     name: e.name.trim(),
     email: e.email.trim() || null,
-    phone_number: e.phone_number.trim() || null,
+    // phone_number jaan-boojh kar nahi bheja — woh WhatsApp identity hai,
+    // badalne se conversation ka rishta toot jaata hai
     additional_attributes: {
       company_name: e.company_name.trim(),
       city: e.city.trim(),
@@ -695,6 +730,71 @@ const deleteContact = c => {
         .catch(() => toast('Could not delete contact', 'err'));
     }
   );
+};
+
+/* ---------------- import ---------------- */
+const importInput = ref(null);
+const importing = ref(false);
+
+const pickImport = () => {
+  hmenu.value = false;
+  importInput.value?.click();
+};
+
+const onImportFile = e => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('import_file', file);
+  // FormData ke saath Content-Type khud browser set karta hai
+  // (boundary ke saath) — apna bhejenge to server parse nahi kar payega
+  const h = authHeaders();
+  delete h['Content-Type'];
+  importing.value = true;
+  toast('Uploading — import background mein chalta hai');
+  fetch(`/api/v1/accounts/${accountId.value}/contacts/import`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: h,
+    body: fd,
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('import ' + r.status);
+      toast('Import started — contacts thoRi der mein aa jayenge');
+      setTimeout(reload, 5000);
+    })
+    .catch(err => {
+      console.warn('[ChatsSync] import failed', err);
+      toast('Import failed — CSV ke columns check karo', 'err');
+    })
+    .finally(() => {
+      importing.value = false;
+    });
+};
+
+const sampleCsv = () => {
+  hmenu.value = false;
+  const head = 'name,email,phone_number,company_name,city,country,identifier';
+  const row = 'Ali Khan,ali@example.com,+923001234567,Al-Noor Clinic,Faisalabad,Pakistan,';
+  const blob = new Blob(['\ufeff' + head + '\n' + row], {
+    type: 'text/csv;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'contacts-sample.csv';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    try {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      /* ignore */
+    }
+  }, 1500);
 };
 
 /* ---------------- export ---------------- */
@@ -906,10 +1006,24 @@ watch(detailOpen, v => {
             <circle cx="12" cy="19" r="1.6" />
           </svg>
         </span>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".csv,text/csv"
+          hidden
+          @change="onImportFile"
+        />
 
         <div v-if="hmenu" class="cs-hm" @click.stop>
+          <div class="cs-mi" @click="pickImport">
+            <span class="i-lucide-upload" />
+            <span>{{ importing ? 'Importing…' : 'Import contacts (CSV)' }}</span>
+          </div>
           <div class="cs-mi" @click="exportCsv">
             <span class="i-lucide-download" /><span>Export contacts (CSV)</span>
+          </div>
+          <div class="cs-mi" @click="sampleCsv">
+            <span class="i-lucide-file-text" /><span>Download sample CSV</span>
           </div>
           <div
             class="cs-mi"
@@ -1061,7 +1175,10 @@ watch(detailOpen, v => {
                   <span
                     v-if="chChip(g.c)"
                     class="cs-chip"
-                    :class="'cs-chip--' + chChip(g.c).k"
+                    :style="{
+                      color: chChip(g.c).color,
+                      background: chChip(g.c).color + '26',
+                    }"
                   >
                     {{ chChip(g.c).t }}
                   </span>
@@ -1136,15 +1253,6 @@ watch(detailOpen, v => {
             >
               <span class="i-lucide-tag" /><span>Labels</span>
             </div>
-            <div
-              class="cs-mi"
-              @click="
-                cmenu = false;
-                msgContact(selected);
-              "
-            >
-              <span class="i-lucide-message-circle" /><span>Message</span>
-            </div>
             <div class="cs-sep" />
             <div
               class="cs-mi dgr"
@@ -1170,28 +1278,6 @@ watch(detailOpen, v => {
             </div>
             <div v-if="bioOf(selected)" class="cs-ibio">
               {{ bioOf(selected) }}
-            </div>
-            <div class="cs-iacts">
-              <div class="cs-iact" @click="msgContact(selected)">
-                <div class="cs-cir i-lucide-message-circle" />
-                Message
-              </div>
-              <a
-                v-if="emailOf(selected)"
-                class="cs-iact"
-                :href="'mailto:' + emailOf(selected)"
-              >
-                <div class="cs-cir i-lucide-mail" />
-                Email
-              </a>
-              <a
-                v-if="phoneOf(selected)"
-                class="cs-iact"
-                :href="'tel:' + phoneOf(selected)"
-              >
-                <div class="cs-cir i-lucide-phone" />
-                Call
-              </a>
             </div>
           </div>
 
@@ -1366,8 +1452,10 @@ watch(detailOpen, v => {
     <div v-if="lp.open" class="cs-fw" @click.self="lp.open = false">
       <div class="cs-lpb" @click.stop>
         <div class="cs-fwh">
-          <span class="cs-ic i-lucide-x" @click="lp.open = false" />
           <span>Labels</span>
+          <span class="cs-ic" @click="lp.open = false">
+            <span class="i-lucide-x" />
+          </span>
         </div>
         <div class="cs-search cs-lpsr">
           <span class="cs-search__ic i-lucide-search" />
@@ -1415,8 +1503,10 @@ watch(detailOpen, v => {
     <div v-if="edit" class="cs-fw" @click.self="edit = null">
       <div class="cs-form" @click.stop>
         <div class="cs-fwh">
-          <span class="cs-ic i-lucide-x" @click="edit = null" />
           <span>{{ edit.id ? 'Edit contact' : 'New contact' }}</span>
+          <span class="cs-ic" @click="edit = null">
+            <span class="i-lucide-x" />
+          </span>
         </div>
         <div class="cs-fb">
           <label class="cs-fl">
@@ -1424,8 +1514,13 @@ watch(detailOpen, v => {
             <input v-model="edit.name" placeholder="Full name" />
           </label>
           <label class="cs-fl">
-            <span>Phone</span>
-            <input v-model="edit.phone_number" placeholder="+923001234567" />
+            <span>Phone <em>· cannot be changed</em></span>
+            <input
+              :value="edit.phone_number || '—'"
+              readonly
+              disabled
+              class="ro"
+            />
           </label>
           <label class="cs-fl">
             <span>Email</span>
@@ -1498,6 +1593,10 @@ watch(detailOpen, v => {
 <style scoped>
 /* ===== tokens — ChatsScreen.vue se bilkul same ===== */
 .cs-app {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+
   --panel: #111b21;
   --head: #202c33;
   --fld: #202c33;
@@ -1528,24 +1627,65 @@ watch(detailOpen, v => {
 }
 .cs-app.lite {
   --panel: #ffffff;
-  --head: #f0f2f5;
-  --fld: #eaeef0;
-  --tx: #111b21;
-  --tx2: #54656f;
-  --tx3: #667781;
-  --ln: #d9dfe2;
-  --ln2: #e9edef;
-  --hov: #f0f2f5;
-  --sel: #dee7e4;
-  --g: #008069;
-  --g-tint: #d6f0e6;
-  --b: #027eb5;
+  --head: #eff3f4;
+  --fld: #e3e9eb;
+  --tx: #0a1519;
+  --tx2: #3d4f57;
+  --tx3: #55666e;
+  --ln: #c7d1d6;
+  --ln2: #dce3e6;
+  --hov: #eceff1;
+  --sel: #cfe6dd;
+  --g: #00755f;
+  --g-tint: #c8e8db;
+  --b: #026a99;
   --menu: #ffffff;
-  --menu-hov: #eef3f1;
-  --content: #eef1f3;
+  --menu-hov: #eceff1;
+  --content: #e3e8ea;
   --inp: #ffffff;
-  --red: #d63c4b;
-  --red-tint: #fbe3e5;
+  --red: #c22b3b;
+  --red-tint: #f9dde1;
+}
+/* light mode mein safed-par-safed gum ho jaata tha — border chahiye */
+.cs-app.lite .cs-hm,
+.cs-app.lite .cs-tm,
+.cs-app.lite .cs-cmenu,
+.cs-app.lite .cs-sub,
+.cs-app.lite .cs-cal,
+.cs-app.lite .cs-lpb,
+.cs-app.lite .cs-form,
+.cs-app.lite .cs-ask {
+  border: 1px solid var(--ln);
+  box-shadow: 0 8px 28px rgba(11, 20, 26, 0.16);
+}
+.cs-app.lite .cs-search,
+.cs-app.lite .cs-dchip {
+  border: 1px solid var(--ln);
+}
+.cs-app.lite .cs-search.act,
+.cs-app.lite .cs-dchip.act {
+  border-color: var(--g);
+}
+.cs-app.lite .cs-pl {
+  border: 1px solid var(--ln);
+}
+.cs-app.lite .cs-pl.on {
+  border-color: var(--g);
+}
+.cs-app.lite .cs-toast {
+  background: #10202a;
+  color: #fff;
+}
+.cs-app.lite .cs-toast.err {
+  background: var(--red);
+  color: #fff;
+}
+.cs-app.lite .cs-fw {
+  background: rgba(11, 20, 26, 0.4);
+}
+.cs-app.lite .cs-cvi.done {
+  background: var(--fld);
+  color: var(--tx2);
 }
 .cs-app * {
   box-sizing: border-box;
@@ -1553,14 +1693,17 @@ watch(detailOpen, v => {
 
 /* ===== PANEL ===== */
 .cs-panel {
-  width: 30%;
-  min-width: 320px;
-  max-width: 460px;
+  flex: 0 0 auto;
+  width: 32%;
+  min-width: 300px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   background: var(--panel);
   border-right: 1px solid var(--ln);
   min-height: 0;
+  /* is ke bagair search/pills panel ki chauRai se bahar nikal jaate the */
+  overflow: hidden;
 }
 .cs-ph {
   height: 60px;
@@ -1574,10 +1717,14 @@ watch(detailOpen, v => {
 }
 .cs-ph h1 {
   flex: 1;
-  font-size: 20px;
+  min-width: 0;
+  font-size: 19px;
   font-weight: 600;
   margin: 0;
   letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cs-ic {
   width: 38px;
@@ -1611,6 +1758,8 @@ watch(detailOpen, v => {
   background: var(--fld);
   border-radius: 8px;
   flex-shrink: 0;
+  min-width: 0;
+  max-width: calc(100% - 24px);
 }
 .cs-search__ic {
   width: 17px;
@@ -1646,6 +1795,7 @@ watch(detailOpen, v => {
 .cs-pillwrap {
   position: relative;
   flex-shrink: 0;
+  max-width: 100%;
 }
 .cs-pills {
   display: flex;
@@ -2295,20 +2445,29 @@ watch(detailOpen, v => {
 .cs-fwh {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 13px 12px 13px 18px;
   background: var(--head);
   font-size: 16px;
+  font-weight: 500;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--ln);
+}
+.cs-fwh > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cs-fwh .cs-ic {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
 }
-.cs-fwh .cs-ic[class*='i-'] {
-  width: 20px;
-  height: 20px;
-  color: var(--tx2);
+.cs-fwh .cs-ic span {
+  width: 18px;
+  height: 18px;
 }
 
 /* calendar */
@@ -2451,16 +2610,17 @@ watch(detailOpen, v => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 6px 6px;
+  padding: 2px 8px 8px;
 }
 .cs-lpr {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
+  min-height: 44px;
 }
 .cs-lpr:hover {
   background: var(--hov);
@@ -2543,6 +2703,16 @@ watch(detailOpen, v => {
 .cs-fl input:focus,
 .cs-fl textarea:focus {
   border-color: var(--g);
+}
+.cs-fl > span em {
+  font-style: normal;
+  color: var(--tx3);
+  opacity: 0.85;
+}
+.cs-fl input.ro {
+  background: var(--fld);
+  color: var(--tx3);
+  cursor: not-allowed;
 }
 .cs-frow {
   display: flex;
@@ -2709,6 +2879,140 @@ watch(detailOpen, v => {
   }
   .cs-toasts {
     bottom: 80px;
+  }
+}
+</style>
+
+<style>
+/* ===== RAIL (Chatwoot ka sidebar) — ChatsScreen jaisa hi =====
+   62px rail · 42px gol icons · active par hara tint.
+   Ye ChatsScreen.vue mein bhi hai, magr woh Contacts page par mount
+   nahi hota — isliye yahan dobara. (Behtar hal: app.scss mein ek baar.) */
+body aside {
+  width: 62px !important;
+  min-width: 62px !important;
+  max-width: 62px !important;
+  background: #202c33 !important;
+  padding: 11px 0 10px !important;
+  border-right: none !important;
+  align-items: center !important;
+}
+body:not(.dark) aside,
+html:not(.dark) body aside {
+  background: #eff3f4 !important;
+}
+body aside nav,
+body aside > section {
+  padding: 0 !important;
+  width: 100%;
+}
+body aside nav ul {
+  align-items: center !important;
+  gap: 5px !important;
+  width: 100%;
+}
+body aside nav a,
+body aside nav > ul > li > a,
+body aside nav [role='button'] {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 50% !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
+  color: #aebac1 !important;
+  transition: background 0.13s, color 0.13s !important;
+}
+body aside nav a:hover {
+  background: #2a3942 !important;
+}
+body aside nav a.active,
+body aside nav a[aria-current='page'],
+body aside nav a.router-link-active {
+  background: #103529 !important;
+  color: #00a884 !important;
+}
+html:not(.dark) body aside nav a {
+  color: #3d4f57 !important;
+}
+html:not(.dark) body aside nav a:hover {
+  background: #dde4e7 !important;
+}
+html:not(.dark) body aside nav a.active,
+html:not(.dark) body aside nav a.router-link-active {
+  background: #c8e8db !important;
+  color: #00755f !important;
+}
+/* rail par sirf icon — text chhupa do */
+body aside nav a span:not([class*='i-']):not([class*='icon']),
+body aside nav a > span + span {
+  display: none !important;
+}
+body aside nav a [class*='i-'] {
+  width: 21px !important;
+  height: 21px !important;
+}
+body aside nav ul + ul {
+  border-top: 1px solid #2a3942;
+  margin-top: 8px !important;
+  padding-top: 8px !important;
+  width: 28px;
+}
+html:not(.dark) body aside nav ul + ul {
+  border-top-color: #c7d1d6;
+}
+body aside > div[class*='cursor-col-resize'] {
+  display: none !important;
+}
+/* mobile par drawer */
+body.cs-rail-open aside {
+  width: 264px !important;
+  min-width: 264px !important;
+  max-width: 264px !important;
+  align-items: stretch !important;
+}
+body.cs-rail-open aside nav a {
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  padding: 13px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 20px !important;
+  justify-content: flex-start !important;
+  font-size: 15.5px !important;
+}
+body.cs-rail-open aside nav a span {
+  display: inline !important;
+}
+
+/* ===== MOBILE: rail ko layout se BAHAR rakho =====
+   min-width: 62px flex layout mein jagah le leti thi aur panel 100%
+   ka tha — horizontal overflow ban jaata tha. */
+@media (max-width: 768px) {
+  body aside {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 264px !important;
+    min-width: 0 !important;
+    max-width: 264px !important;
+    align-items: stretch !important;
+    transition: transform 0.18s ease !important;
+  }
+  body:not(.cs-rail-open) aside {
+    transform: translateX(-100%) !important;
+    box-shadow: none !important;
+  }
+  body.cs-rail-open aside {
+    transform: translateX(0) !important;
+    z-index: 9997 !important;
+  }
+  html,
+  body {
+    overflow-x: hidden !important;
   }
 }
 </style>
