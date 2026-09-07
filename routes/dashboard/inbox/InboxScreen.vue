@@ -406,20 +406,10 @@ const railEl = () =>
   document.querySelector('aside');
 
 const openRail = () => {
-  // Sidebar.vue ka apna mobile drawer hai — usi ka launcher dabao,
-  // pehle hum aside par seedha inline styles laga rahe the jo reh
-  // jaate the aur drawer adhoora khulta tha.
-  const btn = document.querySelector('#mobile-sidebar-launcher');
-  if (btn) {
-    btn.click();
-    return;
-  }
-  const a = railEl();
-  if (!a) return;
-  railOpen.value = true;
-  a.classList.remove('ltr:-translate-x-full', 'rtl:translate-x-full');
-  a.style.transform = 'translateX(0)';
-  document.body.classList.add('cs-rail-open');
+  // Sidebar.vue is event ko sunta hai. Pehle #mobile-sidebar-launcher
+  // dhoondte the jo maujood hi nahi tha — isliye mobile par tabs
+  // kabhi khulte hi nahi the.
+  window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
 };
 const closeRail = () => {
   const a = railEl();
@@ -753,7 +743,10 @@ onBeforeUnmount(() => {
 .cs-ph {
   height: 60px;
   flex-shrink: 0;
-  background: var(--head);
+  /* pehle var(--head) tha jo rail ke rang jaisa hi hai — dono mil kar
+     ek dikhte the. Ab panel ka rang + neeche saaf lakeer. */
+  background: var(--panel);
+  border-bottom: 1px solid var(--ln);
   display: flex;
   align-items: center;
   gap: 6px;
