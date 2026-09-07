@@ -64,6 +64,12 @@ const loading = ref(true);
 const isLight = ref(false);
 const rangeMenu = ref(false);
 const lastSync = ref(null);
+const isMobile = ref(window.innerWidth <= 768);
+
+/* Sidebar.vue is event ko sunta hai */
+const openRail = () => {
+  window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
+};
 
 const summary = ref(null);
 const prevSummary = ref(null);
@@ -464,6 +470,9 @@ const readTheme = () => {
 const closeMenus = () => {
   rangeMenu.value = false;
 };
+const onResize = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
 
 onMounted(() => {
   readTheme();
@@ -474,6 +483,7 @@ onMounted(() => {
     subtree: true,
   });
   document.addEventListener('click', closeMenus);
+  window.addEventListener('resize', onResize);
   refresh(true);
   timer = setInterval(() => {
     if (!document.hidden) refresh(false);
@@ -481,6 +491,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenus);
+  window.removeEventListener('resize', onResize);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
@@ -495,6 +506,16 @@ watch(accountId, () => refresh(true));
     <div class="cs-scroll">
       <!-- ======== TOP ======== -->
       <header class="cs-top">
+        <span
+          v-if="isMobile"
+          class="cs-ham"
+          title="Menu"
+          @click.stop="openRail"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
+          </svg>
+        </span>
         <div class="cs-tt">
           <h1>Hello, {{ firstName }}</h1>
           <span class="cs-today">Today is {{ todayLine }}</span>
@@ -897,7 +918,26 @@ watch(accountId, () => refresh(true));
   flex-wrap: wrap;
 }
 .cs-tt {
+  flex: 1;
   min-width: 0;
+}
+.cs-ham {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--tx2);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-inline-start: -8px;
+}
+.cs-ham:hover {
+  background: var(--hov);
+}
+.cs-ham svg {
+  width: 21px;
+  height: 21px;
 }
 .cs-top h1 {
   font-size: 26px;
