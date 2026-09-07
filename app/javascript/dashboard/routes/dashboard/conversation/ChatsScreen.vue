@@ -1647,13 +1647,16 @@ const openRail = () => {
 };
 
 const closeRail = () => {
-  if (!railOpen.value) return;
+  // pehle yahan "if (!railOpen.value) return" tha. Inline styles Chatwoot
+  // ke aside par lagti hain — component unmount hone par woh reh jaati thin
+  // aur railOpen false ho jaata tha, isliye saaf kabhi hoti hi nahi thin.
   const a = railEl();
   railOpen.value = false;
   if (a) {
     a.style.transform = '';
     a.style.boxShadow = '';
-    a.classList.add('ltr:-translate-x-full');
+    a.style.zIndex = '';
+    if (window.innerWidth <= 768) a.classList.add('ltr:-translate-x-full');
   }
   document.body.classList.remove('cs-rail-open');
 };
@@ -2072,6 +2075,8 @@ const onHotkey = e => {
 };
 
 onMounted(() => {
+  // pichhle mount ki chhoRi hui inline styles saaf karo
+  closeRail();
   store.dispatch('inboxes/get');
   store.dispatch('teams/get');
   store.dispatch('labels/get');
@@ -6767,9 +6772,11 @@ watch(
 @media (max-width: 768px) {
   .cs-app {
     overflow: hidden;
+    max-width: 100vw;
   }
   .cs-panel {
     width: 100%;
+    max-width: 100vw;
     flex: 1 1 100%;
     min-width: 0;
     border-right: none;
@@ -7090,5 +7097,37 @@ body.cs-rail-open aside nav a {
 }
 body.cs-rail-open aside nav a span {
   display: inline !important;
+}
+
+/* ===== MOBILE: rail ko layout se BAHAR rakho =====
+   62px ki min-width flex layout mein jagah le leti thi, panel 100%
+   ka tha — total viewport se chauRa ho jaata tha. Us horizontal
+   overflow ki wajah se sticky header/search left edge par adhoori
+   copy ban kar nazar aate the. */
+@media (max-width: 768px) {
+  body aside {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 264px !important;
+    min-width: 0 !important;
+    max-width: 264px !important;
+    align-items: stretch !important;
+    transition: transform 0.18s ease !important;
+  }
+  body:not(.cs-rail-open) aside {
+    transform: translateX(-100%) !important;
+    box-shadow: none !important;
+  }
+  body.cs-rail-open aside {
+    transform: translateX(0) !important;
+    z-index: 9997 !important;
+  }
+  /* koi bhi horizontal overflow band */
+  html,
+  body {
+    overflow-x: hidden !important;
+  }
 }
 </style>
