@@ -648,18 +648,20 @@ watch(
   padding-bottom: 4px;
 }
 .cs-rl-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #1d7bf5;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  overflow: hidden;
   display: grid;
   place-items: center;
   flex-shrink: 0;
 }
-.cs-rl-logo {
-  width: 18px;
-  height: 18px;
-  color: #fff;
+.cs-rl-mark svg,
+.cs-rl-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .cs-rl-name {
   font-size: 15px;
@@ -746,9 +748,6 @@ watch(
 }
 .cs-rl-arw.up {
   transform: rotate(180deg);
-}
-.cs-rl-search {
-  border: 1px solid var(--rl-ln);
 }
 
 /* badge + dot */
@@ -978,31 +977,74 @@ body aside.cs-rail .cs-rl-leaf {
 body aside.cs-rail .cs-rl-leaf:hover {
   background: var(--rl-hov) !important;
 }
-/* naam wapas — purana rule inhe display:none kar deta tha */
+/* ---- naam wapas ----
+   Purana rule "body aside nav a span:not([class*='i-'])" ki specificity
+   (0,2,5) hai. Pehle mera (0,2,2) tha, isliye HAAR jaata tha — sirf
+   <button> wale items (Campaigns/Reports/Settings) ke naam dikhte the
+   kyunki purana rule sirf <a> ko pakadta hai. Ab (0,3,5). */
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-lbl,
+body aside.cs-rail nav a.cs-rl-leaf span.cs-rl-ltx,
 body aside.cs-rail .cs-rl-ltx,
 body aside.cs-rail .cs-rl-name,
 body aside.cs-rail .cs-rl-subh,
 body aside.cs-rail .cs-rl-arw {
   display: inline !important;
 }
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-lbl {
+  display: block !important;
+}
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-tip,
 body aside.cs-rail .cs-rl-lbl,
 body aside.cs-rail .cs-rl-tip {
   display: block !important;
 }
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-badge,
 body aside.cs-rail .cs-rl-badge,
 body aside.cs-rail .cs-rl-mark {
   display: grid !important;
 }
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-dot,
 body aside.cs-rail .cs-rl-dot {
   display: block !important;
 }
+body aside.cs-rail nav a.cs-rl-item span.cs-rl-ic,
+body aside.cs-rail nav button.cs-rl-item span.cs-rl-ic,
 body aside.cs-rail .cs-rl-ic {
   width: 22px !important;
   height: 22px !important;
 }
+body aside.cs-rail nav a.cs-rl-leaf span.cs-rl-lic,
 body aside.cs-rail .cs-rl-lic {
   width: 17px !important;
   height: 17px !important;
+}
+/* nav ke andar wale flyout ke rows bhi 42px gol ban jaate the */
+body aside.cs-rail nav a.cs-rl-leaf {
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  justify-content: flex-start !important;
+  padding: 10px 16px !important;
+}
+body aside.cs-rail nav a.cs-rl-item,
+body aside.cs-rail nav button.cs-rl-item {
+  width: 40px !important;
+  height: 40px !important;
+  margin: 0 auto !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+}
+body aside.cs-rail.open nav a.cs-rl-item,
+body aside.cs-rail.open nav button.cs-rl-item {
+  width: 100% !important;
+  height: 46px !important;
+  margin: 0 !important;
+  border-radius: 11px !important;
+  justify-content: flex-start !important;
+  padding: 0 14px !important;
 }
 
 @media (max-width: 767px) {
