@@ -6393,14 +6393,10 @@ watch(
   border-radius: 3px;
 }
 
-/* mobile: Chatwoot ka tairta hua hamburger chhupao —
-   hamara header wala hamburger uski jagah lega */
-@media (max-width: 768px) {
-  :global(#mobile-sidebar-launcher),
-  :global([data-testid='mobile-sidebar-launcher']) {
-    display: none !important;
-  }
-}
+/* NOTE: pehle yahan Chatwoot ka hamburger chhupaya jaata tha, magar
+   woh rule GLOBAL tha — har page par lagta tha. Nateeja: Campaigns,
+   Reports, Settings, Templates, Gallery par sidebar kholne ka koi
+   rasta hi nahi bachta tha. Ab woh rule hata diya gaya hai. */
 .cs-ham {
   margin-right: 2px;
 }
