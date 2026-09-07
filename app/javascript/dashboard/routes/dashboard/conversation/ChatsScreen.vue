@@ -7079,24 +7079,52 @@ body aside > div[class*='cursor-col-resize'] {
 }
 /* mobile par drawer */
 body.cs-rail-open aside {
-  width: 264px !important;
-  min-width: 264px !important;
-  max-width: 264px !important;
+  width: 272px !important;
+  min-width: 272px !important;
+  max-width: 272px !important;
   align-items: stretch !important;
+  padding: 12px 0 calc(16px + env(safe-area-inset-bottom)) !important;
+  overflow-y: auto !important;
 }
-body.cs-rail-open aside nav a {
+body.cs-rail-open aside nav ul {
+  align-items: stretch !important;
+  gap: 2px !important;
+}
+/* separator drawer mein 28px ka reh jaata tha — bichka hua lagta tha */
+body.cs-rail-open aside nav ul + ul {
+  width: auto !important;
+  margin: 10px 14px 0 !important;
+  padding-top: 10px !important;
+}
+body.cs-rail-open aside nav a,
+body.cs-rail-open aside nav [role='button'] {
   width: auto !important;
   height: auto !important;
-  border-radius: 0 !important;
-  padding: 13px 20px !important;
+  min-height: 46px !important;
+  border-radius: 10px !important;
   display: flex !important;
   align-items: center !important;
-  gap: 20px !important;
+  gap: 16px !important;
   justify-content: flex-start !important;
-  font-size: 15.5px !important;
+  padding: 0 16px !important;
+  margin: 0 10px !important;
+  font-size: 15px !important;
 }
-body.cs-rail-open aside nav a span {
+/* ASLI BUG: "sirf icon dikhao" wale rule ki specificity (0,2,5) thi
+   aur is rule ki (0,1,5) — isliye drawer khulne par bhi naam chhupe
+   rehte the aur 272px ka khali panel ajeeb lagta tha. Ab (0,3,5). */
+body.cs-rail-open aside nav a span:not([class*='i-']):not([class*='icon']),
+body.cs-rail-open aside nav a > span + span {
   display: inline !important;
+  white-space: nowrap !important;
+}
+/* drawer ke peeche parda — kahin bhi click karo to band ho jaata hai */
+body.cs-rail-open::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9996;
 }
 
 /* ===== MOBILE: rail ko layout se BAHAR rakho =====
