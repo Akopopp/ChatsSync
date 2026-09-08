@@ -429,6 +429,11 @@ const readTheme = () => {
     document.body.classList.contains('dark')
   );
 };
+/* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
+   kabhi kabhi der se chalta hai, isliye dono. */
+const onThemeEvent = e => {
+  isLight.value = !e?.detail?.dark;
+};
 const onHotkey = e => {
   if (e.key === 'Escape') {
     hmenu.value = false;
@@ -444,6 +449,7 @@ onMounted(() => {
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
   readTheme();
+  window.addEventListener('chatssync:theme', onThemeEvent);
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, {
     attributes: true,
@@ -470,6 +476,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeEverything);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
+  window.removeEventListener('chatssync:theme', onThemeEvent);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
