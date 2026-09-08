@@ -115,19 +115,38 @@ const botsOnline = computed(() => {
 let themeObs = null;
 const isDark = ref(true);
 const readTheme = () => {
-  isDark.value = document.documentElement.classList.contains('dark');
+  isDark.value =
+    document.documentElement.classList.contains('dark') ||
+    document.body.classList.contains('dark');
 };
-const toggleTheme = () => {
-  const next = !isDark.value;
-  document.documentElement.classList.toggle('dark', next);
-  isDark.value = next;
+
+/* Theme ek hi jagah se lagti hai taake rail ka button aur Chatwoot ke
+   profile menu wala button dono ek doosre se juday rahen. */
+const applyTheme = dark => {
+  const html = document.documentElement;
+  html.classList.toggle('dark', dark);
+  html.classList.toggle('light', !dark);
+  document.body.classList.toggle('dark', dark);
   try {
-    store.dispatch('updateUISettings', {
-      color_scheme: next ? 'dark' : 'light',
-    });
+    localStorage.setItem('cs_theme', dark ? 'dark' : 'light');
   } catch (e) {
     /* ignore */
   }
+  // Chatwoot ke apne setting mein bhi likho — reload par bachi rahe
+  try {
+    store.dispatch('updateUISettings', { color_scheme: dark ? 'dark' : 'light' });
+  } catch (e) {
+    /* ignore */
+  }
+  // baqi screens foran sun lein, MutationObserver ka intezaar na karein
+  window.dispatchEvent(
+    new CustomEvent('chatssync:theme', { detail: { dark } })
+  );
+};
+const toggleTheme = () => {
+  const next = !isDark.value;
+  isDark.value = next;
+  applyTheme(next);
 };
 
 onMounted(() => {
@@ -144,9 +163,20 @@ onMounted(() => {
   } catch (e) {
     /* optional */
   }
+  // pichhla intikhab wapas lagao (Chatwoot 'auto' par chhod deta hai)
+  try {
+    const saved = localStorage.getItem('cs_theme');
+    if (saved) applyTheme(saved === 'dark');
+  } catch (e) {
+    /* ignore */
+  }
   readTheme();
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+  themeObs.observe(document.body, {
     attributes: true,
     attributeFilter: ['class'],
   });
