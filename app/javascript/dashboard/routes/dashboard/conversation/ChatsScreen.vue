@@ -1520,14 +1520,14 @@ const onFiles = e => {
 };
 
 /* audio — Chatwoot ka apna recorder use kar rahe hain */
-const audioFormat = computed(() => {
-  /* WhatsApp voice note ke liye OGG/Opus lazmi hai. Browser support
-     kare to wahi, warna mp3 (jo file ki tarah jayega). */
-  const canOgg =
-    typeof MediaRecorder !== 'undefined' &&
-    MediaRecorder.isTypeSupported?.('audio/ogg;codecs=opus');
-  return canOgg ? 'audio/ogg' : 'audio/mp3';
-});
+/* WhatsApp voice note (PTT) SIRF audio/ogg (Opus) par banta hai —
+   koi flag nahi, container hi faisla karta hai.
+   PEHLE yahan MediaRecorder.isTypeSupported('audio/ogg') poocha jaata
+   tha. Chrome us par false deta hai (woh sirf webm record karta hai),
+   isliye hum mp3 par gir jaate the aur voice "file" ban jaati thi.
+   Magar Chatwoot ka AudioRecorder OGG khud encode karta hai — isi liye
+   pehle Chrome par bhi theek jaati thi. Ab hamesha OGG. */
+const audioFormat = computed(() => 'audio/ogg');
 
 
 const startRec = () => {
@@ -1628,33 +1628,16 @@ const closeAll = () => {
    header ke andar hai, neeche tairta hua button nahi) */
 const railOpen = ref(false);
 
-/* Chatwoot ka aside mobile par translate se chhupa hota hai.
-   Launcher button dhoondhne ke bajaye seedha usay khol dete hain —
-   ye har layout mein chalta hai. */
-const railEl = () =>
-  document.querySelector('aside.bg-n-background') ||
-  document.querySelector('aside');
-
+/* Rail ab Sidebar.vue khud sambhalta hai.
+   PEHLE closeRail() har document click par aside par Tailwind ki class
+   'ltr:-translate-x-full' laga deta tha (= translateX(-100%)), isliye
+   sidebar khul kar agle click par hi gaayab ho jaati thi. Ab yahan se
+   aside ko haath hi nahi lagate. */
 const openRail = () => {
-  // Sidebar.vue is event ko sunta hai. Pehle #mobile-sidebar-launcher
-  // dhoondte the jo maujood hi nahi tha — isliye mobile par tabs
-  // kabhi khulte hi nahi the.
   window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
 };
-
 const closeRail = () => {
-  // pehle yahan "if (!railOpen.value) return" tha. Inline styles Chatwoot
-  // ke aside par lagti hain — component unmount hone par woh reh jaati thin
-  // aur railOpen false ho jaata tha, isliye saaf kabhi hoti hi nahi thin.
-  const a = railEl();
   railOpen.value = false;
-  if (a) {
-    a.style.transform = '';
-    a.style.boxShadow = '';
-    a.style.zIndex = '';
-    if (window.innerWidth <= 768) a.classList.add('ltr:-translate-x-full');
-  }
-  document.body.classList.remove('cs-rail-open');
 };
 
 const toggleHm = () => {
@@ -2037,8 +2020,7 @@ const onResize = () => {
 const readTheme = () => {
   isLight.value = !(
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark') ||
-    !!document.querySelector('.dark')
+    document.body.classList.contains('dark')
   );
 };
 
@@ -2071,7 +2053,9 @@ const onHotkey = e => {
 };
 
 onMounted(() => {
-  // pichhle mount ki chhoRi hui inline styles saaf karo
+  // is screen ka apna header-hamburger hai, to Chatwoot ka tairta hua
+  // launcher yahin chhupa do. Stock pages par woh chalta rahega.
+  document.body.classList.add('cs-own-header');
   closeRail();
   store.dispatch('inboxes/get');
   store.dispatch('teams/get');
@@ -2102,6 +2086,7 @@ onMounted(() => {
    jaane ke baad bhi Esc / Ctrl+K yahan aate rehte the aur
    observer chalta rehta tha. */
 onBeforeUnmount(() => {
+  document.body.classList.remove('cs-own-header');
   document.removeEventListener('click', closeMenu);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
