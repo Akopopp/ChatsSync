@@ -401,30 +401,15 @@ const goSettings = () => {
 
 /* ---------------- rail (mobile drawer) ---------------- */
 const railOpen = ref(false);
-const railEl = () =>
-  document.querySelector('aside.bg-n-background') ||
-  document.querySelector('aside');
-
+/* Rail ab Sidebar.vue khud sambhalta hai.
+   PEHLE closeRail() har document click par aside par Tailwind ki class
+   'ltr:-translate-x-full' laga deta tha (= translateX(-100%)), isliye
+   sidebar khul kar agle click par hi gaayab ho jaati thi. */
 const openRail = () => {
-  const a = railEl();
-  if (!a) return;
-  railOpen.value = true;
-  a.classList.remove('ltr:-translate-x-full', 'rtl:translate-x-full');
-  a.style.transform = 'translateX(0)';
-  a.style.zIndex = '9997';
-  a.style.boxShadow = '0 0 40px rgba(0,0,0,.5)';
-  document.body.classList.add('cs-rail-open');
+  window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
 };
 const closeRail = () => {
-  const a = railEl();
   railOpen.value = false;
-  if (a) {
-    a.style.transform = '';
-    a.style.boxShadow = '';
-    a.style.zIndex = '';
-    if (window.innerWidth <= 768) a.classList.add('ltr:-translate-x-full');
-  }
-  document.body.classList.remove('cs-rail-open');
 };
 
 const closeEverything = () => {
@@ -441,8 +426,7 @@ const onResize = () => {
 const readTheme = () => {
   isLight.value = !(
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark') ||
-    !!document.querySelector('.dark')
+    document.body.classList.contains('dark')
   );
 };
 const onHotkey = e => {
@@ -453,6 +437,7 @@ const onHotkey = e => {
 };
 
 onMounted(() => {
+  document.body.classList.add('cs-own-header');
   closeRail();
   reload();
   document.addEventListener('click', closeEverything);
@@ -481,6 +466,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  document.body.classList.remove('cs-own-header');
   document.removeEventListener('click', closeEverything);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
@@ -747,7 +733,10 @@ onBeforeUnmount(() => {
 .cs-ph {
   height: 60px;
   flex-shrink: 0;
-  background: var(--head);
+  /* pehle var(--head) tha jo rail ke rang jaisa hi hai — dono mil kar
+     ek dikhte the. Ab panel ka rang + neeche saaf lakeer. */
+  background: var(--panel);
+  border-bottom: 1px solid var(--ln);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1212,158 +1201,6 @@ onBeforeUnmount(() => {
   }
   .cs-toasts {
     bottom: 80px;
-  }
-}
-</style>
-
-<style>
-/* ===== RAIL (Chatwoot ka sidebar) — ChatsScreen/ContactsScreen jaisa ===== */
-body aside {
-  width: 62px !important;
-  min-width: 62px !important;
-  max-width: 62px !important;
-  background: #202c33 !important;
-  padding: 11px 0 10px !important;
-  border-right: none !important;
-  align-items: center !important;
-}
-body:not(.dark) aside,
-html:not(.dark) body aside {
-  background: #eff3f4 !important;
-}
-body aside nav,
-body aside > section {
-  padding: 0 !important;
-  width: 100%;
-}
-body aside nav ul {
-  align-items: center !important;
-  gap: 5px !important;
-  width: 100%;
-}
-body aside nav a,
-body aside nav > ul > li > a,
-body aside nav [role='button'] {
-  width: 42px !important;
-  height: 42px !important;
-  border-radius: 50% !important;
-  display: grid !important;
-  place-items: center !important;
-  padding: 0 !important;
-  margin: 0 auto !important;
-  color: #aebac1 !important;
-  transition: background 0.13s, color 0.13s !important;
-}
-body aside nav a:hover {
-  background: #2a3942 !important;
-}
-body aside nav a.active,
-body aside nav a[aria-current='page'],
-body aside nav a.router-link-active {
-  background: #103529 !important;
-  color: #00a884 !important;
-}
-html:not(.dark) body aside nav a {
-  color: #3d4f57 !important;
-}
-html:not(.dark) body aside nav a:hover {
-  background: #dde4e7 !important;
-}
-html:not(.dark) body aside nav a.active,
-html:not(.dark) body aside nav a.router-link-active {
-  background: #c8e8db !important;
-  color: #00755f !important;
-}
-body aside nav a span:not([class*='i-']):not([class*='icon']),
-body aside nav a > span + span {
-  display: none !important;
-}
-body aside nav a [class*='i-'] {
-  width: 21px !important;
-  height: 21px !important;
-}
-body aside nav ul + ul {
-  border-top: 1px solid #2a3942;
-  margin-top: 8px !important;
-  padding-top: 8px !important;
-  width: 28px;
-}
-html:not(.dark) body aside nav ul + ul {
-  border-top-color: #c7d1d6;
-}
-body aside > div[class*='cursor-col-resize'] {
-  display: none !important;
-}
-
-/* mobile par drawer */
-body.cs-rail-open aside {
-  width: 272px !important;
-  min-width: 272px !important;
-  max-width: 272px !important;
-  align-items: stretch !important;
-  padding: 12px 0 calc(16px + env(safe-area-inset-bottom)) !important;
-  overflow-y: auto !important;
-}
-body.cs-rail-open aside nav ul {
-  align-items: stretch !important;
-  gap: 2px !important;
-}
-body.cs-rail-open aside nav ul + ul {
-  width: auto !important;
-  margin: 10px 14px 0 !important;
-  padding-top: 10px !important;
-}
-body.cs-rail-open aside nav a,
-body.cs-rail-open aside nav [role='button'] {
-  width: auto !important;
-  height: auto !important;
-  min-height: 46px !important;
-  border-radius: 10px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 16px !important;
-  justify-content: flex-start !important;
-  padding: 0 16px !important;
-  margin: 0 10px !important;
-  font-size: 15px !important;
-}
-/* naam dikhane wale rule ki specificity hide wale se zyada honi chahiye */
-body.cs-rail-open aside nav a span:not([class*='i-']):not([class*='icon']),
-body.cs-rail-open aside nav a > span + span {
-  display: inline !important;
-  white-space: nowrap !important;
-}
-body.cs-rail-open::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 9996;
-}
-
-@media (max-width: 768px) {
-  body aside {
-    position: fixed !important;
-    top: 0 !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    width: 272px !important;
-    min-width: 0 !important;
-    max-width: 272px !important;
-    align-items: stretch !important;
-    transition: transform 0.18s ease !important;
-  }
-  body:not(.cs-rail-open) aside {
-    transform: translateX(-100%) !important;
-    box-shadow: none !important;
-  }
-  body.cs-rail-open aside {
-    transform: translateX(0) !important;
-    z-index: 9997 !important;
-  }
-  html,
-  body {
-    overflow-x: hidden !important;
   }
 }
 </style>
