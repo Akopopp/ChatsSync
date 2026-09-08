@@ -1,10 +1,12 @@
 <script setup>
 /* =====================================================================
-   Sidebar.vue  —  ChatsSync ka rail
-   62px patti · 40px gol icons · hover par naam ka tooltip
-   Conversations/Inbox par hara count badge · Chatbot par online dot
-   Neeche alag group: theme toggle, Settings, profile
-   Tabs ki list wahi hai, sirf Dashboard naya hai.
+   Sidebar.vue  —  ChatsSync rail
+   chatssync-v16.html ki asal values:
+     rail 62px · brand 40px (radius 11) · brandsep 28x1
+     .ri 42x42 gol · margin-bottom 5 · hover/on tints
+     badge 17px top-right · green dot 8px · rsep 28x1 · rsp flex
+     tooltip: left 50px, kaala, 12px, scale .92 -> 1
+   Mobile: 272px drawer + apna floating hamburger (har page par).
    ===================================================================== */
 import {
   ref,
@@ -27,7 +29,6 @@ import { useSidebarKeyboardShortcuts } from './useSidebarKeyboardShortcuts';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
 
 import SidebarProfileMenu from './SidebarProfileMenu.vue';
-import Logo from 'next/icon/Logo.vue';
 
 const props = defineProps({
   isMobileSidebarOpen: { type: Boolean, default: false },
@@ -52,14 +53,15 @@ const isFeatureEnabledonAccount = useMapGetter(
   'accounts/isFeatureEnabledonAccount'
 );
 const inboxesList = useMapGetter('inboxes/getInboxes');
+const globalConfig = useMapGetter('globalConfig/get');
+const brandLogo = computed(
+  () => globalConfig.value?.logoThumbnail || globalConfig.value?.logo || ''
+);
 
 const { width: windowWidth } = useWindowSize();
 const isMobile = computed(() => windowWidth.value < 768);
 
-/* ---- mobile drawer ----
-   Screens ka hamburger pehle #mobile-sidebar-launcher dhoondta tha jo
-   maujood hi nahi — isliye mobile par tabs khulte hi nahi the. Ab woh
-   seedha ye event bhejti hain. */
+/* ---- mobile drawer ---- */
 const mobileOpen = ref(false);
 const onRailToggle = () => {
   mobileOpen.value = !mobileOpen.value;
@@ -69,7 +71,6 @@ const drawerOpen = computed(
 );
 const expanded = computed(() => drawerOpen.value);
 
-/* SidebarProfileMenu context inject karta hai — dena zaroori hai */
 const expandedItem = ref(null);
 const setExpandedItem = name => {
   expandedItem.value = expandedItem.value === name ? null : name;
@@ -92,8 +93,6 @@ const hasConversationUnreadCounts = computed(() =>
     FEATURE_FLAGS.CONVERSATION_UNREAD_COUNTS
   )
 );
-
-/* getter har version mein nahi hota — isliye seedha aur bacha kar */
 const convUnread = computed(() => {
   const g = store.getters || {};
   const direct = g['conversationUnreadCounts/getTotalUnreadCount'];
@@ -107,13 +106,29 @@ const convUnread = computed(() => {
   }
   return 0;
 });
-
-/* chatbot online hai ya nahi */
 const botsOnline = computed(() => {
-  const g = store.getters || {};
-  const list = g['agentBots/getBots'];
+  const list = (store.getters || {})['agentBots/getBots'];
   return Array.isArray(list) && list.length > 0;
 });
+
+/* ---- theme ---- */
+let themeObs = null;
+const isDark = ref(true);
+const readTheme = () => {
+  isDark.value = document.documentElement.classList.contains('dark');
+};
+const toggleTheme = () => {
+  const next = !isDark.value;
+  document.documentElement.classList.toggle('dark', next);
+  isDark.value = next;
+  try {
+    store.dispatch('updateUISettings', {
+      color_scheme: next ? 'dark' : 'light',
+    });
+  } catch (e) {
+    /* ignore */
+  }
+};
 
 onMounted(() => {
   window.addEventListener('chatssync:toggle-rail', onRailToggle);
@@ -136,7 +151,6 @@ onMounted(() => {
     attributeFilter: ['class'],
   });
 });
-
 onBeforeUnmount(() => {
   window.removeEventListener('chatssync:toggle-rail', onRailToggle);
   if (themeObs) {
@@ -162,32 +176,8 @@ const closeMobileSidebar = () => {
   emit('closeMobileSidebar');
 };
 
-/* ---- theme toggle ---- */
-let themeObs = null;
-const isDark = ref(true);
-const readTheme = () => {
-  isDark.value = document.documentElement.classList.contains('dark');
-};
-const toggleTheme = () => {
-  const next = !isDark.value;
-  document.documentElement.classList.toggle('dark', next);
-  isDark.value = next;
-  try {
-    localStorage.setItem('cs_theme', next ? 'dark' : 'light');
-  } catch (e) {
-    /* ignore */
-  }
-  // Chatwoot ke apne setting mein bhi likh do taake reload par bachi rahe
-  const scheme = next ? 'dark' : 'light';
-  try {
-    store.dispatch('updateUISettings', { uiSettings: { color_scheme: scheme } });
-  } catch (e) {
-    /* ignore */
-  }
-};
-
-/* ---------------- tabs ---------------- */
-const mainItems = computed(() => [
+/* ---------------- tabs (v16 ki tarteeb + Dashboard) ---------------- */
+const groupA = computed(() => [
   {
     name: 'Dashboard',
     label: 'Dashboard',
@@ -255,6 +245,9 @@ const mainItems = computed(() => [
       },
     ],
   },
+]);
+
+const groupB = computed(() => [
   ...(isAdmin.value
     ? [
         {
@@ -286,59 +279,20 @@ const mainItems = computed(() => [
     label: t('SIDEBAR.REPORTS'),
     icon: 'i-lucide-chart-spline',
     activeOn: [
-      'account_overview_reports',
-      'conversation_reports',
-      'agent_reports_index',
-      'agent_reports_show',
-      'label_reports_index',
-      'inbox_reports_index',
-      'inbox_reports_show',
-      'team_reports_index',
-      'team_reports_show',
-      'csat_reports',
-      'bot_reports',
+      'account_overview_reports', 'conversation_reports', 'agent_reports_index',
+      'agent_reports_show', 'label_reports_index', 'inbox_reports_index',
+      'inbox_reports_show', 'team_reports_index', 'team_reports_show',
+      'csat_reports', 'bot_reports',
     ],
     children: [
-      {
-        label: t('SIDEBAR.REPORTS_OVERVIEW'),
-        icon: 'i-lucide-layout-dashboard',
-        to: accountScopedRoute('account_overview_reports'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_CONVERSATION'),
-        icon: 'i-lucide-message-circle',
-        to: accountScopedRoute('conversation_reports'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_AGENT'),
-        icon: 'i-lucide-square-user',
-        to: accountScopedRoute('agent_reports_index'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_LABEL'),
-        icon: 'i-lucide-tags',
-        to: accountScopedRoute('label_reports_index'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_INBOX'),
-        icon: 'i-lucide-inbox',
-        to: accountScopedRoute('inbox_reports_index'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_TEAM'),
-        icon: 'i-lucide-users',
-        to: accountScopedRoute('team_reports_index'),
-      },
-      {
-        label: t('SIDEBAR.CSAT'),
-        icon: 'i-lucide-smile',
-        to: accountScopedRoute('csat_reports'),
-      },
-      {
-        label: t('SIDEBAR.REPORTS_BOT'),
-        icon: 'i-lucide-bot',
-        to: accountScopedRoute('bot_reports'),
-      },
+      { label: t('SIDEBAR.REPORTS_OVERVIEW'), icon: 'i-lucide-layout-dashboard', to: accountScopedRoute('account_overview_reports') },
+      { label: t('SIDEBAR.REPORTS_CONVERSATION'), icon: 'i-lucide-message-circle', to: accountScopedRoute('conversation_reports') },
+      { label: t('SIDEBAR.REPORTS_AGENT'), icon: 'i-lucide-square-user', to: accountScopedRoute('agent_reports_index') },
+      { label: t('SIDEBAR.REPORTS_LABEL'), icon: 'i-lucide-tags', to: accountScopedRoute('label_reports_index') },
+      { label: t('SIDEBAR.REPORTS_INBOX'), icon: 'i-lucide-inbox', to: accountScopedRoute('inbox_reports_index') },
+      { label: t('SIDEBAR.REPORTS_TEAM'), icon: 'i-lucide-users', to: accountScopedRoute('team_reports_index') },
+      { label: t('SIDEBAR.CSAT'), icon: 'i-lucide-smile', to: accountScopedRoute('csat_reports') },
+      { label: t('SIDEBAR.REPORTS_BOT'), icon: 'i-lucide-bot', to: accountScopedRoute('bot_reports') },
     ],
   },
 ]);
@@ -355,7 +309,7 @@ const settingsItem = computed(() => ({
     'settings_inbox_new', 'settings_inbox_finish', 'settings_inboxes_page_channel',
     'settings_inboxes_add_agents', 'labels_list', 'attributes_list',
     'automation_list', 'agent_bots', 'macros_wrapper', 'canned_list',
-    'settings_applications', 'security_settings_index', 'billing_settings_index',
+    'settings_applications',
   ],
   children: [
     { label: t('SIDEBAR.ACCOUNT_SETTINGS'), icon: 'i-lucide-briefcase', to: accountScopedRoute('general_settings_index') },
@@ -369,20 +323,14 @@ const settingsItem = computed(() => ({
     { label: t('SIDEBAR.MACROS'), icon: 'i-lucide-toy-brick', to: accountScopedRoute('macros_wrapper') },
     { label: t('SIDEBAR.CANNED_RESPONSES'), icon: 'i-lucide-message-square-quote', to: accountScopedRoute('canned_list') },
     { label: t('SIDEBAR.INTEGRATIONS'), icon: 'i-lucide-blocks', to: accountScopedRoute('settings_applications') },
-    { label: t('SIDEBAR.SECURITY'), icon: 'i-lucide-shield', to: accountScopedRoute('security_settings_index') },
-    { label: t('SIDEBAR.BILLING'), icon: 'i-lucide-credit-card', to: accountScopedRoute('billing_settings_index') },
   ],
 }));
 
 const isActive = item => (item.activeOn || []).includes(route.name);
 
-/* ---- flyout ----
-   Pehle .cs-rl-nav ke andar absolute tha aur us par overflow-y:auto hai —
-   CSS overflow-x ko bhi auto kar deta hai, isliye options kat jaate the.
-   Ab fixed hai aur button ke rect se apni jagah nikalta hai. */
+/* ---- flyout: fixed, warna nav ka overflow-y usay kaat deta hai ---- */
 const openFly = ref(null);
-const flyPos = ref({ top: 0, left: 0, bottom: 'auto' });
-
+const flyPos = ref({ top: 0, left: 0 });
 const toggleFly = (name, ev) => {
   if (openFly.value === name) {
     openFly.value = null;
@@ -396,9 +344,8 @@ const toggleFly = (name, ev) => {
     const el = document.querySelector('.cs-rl-sub');
     if (!el) return;
     let top = r.top - 4;
-    const h = el.offsetHeight;
-    if (top + h > window.innerHeight - 12)
-      top = Math.max(12, window.innerHeight - h - 12);
+    if (top + el.offsetHeight > window.innerHeight - 12)
+      top = Math.max(12, window.innerHeight - el.offsetHeight - 12);
     flyPos.value = { top, left: r.right + 10 };
   });
 };
@@ -422,109 +369,96 @@ watch(
         closeFly();
         closeMobileSidebar();
       },
-      {
-        ignore: [
-          '#mobile-sidebar-launcher',
-          '[data-popover-content]',
-          '[data-popover-backdrop]',
-        ],
-      },
+      { ignore: ['.cs-rl-ham', '[data-popover-content]', '[data-popover-backdrop]'] },
     ]"
     class="cs-rail"
     :class="{ open: expanded, 'cs-rail--hidden': isMobile && !drawerOpen }"
   >
     <!-- brand -->
-    <div class="cs-rl-top">
-      <div class="cs-rl-brand">
-        <span class="cs-rl-mark"><Logo class="cs-rl-logo" /></span>
-        <span v-if="expanded" class="cs-rl-name">ChatsSync</span>
-      </div>
-      <RouterLink
-        :to="{ name: 'search' }"
-        class="cs-rl-item cs-rl-search"
-        @click="onLeafClick"
-      >
-        <span class="cs-rl-ic i-lucide-search" />
-        <span v-if="expanded" class="cs-rl-lbl">
-          {{ t('COMBOBOX.SEARCH_PLACEHOLDER') }}
-        </span>
-        <span v-if="!expanded" class="cs-rl-tip">
-          {{ t('COMBOBOX.SEARCH_PLACEHOLDER') }}
-        </span>
-      </RouterLink>
+    <div class="cs-rl-brand">
+      <span class="cs-rl-mark">
+        <img v-if="brandLogo" :src="brandLogo" alt="ChatsSync" />
+        <svg v-else viewBox="0 0 512 512" aria-hidden="true">
+          <rect x="34" y="30" width="444" height="392" rx="110" fill="#1A56DB" />
+          <path d="M150 418 L238 362 L150 362 Z" fill="#1A56DB" />
+          <path d="M168 240a88 88 0 0 1 150-64" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round" />
+          <path d="M344 272a88 88 0 0 1-150 64" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round" />
+          <path d="M312 126 L346 196 L272 190 Z" fill="#fff" />
+          <path d="M200 386 L166 316 L240 322 Z" fill="#fff" />
+        </svg>
+      </span>
+      <span v-if="expanded" class="cs-rl-name">ChatsSync</span>
     </div>
+    <div class="cs-rl-bsep" />
 
-    <!-- tabs -->
     <nav class="cs-rl-nav">
-      <template v-for="item in mainItems" :key="item.name">
-        <RouterLink
-          v-if="!item.children"
-          :to="item.to"
-          class="cs-rl-item"
-          :class="{ on: isActive(item) }"
-          @click="onLeafClick"
-        >
-          <span class="cs-rl-ic" :class="item.icon" />
-          <span v-if="expanded" class="cs-rl-lbl">{{ item.label }}</span>
-          <span v-if="item.count && item.count() > 0" class="cs-rl-badge">
-            {{ item.count() > 99 ? '99+' : item.count() }}
-          </span>
-          <span v-if="item.dot && item.dot()" class="cs-rl-dot" />
-          <span v-if="!expanded" class="cs-rl-tip">{{ item.label }}</span>
-        </RouterLink>
+      <template v-for="(grp, gi) in [groupA, groupB]" :key="gi">
+        <div v-if="gi === 1" class="cs-rl-sep" />
+        <template v-for="item in grp" :key="item.name">
+          <RouterLink
+            v-if="!item.children"
+            :to="item.to"
+            class="cs-ri"
+            :class="{ on: isActive(item) }"
+            @click="onLeafClick"
+          >
+            <span class="cs-ri-ic" :class="item.icon" />
+            <span v-if="expanded" class="cs-ri-lbl">{{ item.label }}</span>
+            <span v-if="item.count && item.count() > 0" class="cs-ri-bg">
+              {{ item.count() > 99 ? '99+' : item.count() }}
+            </span>
+            <span v-if="item.dot && item.dot()" class="cs-ri-gd" />
+            <span v-if="!expanded" class="cs-ri-tip">{{ item.label }}</span>
+          </RouterLink>
 
-        <div v-else class="cs-rl-wrap">
-          <button
-            type="button"
-            class="cs-rl-item"
-            :class="{ on: isActive(item), fly: openFly === item.name }"
-            @click.stop="toggleFly(item.name, $event)"
-          >
-            <span class="cs-rl-ic" :class="item.icon" />
-            <span v-if="expanded" class="cs-rl-lbl">{{ item.label }}</span>
-            <span
-              v-if="expanded"
-              class="cs-rl-arw i-lucide-chevron-down"
-              :class="{ up: openFly === item.name }"
-            />
-            <span v-if="!expanded" class="cs-rl-tip">{{ item.label }}</span>
-          </button>
-          <div
-            v-if="openFly === item.name"
-            class="cs-rl-sub"
-            :class="{ inline: expanded }"
-            :style="
-              expanded ? null : { top: flyPos.top + 'px', left: flyPos.left + 'px' }
-            "
-            @click.stop
-          >
-            <div v-if="!expanded" class="cs-rl-subh">{{ item.label }}</div>
-            <RouterLink
-              v-for="c in item.children"
-              :key="c.label"
-              :to="c.to"
-              class="cs-rl-leaf"
-              @click="onLeafClick"
+          <div v-else class="cs-rl-wrap">
+            <button
+              type="button"
+              class="cs-ri"
+              :class="{ on: isActive(item), fly: openFly === item.name }"
+              @click.stop="toggleFly(item.name, $event)"
             >
-              <span class="cs-rl-lic" :class="c.icon" />
-              <span class="cs-rl-ltx">{{ c.label }}</span>
-            </RouterLink>
+              <span class="cs-ri-ic" :class="item.icon" />
+              <span v-if="expanded" class="cs-ri-lbl">{{ item.label }}</span>
+              <span
+                v-if="expanded"
+                class="cs-ri-arw i-lucide-chevron-down"
+                :class="{ up: openFly === item.name }"
+              />
+              <span v-if="!expanded" class="cs-ri-tip">{{ item.label }}</span>
+            </button>
+            <div
+              v-if="openFly === item.name"
+              class="cs-rl-sub"
+              :class="{ inline: expanded }"
+              :style="expanded ? null : { top: flyPos.top + 'px', left: flyPos.left + 'px' }"
+              @click.stop
+            >
+              <div v-if="!expanded" class="cs-rl-subh">{{ item.label }}</div>
+              <RouterLink
+                v-for="c in item.children"
+                :key="c.label"
+                :to="c.to"
+                class="cs-rl-leaf"
+                @click="onLeafClick"
+              >
+                <span class="cs-rl-lic" :class="c.icon" />
+                <span class="cs-rl-ltx">{{ c.label }}</span>
+              </RouterLink>
+            </div>
           </div>
-        </div>
+        </template>
       </template>
     </nav>
 
-    <!-- neeche ka group: theme · settings · profile -->
+    <!-- neeche: theme · settings · profile -->
     <div class="cs-rl-foot">
-      <button type="button" class="cs-rl-item" @click.stop="toggleTheme">
-        <span
-          class="cs-rl-ic"
-          :class="isDark ? 'i-lucide-moon' : 'i-lucide-sun'"
-        />
-        <span v-if="expanded" class="cs-rl-lbl">
+      <button type="button" class="cs-ri" @click.stop="toggleTheme">
+        <span class="cs-ri-ic" :class="isDark ? 'i-lucide-moon' : 'i-lucide-sun'" />
+        <span v-if="expanded" class="cs-ri-lbl">
           {{ isDark ? 'Dark mode' : 'Light mode' }}
         </span>
-        <span v-if="!expanded" class="cs-rl-tip">
+        <span v-if="!expanded" class="cs-ri-tip">
           {{ isDark ? 'Dark mode' : 'Light mode' }}
         </span>
       </button>
@@ -532,29 +466,24 @@ watch(
       <div class="cs-rl-wrap">
         <button
           type="button"
-          class="cs-rl-item"
-          :class="{
-            on: isActive(settingsItem),
-            fly: openFly === settingsItem.name,
-          }"
+          class="cs-ri"
+          :class="{ on: isActive(settingsItem), fly: openFly === settingsItem.name }"
           @click.stop="toggleFly(settingsItem.name, $event)"
         >
-          <span class="cs-rl-ic" :class="settingsItem.icon" />
-          <span v-if="expanded" class="cs-rl-lbl">{{ settingsItem.label }}</span>
+          <span class="cs-ri-ic" :class="settingsItem.icon" />
+          <span v-if="expanded" class="cs-ri-lbl">{{ settingsItem.label }}</span>
           <span
             v-if="expanded"
-            class="cs-rl-arw i-lucide-chevron-down"
+            class="cs-ri-arw i-lucide-chevron-down"
             :class="{ up: openFly === settingsItem.name }"
           />
-          <span v-if="!expanded" class="cs-rl-tip">{{ settingsItem.label }}</span>
+          <span v-if="!expanded" class="cs-ri-tip">{{ settingsItem.label }}</span>
         </button>
         <div
           v-if="openFly === settingsItem.name"
           class="cs-rl-sub"
           :class="{ inline: expanded }"
-          :style="
-            expanded ? null : { top: flyPos.top + 'px', left: flyPos.left + 'px' }
-          "
+          :style="expanded ? null : { top: flyPos.top + 'px', left: flyPos.left + 'px' }"
           @click.stop
         >
           <div v-if="!expanded" class="cs-rl-subh">{{ settingsItem.label }}</div>
@@ -579,77 +508,85 @@ watch(
       </div>
     </div>
   </aside>
+
+  <!-- HAR PAGE ka apna hamburger. Jin screens ka apna header-hamburger
+       hai (Chats/Contacts/Inbox/Dashboard) wahan CSS se chhup jaata hai. -->
+  <button
+    v-if="isMobile && !drawerOpen"
+    type="button"
+    class="cs-rl-ham"
+    aria-label="Menu"
+    @click.stop="mobileOpen = true"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
+    </svg>
+  </button>
+  <div v-if="isMobile && drawerOpen" class="cs-rl-scrim" @click="closeMobileSidebar" />
 </template>
 
 <style scoped>
+/* v16 ke asal rang */
 .cs-rail {
-  --rl-bg: #0f1a21;
-  --rl-ic: #8696a0;
-  --rl-hov: #1f2c33;
-  --rl-on-bg: #103529;
-  --rl-on: #00a884;
-  --rl-ln: #1f2c33;
-  --rl-menu: #233138;
-  --rl-tx: #e9edef;
-  --rl-tx3: #8696a0;
-  --rl-badge: #00a884;
-  --rl-badge-tx: #06120f;
+  --rail: #202c33;
+  --rail-hov: #2a3942;
+  --rail-on: #103529;
+  --rail-ic: #aebac1;
+  --rail-ic-on: #00a884;
+  --fld-b: #2a3942;
+  --badge: #00a884;
+  --badge-tx: #0b141a;
+  --menu: #233138;
+  --tx: #e9edef;
+  --tx3: #8696a0;
 
   position: relative;
   z-index: 40;
   flex-shrink: 0;
   width: 62px;
   height: 100%;
-  background: var(--rl-bg);
-  border-inline-end: 1px solid var(--rl-ln);
+  background: var(--rail);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 11px 0 10px;
   font-size: 14px;
-  color: var(--rl-tx);
-  transition: width 0.16s ease;
+  color: var(--tx);
+  transition: width 0.16s ease, transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 :global(html:not(.dark)) .cs-rail {
-  --rl-bg: #f0f3f4;
-  --rl-ic: #4a5c64;
-  --rl-hov: #dde4e7;
-  --rl-on-bg: #c8e8db;
-  --rl-on: #00755f;
-  --rl-ln: #d3dbde;
-  --rl-menu: #ffffff;
-  --rl-tx: #0a1519;
-  --rl-tx3: #55666e;
-  --rl-badge: #00a884;
-  --rl-badge-tx: #ffffff;
+  --rail: #f0f2f5;
+  --rail-hov: #e3e6ea;
+  --rail-on: #dcefe9;
+  --rail-ic: #54656f;
+  --rail-ic-on: #008069;
+  --fld-b: #e4e7e9;
+  --badge: #25d366;
+  --badge-tx: #053e20;
+  --menu: #ffffff;
+  --tx: #111b21;
+  --tx3: #667781;
+  border-right: 1px solid var(--fld-b);
 }
 .cs-rail * {
   box-sizing: border-box;
 }
 .cs-rail.open {
   width: 272px;
+  align-items: stretch;
+  padding: 12px 10px calc(10px + env(safe-area-inset-bottom));
 }
 
 /* brand */
-.cs-rl-top {
-  flex-shrink: 0;
-  padding: 12px 10px 8px;
-  display: grid;
-  gap: 8px;
-  justify-items: center;
-  border-bottom: 1px solid var(--rl-ln);
-}
-.cs-rail.open .cs-rl-top {
-  justify-items: stretch;
-}
 .cs-rl-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  min-width: 0;
-  padding-bottom: 4px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .cs-rl-mark {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 11px;
   overflow: hidden;
   display: grid;
@@ -658,17 +595,33 @@ watch(
 }
 .cs-rl-mark svg,
 .cs-rl-mark img {
-  width: 100%;
-  height: 100%;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   display: block;
 }
+.cs-rail.open .cs-rl-mark svg,
+.cs-rail.open .cs-rl-mark img {
+  width: 100%;
+  height: 100%;
+}
 .cs-rl-name {
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.cs-rl-bsep {
+  width: 28px;
+  height: 1px;
+  background: var(--fld-b);
+  margin: 9px 0 10px;
+  flex-shrink: 0;
+}
+.cs-rail.open .cs-rl-bsep {
+  width: 100%;
+  margin: 10px 0;
 }
 
 /* nav */
@@ -676,62 +629,73 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  width: 100%;
   scrollbar-width: none;
 }
 .cs-rl-nav::-webkit-scrollbar {
   display: none;
 }
+.cs-rail.open .cs-rl-nav {
+  align-items: stretch;
+  gap: 2px;
+}
 .cs-rl-wrap {
   position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.cs-rail.open .cs-rl-wrap {
+  flex-direction: column;
 }
 
-/* item */
-.cs-rl-item {
+/* .ri — v16 ki asal values */
+.cs-ri {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--rail-ic);
+  margin-bottom: 5px;
   position: relative;
-  width: 40px;
-  height: 40px;
-  margin: 0 auto;
+  transition: 0.13s;
   border: 0;
   background: transparent;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--rl-ic);
-  cursor: pointer;
   text-decoration: none;
   font-family: inherit;
-  font-size: 14.5px;
-  transition: background 0.13s, color 0.13s;
+  flex-shrink: 0;
 }
-.cs-rail.open .cs-rl-item {
+.cs-ri:hover {
+  background: var(--rail-hov);
+}
+.cs-ri.on,
+.cs-ri.fly {
+  background: var(--rail-on);
+  color: var(--rail-ic-on);
+}
+.cs-rail.open .cs-ri {
   width: 100%;
   height: 46px;
-  margin: 0;
   border-radius: 11px;
+  display: flex;
+  align-items: center;
   justify-content: flex-start;
+  gap: 16px;
   padding: 0 14px;
+  margin-bottom: 2px;
+  font-size: 15px;
 }
-.cs-rl-item:hover {
-  background: var(--rl-hov);
-  color: var(--rl-tx);
-}
-.cs-rl-item.on,
-.cs-rl-item.fly {
-  background: var(--rl-on-bg);
-  color: var(--rl-on);
-}
-.cs-rl-ic {
+.cs-ri-ic {
   width: 22px;
   height: 22px;
   flex-shrink: 0;
 }
-.cs-rl-lbl {
+.cs-ri-lbl {
   flex: 1;
   min-width: 0;
   text-align: start;
@@ -739,85 +703,88 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cs-rl-arw {
+.cs-ri-arw {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
   opacity: 0.7;
   transition: transform 0.15s;
 }
-.cs-rl-arw.up {
+.cs-ri-arw.up {
   transform: rotate(180deg);
 }
 
-/* badge + dot */
-.cs-rl-badge {
-  position: absolute;
-  top: -2px;
-  inset-inline-end: -2px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background: var(--rl-badge);
-  color: var(--rl-badge-tx);
-  font-size: 10.5px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--rl-bg);
-}
-.cs-rail.open .cs-rl-badge {
-  position: static;
-  border: 0;
-  margin-inline-start: auto;
-}
-.cs-rl-dot {
+/* badge + green dot */
+.cs-ri-bg {
   position: absolute;
   top: 1px;
   inset-inline-end: 1px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #22c55e;
-  border: 2px solid var(--rl-bg);
+  background: var(--badge);
+  color: var(--badge-tx);
+  font-size: 9.5px;
+  font-weight: 600;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
 }
-.cs-rail.open .cs-rl-dot {
+.cs-ri-gd {
+  position: absolute;
+  top: 5px;
+  inset-inline-end: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--badge);
+}
+.cs-rail.open .cs-ri-bg,
+.cs-rail.open .cs-ri-gd {
   position: static;
   margin-inline-start: auto;
-  border: 0;
 }
 
-/* tooltip */
-.cs-rl-tip {
+/* tooltip — v16 */
+.cs-ri-tip {
   position: absolute;
   inset-inline-start: 50px;
   top: 50%;
-  transform: translateY(-50%);
-  background: var(--rl-menu);
-  color: var(--rl-tx);
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12.5px;
+  transform: translateY(-50%) scale(0.92);
+  background: #000;
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  transition: opacity 0.12s;
+  transition: 0.14s;
   z-index: 9999;
 }
-:global(html:not(.dark)) .cs-rl-tip {
-  border: 1px solid var(--rl-ln);
+.cs-ri:hover .cs-ri-tip {
+  opacity: 0.92;
+  transform: translateY(-50%) scale(1);
 }
-.cs-rl-item:hover .cs-rl-tip {
-  opacity: 1;
+
+/* separators */
+.cs-rl-sep {
+  width: 28px;
+  height: 1px;
+  background: var(--fld-b);
+  margin: 7px 0 9px;
+  flex-shrink: 0;
+}
+.cs-rail.open .cs-rl-sep {
+  width: 100%;
+  margin: 8px 0;
 }
 
 /* submenu */
 .cs-rl-sub {
   position: fixed;
   min-width: 224px;
-  background: var(--rl-menu);
+  background: var(--menu);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
   padding: 7px 0;
@@ -826,21 +793,21 @@ watch(
   overflow-y: auto;
 }
 :global(html:not(.dark)) .cs-rl-sub {
-  border: 1px solid var(--rl-ln);
+  border: 1px solid var(--fld-b);
 }
 .cs-rl-sub.inline {
   position: static;
   min-width: 0;
   box-shadow: none;
   border-radius: 10px;
-  margin: 3px 0 5px;
+  margin: 0 0 5px;
   padding: 5px 0;
-  background: var(--rl-hov);
+  background: var(--rail-hov);
   max-height: none;
 }
 .cs-rl-subh {
   font-size: 11.5px;
-  color: var(--rl-tx3);
+  color: var(--tx3);
   padding: 4px 16px 8px;
 }
 .cs-rl-leaf {
@@ -848,24 +815,24 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  color: var(--rl-tx);
+  color: var(--tx);
   text-decoration: none;
   font-size: 13.5px;
   white-space: nowrap;
 }
 .cs-rail.open .cs-rl-leaf {
-  padding-inline-start: 44px;
+  padding-inline-start: 46px;
 }
 .cs-rl-leaf:hover {
-  background: var(--rl-hov);
+  background: var(--rail-hov);
 }
 .cs-rl-leaf.router-link-active {
-  color: var(--rl-on);
+  color: var(--rail-ic-on);
 }
 .cs-rl-lic {
   width: 17px;
   height: 17px;
-  color: var(--rl-tx3);
+  color: var(--tx3);
   flex-shrink: 0;
 }
 .cs-rl-ltx {
@@ -876,19 +843,25 @@ watch(
 /* foot */
 .cs-rl-foot {
   flex-shrink: 0;
-  border-top: 1px solid var(--rl-ln);
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding-top: 7px;
+}
+.cs-rail.open .cs-rl-foot {
+  align-items: stretch;
+  border-top: 1px solid var(--fld-b);
+  margin-top: 8px;
 }
 .cs-rl-prof {
   display: flex;
   justify-content: center;
-  padding-top: 4px;
+  margin-top: 4px;
 }
 .cs-rail.open .cs-rl-prof {
   justify-content: flex-start;
+  padding: 6px 4px 0;
 }
 
 /* mobile drawer */
@@ -900,8 +873,9 @@ watch(
     height: 100%;
     width: 272px;
     z-index: 9997;
+    align-items: stretch;
+    padding: 12px 10px calc(10px + env(safe-area-inset-bottom));
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
-    transition: transform 0.18s ease;
   }
   .cs-rail--hidden {
     transform: translateX(-100%);
@@ -910,59 +884,118 @@ watch(
   [dir='rtl'] .cs-rail--hidden {
     transform: translateX(100%);
   }
+  .cs-ri-tip {
+    display: none;
+  }
+}
+
+/* apna hamburger — har page par */
+.cs-rl-ham {
+  display: none;
+}
+.cs-rl-scrim {
+  display: none;
+}
+@media (max-width: 767px) {
+  .cs-rl-ham {
+    position: fixed;
+    top: 9px;
+    inset-inline-start: 9px;
+    z-index: 9990;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: var(--rail);
+    color: var(--rail-ic);
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  }
+  .cs-rl-ham svg {
+    width: 21px;
+    height: 21px;
+  }
+  .cs-rl-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9996;
+    display: block;
+  }
 }
 </style>
 
 <style>
 /* =====================================================================
-   PURANI RAIL CSS KA TOR
-   ChatsScreen/ContactsScreen ke non-scoped blocks mein "body aside ..."
-   wale rules the jo !important ke saath icon gol 42px kar dete the aur
-   naam chhupa dete the. Vite saari CSS ek hi file mein daalta hai, to
-   woh component mount na ho tab bhi lagti rehti hai — isi wajah se
-   Reports/Settings ke flyout mein sirf icons dikhte the.
+   1. Chatwoot ka purana floating launcher har jagah band.
+   2. Jin screens ka apna header-hamburger hai wahan hamara floating
+      button bhi chhupa do — warna do button nazar aate hain.
+   3. Purani "body aside ..." wali CSS (agar bundle mein reh jaye) ka tor.
    ===================================================================== */
+@media (max-width: 767px) {
+  #mobile-sidebar-launcher,
+  [data-testid='mobile-sidebar-launcher'] {
+    display: none !important;
+  }
+  body.cs-own-header .cs-rl-ham {
+    display: none !important;
+  }
+}
+
 body aside.cs-rail {
   width: 62px !important;
   min-width: 62px !important;
   max-width: 62px !important;
-  padding: 0 !important;
-  align-items: stretch !important;
-  background: var(--rl-bg) !important;
+  padding: 11px 0 10px !important;
+  align-items: center !important;
+  background: var(--rail) !important;
 }
 body aside.cs-rail.open {
   width: 272px !important;
   min-width: 272px !important;
   max-width: 272px !important;
+  align-items: stretch !important;
+  padding: 12px 10px !important;
 }
 body aside.cs-rail nav {
-  padding: 8px 10px 12px !important;
-  width: auto !important;
-}
-body aside.cs-rail .cs-rl-item {
-  width: 40px !important;
-  height: 40px !important;
-  margin: 0 auto !important;
-  border-radius: 50% !important;
-  display: flex !important;
-  justify-content: center !important;
   padding: 0 !important;
-  color: var(--rl-ic) !important;
+  width: 100% !important;
+}
+body aside.cs-rail nav a.cs-ri,
+body aside.cs-rail nav button.cs-ri,
+body aside.cs-rail .cs-ri {
+  width: 42px !important;
+  height: 42px !important;
+  margin: 0 auto 5px !important;
+  border-radius: 50% !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  color: var(--rail-ic) !important;
   background: transparent !important;
 }
-body aside.cs-rail .cs-rl-item.on,
-body aside.cs-rail .cs-rl-item.fly {
-  background: var(--rl-on-bg) !important;
-  color: var(--rl-on) !important;
+body aside.cs-rail nav a.cs-ri.on,
+body aside.cs-rail nav button.cs-ri.on,
+body aside.cs-rail nav button.cs-ri.fly,
+body aside.cs-rail .cs-ri.on,
+body aside.cs-rail .cs-ri.fly {
+  background: var(--rail-on) !important;
+  color: var(--rail-ic-on) !important;
 }
-body aside.cs-rail.open .cs-rl-item {
+body aside.cs-rail.open nav a.cs-ri,
+body aside.cs-rail.open nav button.cs-ri,
+body aside.cs-rail.open .cs-ri {
   width: 100% !important;
   height: 46px !important;
-  margin: 0 !important;
+  margin: 0 0 2px !important;
   border-radius: 11px !important;
+  display: flex !important;
   justify-content: flex-start !important;
   padding: 0 14px !important;
 }
+body aside.cs-rail nav a.cs-rl-leaf,
 body aside.cs-rail .cs-rl-leaf {
   width: auto !important;
   height: auto !important;
@@ -971,45 +1004,33 @@ body aside.cs-rail .cs-rl-leaf {
   display: flex !important;
   justify-content: flex-start !important;
   padding: 10px 16px !important;
-  color: var(--rl-tx) !important;
   background: transparent !important;
+  color: var(--tx) !important;
 }
-body aside.cs-rail .cs-rl-leaf:hover {
-  background: var(--rl-hov) !important;
-}
-/* ---- naam wapas ----
-   Purana rule "body aside nav a span:not([class*='i-'])" ki specificity
-   (0,2,5) hai. Pehle mera (0,2,2) tha, isliye HAAR jaata tha — sirf
-   <button> wale items (Campaigns/Reports/Settings) ke naam dikhte the
-   kyunki purana rule sirf <a> ko pakadta hai. Ab (0,3,5). */
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-lbl,
+/* naam wapas: purana rule (0,2,5) tha, ye (0,3,5) hai */
+body aside.cs-rail nav a.cs-ri span.cs-ri-lbl,
 body aside.cs-rail nav a.cs-rl-leaf span.cs-rl-ltx,
+body aside.cs-rail nav a.cs-ri span.cs-ri-tip,
+body aside.cs-rail .cs-ri-lbl,
 body aside.cs-rail .cs-rl-ltx,
+body aside.cs-rail .cs-ri-tip,
 body aside.cs-rail .cs-rl-name,
 body aside.cs-rail .cs-rl-subh,
-body aside.cs-rail .cs-rl-arw {
-  display: inline !important;
-}
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-lbl {
+body aside.cs-rail .cs-ri-arw {
   display: block !important;
 }
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-tip,
-body aside.cs-rail .cs-rl-lbl,
-body aside.cs-rail .cs-rl-tip {
-  display: block !important;
-}
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-badge,
-body aside.cs-rail .cs-rl-badge,
+body aside.cs-rail nav a.cs-ri span.cs-ri-bg,
+body aside.cs-rail .cs-ri-bg,
 body aside.cs-rail .cs-rl-mark {
   display: grid !important;
 }
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-dot,
-body aside.cs-rail .cs-rl-dot {
+body aside.cs-rail nav a.cs-ri span.cs-ri-gd,
+body aside.cs-rail .cs-ri-gd {
   display: block !important;
 }
-body aside.cs-rail nav a.cs-rl-item span.cs-rl-ic,
-body aside.cs-rail nav button.cs-rl-item span.cs-rl-ic,
-body aside.cs-rail .cs-rl-ic {
+body aside.cs-rail nav a.cs-ri span.cs-ri-ic,
+body aside.cs-rail nav button.cs-ri span.cs-ri-ic,
+body aside.cs-rail .cs-ri-ic {
   width: 22px !important;
   height: 22px !important;
 }
@@ -1017,34 +1038,6 @@ body aside.cs-rail nav a.cs-rl-leaf span.cs-rl-lic,
 body aside.cs-rail .cs-rl-lic {
   width: 17px !important;
   height: 17px !important;
-}
-/* nav ke andar wale flyout ke rows bhi 42px gol ban jaate the */
-body aside.cs-rail nav a.cs-rl-leaf {
-  width: auto !important;
-  height: auto !important;
-  min-height: 0 !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  display: flex !important;
-  justify-content: flex-start !important;
-  padding: 10px 16px !important;
-}
-body aside.cs-rail nav a.cs-rl-item,
-body aside.cs-rail nav button.cs-rl-item {
-  width: 40px !important;
-  height: 40px !important;
-  margin: 0 auto !important;
-  border-radius: 50% !important;
-  padding: 0 !important;
-}
-body aside.cs-rail.open nav a.cs-rl-item,
-body aside.cs-rail.open nav button.cs-rl-item {
-  width: 100% !important;
-  height: 46px !important;
-  margin: 0 !important;
-  border-radius: 11px !important;
-  justify-content: flex-start !important;
-  padding: 0 14px !important;
 }
 
 @media (max-width: 767px) {
@@ -1056,6 +1049,7 @@ body aside.cs-rail.open nav button.cs-rl-item {
     width: 272px !important;
     min-width: 272px !important;
     max-width: 272px !important;
+    align-items: stretch !important;
     z-index: 9997 !important;
     transform: translateX(0) !important;
   }
