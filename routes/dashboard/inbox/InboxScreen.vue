@@ -401,26 +401,15 @@ const goSettings = () => {
 
 /* ---------------- rail (mobile drawer) ---------------- */
 const railOpen = ref(false);
-const railEl = () =>
-  document.querySelector('aside.bg-n-background') ||
-  document.querySelector('aside');
-
+/* Rail ab Sidebar.vue khud sambhalta hai.
+   PEHLE closeRail() har document click par aside par Tailwind ki class
+   'ltr:-translate-x-full' laga deta tha (= translateX(-100%)), isliye
+   sidebar khul kar agle click par hi gaayab ho jaati thi. */
 const openRail = () => {
-  // Sidebar.vue is event ko sunta hai. Pehle #mobile-sidebar-launcher
-  // dhoondte the jo maujood hi nahi tha — isliye mobile par tabs
-  // kabhi khulte hi nahi the.
   window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
 };
 const closeRail = () => {
-  const a = railEl();
   railOpen.value = false;
-  if (a) {
-    a.style.transform = '';
-    a.style.boxShadow = '';
-    a.style.zIndex = '';
-    if (window.innerWidth <= 768) a.classList.add('ltr:-translate-x-full');
-  }
-  document.body.classList.remove('cs-rail-open');
 };
 
 const closeEverything = () => {
@@ -437,8 +426,7 @@ const onResize = () => {
 const readTheme = () => {
   isLight.value = !(
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark') ||
-    !!document.querySelector('.dark')
+    document.body.classList.contains('dark')
   );
 };
 const onHotkey = e => {
@@ -449,6 +437,7 @@ const onHotkey = e => {
 };
 
 onMounted(() => {
+  document.body.classList.add('cs-own-header');
   closeRail();
   reload();
   document.addEventListener('click', closeEverything);
@@ -477,6 +466,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  document.body.classList.remove('cs-own-header');
   document.removeEventListener('click', closeEverything);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
