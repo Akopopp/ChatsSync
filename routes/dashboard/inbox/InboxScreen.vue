@@ -12,6 +12,7 @@
      DELETE /notifications/:id
    ===================================================================== */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import axios from 'axios';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -43,42 +44,33 @@ const safeD = (name, payload) => {
 };
 
 /* ---------------- API ---------------- */
-const authHeaders = () => {
-  const h = { 'Content-Type': 'application/json' };
-  try {
-    const raw = (document.cookie.match(
-      /(?:^|;\s*)cw_d_session_info=([^;]+)/
-    ) || [])[1];
-    if (raw) {
-      let txt = decodeURIComponent(raw);
-      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
-      const sess = JSON.parse(txt);
-      if (sess['access-token']) {
-        h['access-token'] = sess['access-token'];
-        h['token-type'] = sess['token-type'] || 'Bearer';
-        h.client = sess.client;
-        h.expiry = sess.expiry;
-        h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
-      }
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
-  return h;
-};
+/* ===================================================================
+   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
+   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
+   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
+   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
+   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
+   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
+   lagte the, server par kabhi nahi jaate the.
+   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
+   khud sambhalta hai.
+   =================================================================== */
 
-const api = (path, opts = {}) =>
-  fetch(`/api/v1/accounts/${accountId.value}${path}`, {
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    ...opts,
-  }).then(r => {
-    if (!r.ok) throw new Error(`${opts.method || 'GET'} ${path} → ${r.status}`);
-    return r.status === 204 ? null : r.json().catch(() => null);
-  });
+
+/* opts wahi shakl rakhta hai jo pehle fetch ke saath thi, taake
+   baqi code badalna na pade */
+const api = (path, opts = {}) => {
+  const { method = 'get', body, headers, ...rest } = opts;
+  return axios({
+    method,
+    url: `/api/v1/accounts/${accountId.value}${path}`,
+    ...(body === undefined
+      ? {}
+      : { data: typeof body === 'string' ? JSON.parse(body) : body }),
+    ...(headers ? { headers } : {}),
+    ...rest,
+  }).then(r => r.data);
+};
 
 /* Chatwoot ke do shakl hain: {data:{payload,meta}} ya {payload,meta} */
 const unwrap = res => {
@@ -423,11 +415,28 @@ let poller = null;
 const onResize = () => {
   isMobile.value = window.innerWidth <= 768;
 };
-const readTheme = () => {
-  isLight.value = !(
+const probeEl = ref(null);
+const probeDark = () => {
+  const el = probeEl.value;
+  if (el) {
+    try {
+      return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
     document.body.classList.contains('dark')
   );
+};
+const readTheme = () => {
+  isLight.value = !probeDark();
+};
+/* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
+   kabhi kabhi der se chalta hai, isliye dono. */
+const onThemeEvent = e => {
+  isLight.value = !e?.detail?.dark;
 };
 const onHotkey = e => {
   if (e.key === 'Escape') {
@@ -444,12 +453,10 @@ onMounted(() => {
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
   readTheme();
+  window.addEventListener('chatssync:theme', onThemeEvent);
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-    subtree: true,
-  });
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
   // har 60s par sirf naya page 1 — poori list dobara nahi
   poller = setInterval(() => {
     if (document.hidden) return;
@@ -470,6 +477,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeEverything);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
+  window.removeEventListener('chatssync:theme', onThemeEvent);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
@@ -624,6 +632,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
 
     <!-- ============ TOASTS ============ -->
     <div class="cs-toasts">
@@ -1203,4 +1213,14 @@ onBeforeUnmount(() => {
     bottom: 80px;
   }
 }
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
 </style>
