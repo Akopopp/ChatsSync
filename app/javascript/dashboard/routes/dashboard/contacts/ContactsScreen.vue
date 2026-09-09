@@ -883,26 +883,40 @@ const closeEverything = () => {
 
 /* ---------------- lifecycle ---------------- */
 let themeObs = null;
+let themePoll = null;
 const onResize = () => {
   isMobile.value = window.innerWidth <= 768;
 };
-const probeEl = ref(null);
-const probeDark = () => {
-  const el = probeEl.value;
-  if (el) {
-    try {
-      return getComputedStyle(el).display !== 'none';
-    } catch (e) {
-      /* ignore */
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
     }
+  } catch (e) {
+    /* ignore */
   }
   return (
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark')
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
   );
 };
 const readTheme = () => {
-  isLight.value = !probeDark();
+  const l = !detectDark();
+  if (l !== isLight.value) isLight.value = l;
 };
 /* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
    kabhi kabhi der se chalta hai, isliye dono. */
@@ -934,6 +948,7 @@ onMounted(() => {
   window.addEventListener('resize', onResize);
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
+  themePoll = setInterval(readTheme, 1000);
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
@@ -945,6 +960,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
   window.removeEventListener('chatssync:theme', onThemeEvent);
+  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
