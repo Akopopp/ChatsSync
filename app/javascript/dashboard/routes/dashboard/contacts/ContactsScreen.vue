@@ -5,10 +5,11 @@
    Chatwoot ke ContactsTable / ContactInfoPanel yahan use NAHI hote.
 
    Data seedha REST API se aata hai (store ke action ke naam har
-   version mein badalte hain). Har call authHeaders() se jaati hai —
-   wahi tareeqa jo ChatsScreen ke labels mein chala.
+   version mein badalte hain). Har call Chatwoot ke apne axios se jaati
+   hai — auth headers aur token rotation woh khud sambhalta hai.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import axios from 'axios';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -42,42 +43,33 @@ const safeD = (name, payload) => {
 };
 
 /* ---------------- API ---------------- */
-const authHeaders = () => {
-  const h = { 'Content-Type': 'application/json' };
-  try {
-    const raw = (document.cookie.match(
-      /(?:^|;\s*)cw_d_session_info=([^;]+)/
-    ) || [])[1];
-    if (raw) {
-      let txt = decodeURIComponent(raw);
-      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
-      const sess = JSON.parse(txt);
-      if (sess['access-token']) {
-        h['access-token'] = sess['access-token'];
-        h['token-type'] = sess['token-type'] || 'Bearer';
-        h.client = sess.client;
-        h.expiry = sess.expiry;
-        h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
-      }
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
-  return h;
-};
+/* ===================================================================
+   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
+   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
+   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
+   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
+   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
+   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
+   lagte the, server par kabhi nahi jaate the.
+   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
+   khud sambhalta hai.
+   =================================================================== */
 
-const api = (path, opts = {}) =>
-  fetch(`/api/v1/accounts/${accountId.value}${path}`, {
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    ...opts,
-  }).then(r => {
-    if (!r.ok) throw new Error(`${opts.method || 'GET'} ${path} → ${r.status}`);
-    return r.status === 204 ? null : r.json();
-  });
+
+/* opts wahi shakl rakhta hai jo pehle fetch ke saath thi, taake
+   baqi code badalna na pade */
+const api = (path, opts = {}) => {
+  const { method = 'get', body, headers, ...rest } = opts;
+  return axios({
+    method,
+    url: `/api/v1/accounts/${accountId.value}${path}`,
+    ...(body === undefined
+      ? {}
+      : { data: typeof body === 'string' ? JSON.parse(body) : body }),
+    ...(headers ? { headers } : {}),
+    ...rest,
+  }).then(r => r.data);
+};
 
 /* ---------------- state ---------------- */
 const contacts = ref([]);
@@ -747,20 +739,12 @@ const onImportFile = e => {
   if (!file) return;
   const fd = new FormData();
   fd.append('import_file', file);
-  // FormData ke saath Content-Type khud browser set karta hai
-  // (boundary ke saath) — apna bhejenge to server parse nahi kar payega
-  const h = authHeaders();
-  delete h['Content-Type'];
   importing.value = true;
   toast('Uploading — import background mein chalta hai');
-  fetch(`/api/v1/accounts/${accountId.value}/contacts/import`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: h,
-    body: fd,
-  })
-    .then(r => {
-      if (!r.ok) throw new Error('import ' + r.status);
+  // FormData ke saath Content-Type axios khud lagata hai (boundary ke saath)
+  axios
+    .post(`/api/v1/accounts/${accountId.value}/contacts/import`, fd)
+    .then(() => {
       toast('Import started — contacts thoRi der mein aa jayenge');
       setTimeout(reload, 5000);
     })
@@ -902,11 +886,23 @@ let themeObs = null;
 const onResize = () => {
   isMobile.value = window.innerWidth <= 768;
 };
-const readTheme = () => {
-  isLight.value = !(
+const probeEl = ref(null);
+const probeDark = () => {
+  const el = probeEl.value;
+  if (el) {
+    try {
+      return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
     document.body.classList.contains('dark')
   );
+};
+const readTheme = () => {
+  isLight.value = !probeDark();
 };
 /* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
    kabhi kabhi der se chalta hai, isliye dono. */
@@ -939,11 +935,8 @@ onMounted(() => {
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-    subtree: true,
-  });
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
 });
 
 onBeforeUnmount(() => {
@@ -1570,6 +1563,8 @@ watch(detailOpen, v => {
     </div>
 
     <div v-if="isMobile && (hmenu || cmenu || lblMenu)" class="cs-sheetbg" />
+
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
 
     <!-- ============ TOASTS ============ -->
     <div class="cs-toasts">
@@ -2916,4 +2911,14 @@ watch(detailOpen, v => {
     bottom: 80px;
   }
 }
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
 </style>
