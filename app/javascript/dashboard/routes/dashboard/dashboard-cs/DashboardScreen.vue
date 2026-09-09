@@ -436,24 +436,38 @@ const lastMsg = c => {
 
 /* ---------------- lifecycle ---------------- */
 let themeObs = null;
+let themePoll = null;
 let timer = null;
-const probeEl = ref(null);
-const probeDark = () => {
-  const el = probeEl.value;
-  if (el) {
-    try {
-      return getComputedStyle(el).display !== 'none';
-    } catch (e) {
-      /* ignore */
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
     }
+  } catch (e) {
+    /* ignore */
   }
   return (
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark')
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
   );
 };
 const readTheme = () => {
-  isLight.value = !probeDark();
+  const l = !detectDark();
+  if (l !== isLight.value) isLight.value = l;
 };
 const onThemeEvent = e => {
   isLight.value = !e?.detail?.dark;
@@ -466,6 +480,7 @@ onMounted(() => {
   document.body.classList.add('cs-own-header');
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
+  themePoll = setInterval(readTheme, 1000);
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
@@ -479,6 +494,7 @@ onBeforeUnmount(() => {
   document.body.classList.remove('cs-own-header');
   window.removeEventListener('chatssync:theme', onThemeEvent);
   window.removeEventListener('resize', onResize);
+  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
@@ -931,11 +947,14 @@ watch(accountId, () => refresh(true));
   gap: 13px;
   margin-bottom: 13px;
 }
+/* auto-fit + min() = container ki chauRai dekh kar khud toot-ta hai.
+   Pehle media query viewport dekhti thi, isliye mobile par kabhi
+   kabhi PC wala layout reh jaata tha. */
 .cs-row.b {
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
 }
 .cs-row.c3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
 }
 
 /* speed card */
@@ -981,7 +1000,7 @@ watch(accountId, () => refresh(true));
 /* KPI */
 .cs-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 13px;
   margin-bottom: 13px;
 }
@@ -1553,24 +1572,7 @@ watch(accountId, () => refresh(true));
 }
 
 /* responsive */
-@media (max-width: 1180px) {
-  .cs-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 1100px) {
-  .cs-row.c3 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .cs-row.c3 > .cs-card:last-child {
-    grid-column: 1 / -1;
-  }
-}
-@media (max-width: 980px) {
-  .cs-row.b {
-    grid-template-columns: 1fr;
-  }
-}
+/* grid ab khud sambhalti hai — yahan sirf spacing/typography */
 @media (max-width: 768px) {
   .cs-scroll {
     padding: 14px 12px 28px;
@@ -1599,22 +1601,12 @@ watch(accountId, () => refresh(true));
   .cs-bnm {
     width: 82px;
   }
-  .cs-row.c3 {
-    grid-template-columns: 1fr;
-  }
-  .cs-row.c3 > .cs-card:last-child {
-    grid-column: auto;
-  }
   .cs-tbl th:nth-child(4),
   .cs-tbl td:nth-child(4) {
     display: none;
   }
 }
-@media (max-width: 430px) {
-  .cs-kpis {
-    grid-template-columns: 1fr;
-  }
-}
+
 .cs-probe {
   position: fixed;
   top: -20px;
