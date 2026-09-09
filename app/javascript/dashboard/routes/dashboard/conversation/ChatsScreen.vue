@@ -1952,6 +1952,31 @@ const isArchived = c =>
     c?.additional_attributes?.archived_at ||
     archived.value[c?.id]
   );
+/* ===== 24-ghante ki window =====
+   Chatwoot server khud hisaab laga kar conversation par `can_reply`
+   bhejta hai. Wahi istemal karte hain taake logic Chatwoot se alag
+   na ho jaye. false ka matlab: customer ke aakhri message ko 24 ghante
+   guzar gaye — ab sirf approved template ja sakta hai.
+   (Free entry point ki 72 ghante wali riayat sirf PAISON par asar
+   daalti hai, is 24-ghante ke qaide par nahi.) */
+const windowOpen = computed(() => currentChat.value?.can_reply !== false);
+const lastInAt = computed(() => {
+  const list = messages.value || [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.message_type === 0) return list[i].created_at;
+  }
+  return null;
+});
+const windowLeft = computed(() => {
+  if (!windowOpen.value || !lastInAt.value) return '';
+  const left = 86400 - (Date.now() / 1000 - Number(lastInAt.value));
+  if (left <= 0 || left > 86400) return '';
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  if (h >= 1) return `${h}h ${m}m left`;
+  return `${m}m left`;
+});
+
 const isMuted = c =>
   !!(c?.muted || c?.custom_attributes?.cs_muted || muted.value[c?.id]);
 
@@ -1985,6 +2010,7 @@ const archivedCount = computed(
 
 /* ---------------- lifecycle ---------------- */
 let themeObs = null;
+let themePoll = null;
 let recWatchdog = null;
 
 const onResize = () => {
@@ -1992,23 +2018,36 @@ const onResize = () => {
 };
 
 /* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
-const probeEl = ref(null);
-const probeDark = () => {
-  const el = probeEl.value;
-  if (el) {
-    try {
-      return getComputedStyle(el).display !== 'none';
-    } catch (e) {
-      /* ignore */
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
     }
+  } catch (e) {
+    /* ignore */
   }
   return (
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark')
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
   );
 };
 const readTheme = () => {
-  isLight.value = !probeDark();
+  const l = !detectDark();
+  if (l !== isLight.value) isLight.value = l;
 };
 /* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
    kabhi kabhi der se chalta hai, isliye dono. */
@@ -2067,6 +2106,7 @@ onMounted(() => {
 
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
+  themePoll = setInterval(readTheme, 1000);
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
@@ -2081,6 +2121,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
   window.removeEventListener('chatssync:theme', onThemeEvent);
+  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
@@ -3042,6 +3083,21 @@ watch(
           </div>
         </template>
 
+        <!-- 24 ghante guzar gaye: sirf template -->
+        <div v-if="!windowOpen && !isRecording && !isNote" class="cs-winbar">
+          <span class="i-lucide-clock-alert" />
+          <div class="cs-winb">
+            <b>24-hour window closed</b>
+            <span>
+              Only approved templates can be sent now. A new window opens when
+              the customer replies.
+            </span>
+          </div>
+          <button class="cs-winbtn" @click.stop="showTpl = true; showEmoji = false">
+            Templates
+          </button>
+        </div>
+
         <div v-if="!isRecording" class="cs-tabs">
           <button
             class="cs-tab"
@@ -3162,7 +3218,14 @@ watch(
             v-model="draft"
             class="cs-cin"
             rows="1"
-            :placeholder="isNote ? 'Private note...' : 'Type a message'"
+            :disabled="!windowOpen && !isNote"
+            :placeholder="
+              isNote
+                ? 'Private note...'
+                : windowOpen
+                  ? 'Type a message'
+                  : 'Window closed — send a template instead'
+            "
             @keydown="onKey"
             @input="growBox"
           />
@@ -4793,6 +4856,65 @@ watch(
 }
 
 /* ===== COMPOSER extras ===== */
+/* 24-ghante wali patti */
+.cs-winbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 10px 13px;
+  border-radius: 11px;
+  background: var(--red-tint);
+  border: 1px solid var(--red);
+}
+.cs-winbar > span[class*='i-'] {
+  width: 19px;
+  height: 19px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-winb {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+.cs-winb b {
+  display: block;
+  font-size: 13px;
+  color: var(--red);
+}
+.cs-winb span {
+  font-size: 11.5px;
+  color: var(--tx2);
+}
+.cs-winbtn {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 18px;
+  background: var(--g);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 7px 15px;
+  cursor: pointer;
+}
+.cs-winbtn:hover {
+  filter: brightness(1.08);
+}
+.cs-cin:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 768px) {
+  .cs-winbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cs-winbtn {
+    width: 100%;
+  }
+}
+
 .cs-tabs {
   display: flex;
   gap: 6px;
@@ -6893,4 +7015,120 @@ watch(
   border: none;
   border-top: 1px solid var(--ln);
 }
+/* =====================================================================
+   POLISH — WhatsApp jaisi finishing. Sirf CSS, koi logic nahi badla.
+   ===================================================================== */
+/* bubbles: halka saya aur narm kinare */
+.cs-msg {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-msg {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.1);
+}
+.cs-msg.out {
+  border-radius: 8px 0 8px 8px;
+}
+.cs-msg.in {
+  border-radius: 0 8px 8px 8px;
+}
+.cs-msg.out:not(.f1) {
+  border-radius: 8px;
+}
+.cs-msg.in:not(.f1) {
+  border-radius: 8px;
+}
+
+/* list rows: narm hover aur saaf selected haalat */
+.cs-row {
+  transition: background 0.12s ease;
+}
+.cs-row.on {
+  box-shadow: inset 3px 0 0 var(--g);
+}
+.cs-app.lite .cs-row.on {
+  box-shadow: inset 3px 0 0 var(--g);
+}
+
+/* pills aur search: narm harkat */
+.cs-pl,
+.cs-search,
+.cs-ic,
+.cs-mi {
+  transition: background 0.13s ease, color 0.13s ease, filter 0.13s ease;
+}
+.cs-search:focus-within {
+  outline: 1px solid var(--g);
+}
+
+/* scrollbar: patli aur khamosh */
+.cs-list::-webkit-scrollbar,
+.cs-thread::-webkit-scrollbar,
+.cs-cscroll::-webkit-scrollbar {
+  width: 6px;
+}
+.cs-list::-webkit-scrollbar-thumb,
+.cs-thread::-webkit-scrollbar-thumb,
+.cs-cscroll::-webkit-scrollbar-thumb {
+  background: var(--sel);
+  border-radius: 3px;
+}
+.cs-list::-webkit-scrollbar-thumb:hover,
+.cs-thread::-webkit-scrollbar-thumb:hover {
+  background: var(--tx3);
+}
+.cs-list,
+.cs-thread {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sel) transparent;
+}
+
+/* menus: halka sa upar se aana */
+.cs-hm,
+.cs-tm,
+.cs-cmenu,
+.cs-mmenu {
+  animation: csPop 0.13s ease-out;
+  transform-origin: top right;
+}
+@keyframes csPop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* composer: focus par halki hari lakeer */
+.cs-bar {
+  transition: box-shadow 0.14s ease;
+}
+.cs-bar:focus-within {
+  box-shadow: 0 0 0 1px var(--g);
+}
+
+/* day chip aur unread divider thoda saaf */
+.cs-day span,
+.cs-unrd span {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+
+/* labels aur chips: text kabhi na toote */
+.cs-lb,
+.cs-chip,
+.cs-ib {
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-hm,
+  .cs-tm,
+  .cs-cmenu,
+  .cs-mmenu {
+    animation: none;
+  }
+}
+
 </style>
