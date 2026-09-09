@@ -6,6 +6,7 @@
    ismein use NAHI hote — poora markup apna hai.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import axios from 'axios';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -608,45 +609,29 @@ const toast = (text, kind = 'ok') => {
    catch chup-chaap gir jaata tha aur label kabhi save nahi hota tha.
    Ab devise ki cookie se poore headers bhi jaate hain.
    =================================================================== */
-const authHeaders = () => {
-  const h = { 'Content-Type': 'application/json' };
-  try {
-    const raw = (document.cookie.match(
-      /(?:^|;\s*)cw_d_session_info=([^;]+)/
-    ) || [])[1];
-    if (raw) {
-      let txt = decodeURIComponent(raw);
-      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
-      const sess = JSON.parse(txt);
-      if (sess['access-token']) {
-        h['access-token'] = sess['access-token'];
-        h['token-type'] = sess['token-type'] || 'Bearer';
-        h.client = sess.client;
-        h.expiry = sess.expiry;
-        h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
-      }
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
-  return h;
-};
+/* ===================================================================
+   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
+   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
+   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
+   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
+   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
+   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
+   lagte the, server par kabhi nahi jaate the.
+   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
+   khud sambhalta hai.
+   =================================================================== */
+const req = (method, path, data, extra = {}) =>
+  axios({
+    method,
+    url: `/api/v1/accounts/${accountId.value}${path}`,
+    ...(data === undefined ? {} : { data }),
+    ...extra,
+  }).then(r => r.data);
 
 /* Chatwoot ka documented endpoint. labels ki POORI list bhejni hoti
    hai — server usi ko final maan leta hai (replace, add nahi). */
 const setLabelsApi = (cid, labels) =>
-  fetch(`/api/v1/accounts/${accountId.value}/conversations/${cid}/labels`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    body: JSON.stringify({ labels }),
-  }).then(r => {
-    if (!r.ok) throw new Error('labels ' + r.status);
-    return r;
-  });
+  req('post', `/conversations/${cid}/labels`, { labels });
 
 /* HAR label ka raasta yahin se guzarta hai.
    1. REST API  2. na chale to Chatwoot ka conversationLabels/update
@@ -701,17 +686,7 @@ const applyLabels = (c, labels) => {
 };
 
 const delMessage = (cid, mid) =>
-  fetch(
-    `/api/v1/accounts/${accountId.value}/conversations/${cid}/messages/${mid}`,
-    {
-      method: 'DELETE',
-      credentials: 'same-origin',
-      headers: authHeaders(),
-    }
-  ).then(r => {
-    if (!r.ok) throw new Error('delete ' + r.status);
-    return r;
-  });
+  req('delete', `/conversations/${cid}/messages/${mid}`);
 const lightbox = ref(null);
 const fwdQ = ref('');
 const tq = ref('');
@@ -2017,11 +1992,23 @@ const onResize = () => {
 };
 
 /* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
-const readTheme = () => {
-  isLight.value = !(
+const probeEl = ref(null);
+const probeDark = () => {
+  const el = probeEl.value;
+  if (el) {
+    try {
+      return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
     document.body.classList.contains('dark')
   );
+};
+const readTheme = () => {
+  isLight.value = !probeDark();
 };
 /* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
    kabhi kabhi der se chalta hai, isliye dono. */
@@ -2081,11 +2068,8 @@ onMounted(() => {
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-    subtree: true,
-  });
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
 });
 
 /* Component hatte waqt sab kuch band karo. Warna doosre tab par
@@ -3431,6 +3415,8 @@ watch(
         </div>
       </div>
     </div>
+
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
 
     <!-- ============ TOASTS ============ -->
     <div class="cs-toasts">
@@ -6039,6 +6025,15 @@ watch(
 }
 
 /* toasts */
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
 .cs-toasts {
   position: fixed;
   left: 50%;
