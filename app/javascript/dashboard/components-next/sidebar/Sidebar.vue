@@ -114,10 +114,23 @@ const botsOnline = computed(() => {
 /* ---- theme ---- */
 let themeObs = null;
 const isDark = ref(true);
-const readTheme = () => {
-  isDark.value =
+const probeEl = ref(null);
+const probeDark = () => {
+  const el = probeEl.value;
+  if (el) {
+    try {
+      return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark');
+    document.body.classList.contains('dark')
+  );
+};
+const readTheme = () => {
+  isDark.value = probeDark();
 };
 
 /* Theme ek hi jagah se lagti hai taake rail ka button aur Chatwoot ke
@@ -172,14 +185,9 @@ onMounted(() => {
   }
   readTheme();
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-  });
-  themeObs.observe(document.body, {
-    attributes: true,
-    attributeFilter: ['class'],
-  });
+  // sirf class nahi — data-theme waghera bhi pakdo
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
 });
 onBeforeUnmount(() => {
   window.removeEventListener('chatssync:toggle-rail', onRailToggle);
@@ -538,6 +546,9 @@ watch(
       </div>
     </div>
   </aside>
+
+  <!-- theme probe: Tailwind se poochta hai ke abhi dark hai ya nahi -->
+  <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
 
   <!-- HAR PAGE ka apna hamburger. Jin screens ka apna header-hamburger
        hai (Chats/Contacts/Inbox/Dashboard) wahan CSS se chhup jaata hai. -->
@@ -917,6 +928,16 @@ watch(
   .cs-ri-tip {
     display: none;
   }
+}
+
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
 }
 
 /* apna hamburger — har page par */
