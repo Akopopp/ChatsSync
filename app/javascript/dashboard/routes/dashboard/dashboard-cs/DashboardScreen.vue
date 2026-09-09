@@ -5,6 +5,7 @@
    Data Chatwoot ke apne endpoints se — koi backend kaam nahi.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
 
@@ -14,40 +15,22 @@ const currentUser = useMapGetter('getCurrentUser');
 const currentAccount = useMapGetter('getCurrentAccount');
 
 /* ---------------- API ---------------- */
-const authHeaders = () => {
-  const h = { 'Content-Type': 'application/json' };
-  try {
-    const raw = (document.cookie.match(
-      /(?:^|;\s*)cw_d_session_info=([^;]+)/
-    ) || [])[1];
-    if (raw) {
-      let txt = decodeURIComponent(raw);
-      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
-      const sess = JSON.parse(txt);
-      if (sess['access-token']) {
-        h['access-token'] = sess['access-token'];
-        h['token-type'] = sess['token-type'] || 'Bearer';
-        h.client = sess.client;
-        h.expiry = sess.expiry;
-        h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
-      }
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
-  return h;
-};
+/* ===================================================================
+   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
+   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
+   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
+   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
+   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
+   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
+   lagte the, server par kabhi nahi jaate the.
+   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
+   khud sambhalta hai.
+   =================================================================== */
+
 const call = (ver, path) =>
-  fetch(`/api/${ver}/accounts/${accountId.value}${path}`, {
-    credentials: 'same-origin',
-    headers: authHeaders(),
-  }).then(r => {
-    if (!r.ok) throw new Error(`${path} → ${r.status}`);
-    return r.json();
-  });
+  axios
+    .get(`/api/${ver}/accounts/${accountId.value}${path}`)
+    .then(r => r.data);
 const v1 = p => call('v1', p);
 const v2 = p => call('v2', p);
 const soft = (p, fb = null) => p.catch(() => fb);
@@ -289,6 +272,12 @@ const perf = computed(() => {
   ];
 });
 
+const speeds = computed(() => [
+  { n: 'First reply', v: fmtDur(s0.value.avg_first_response_time), i: 'i-lucide-zap', c: '#F59E0B' },
+  { n: 'Resolution', v: fmtDur(s0.value.avg_resolution_time), i: 'i-lucide-flag', c: '#00A884' },
+  { n: 'Reply time', v: fmtDur(s0.value.reply_time), i: 'i-lucide-timer', c: '#0EA5E9' },
+]);
+
 const inboxRows = computed(() => {
   const rows = inboxes.value.map(ib => ({
     id: ib.id, name: ib.name, kind: chKind(ib.channel_type),
@@ -448,11 +437,23 @@ const lastMsg = c => {
 /* ---------------- lifecycle ---------------- */
 let themeObs = null;
 let timer = null;
-const readTheme = () => {
-  isLight.value = !(
+const probeEl = ref(null);
+const probeDark = () => {
+  const el = probeEl.value;
+  if (el) {
+    try {
+      return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
     document.body.classList.contains('dark')
   );
+};
+const readTheme = () => {
+  isLight.value = !probeDark();
 };
 const onThemeEvent = e => {
   isLight.value = !e?.detail?.dark;
@@ -466,8 +467,8 @@ onMounted(() => {
   readTheme();
   window.addEventListener('chatssync:theme', onThemeEvent);
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  themeObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
   window.addEventListener('resize', onResize);
   refresh(true);
   timer = setInterval(() => {
@@ -518,7 +519,12 @@ watch(accountId, () => refresh(true));
 
       <!-- KPI -->
       <div class="cs-kpis">
-        <div v-for="k in kpis" :key="k.k" class="cs-card cs-kpi">
+        <div
+          v-for="k in kpis"
+          :key="k.k"
+          class="cs-card cs-kpi"
+          :style="{ color: k.c }"
+        >
           <div class="cs-kh">
             <span class="cs-kic" :style="{ background: k.c + '1a', color: k.c }">
               <span :class="k.i" />
@@ -628,8 +634,8 @@ watch(accountId, () => refresh(true));
         </div>
       </div>
 
-      <!-- performance + channels -->
-      <div class="cs-row b">
+      <!-- performance + channels + speed -->
+      <div class="cs-row c3">
         <div class="cs-card">
           <div class="cs-ch"><h3>Performance</h3></div>
           <div v-for="p in perf" :key="p.n" class="cs-prow">
@@ -658,6 +664,21 @@ watch(accountId, () => refresh(true));
               <div class="cs-bfill" :style="{ width: r.pct + '%', background: CH_COLOR[r.kind] }" />
             </div>
             <b>{{ r.v }}</b>
+          </div>
+        </div>
+
+        <div class="cs-card">
+          <div class="cs-ch"><h3>Response speed</h3></div>
+          <div class="cs-speed">
+            <div v-for="sp in speeds" :key="sp.n" class="cs-sp">
+              <span class="cs-spic" :style="{ background: sp.c + '1a', color: sp.c }">
+                <span :class="sp.i" />
+              </span>
+              <div>
+                <b>{{ sp.v }}</b>
+                <span>{{ sp.n }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -727,6 +748,8 @@ watch(accountId, () => refresh(true));
           </div>
         </div>
       </div>
+
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
 
       <div class="cs-foot">
         <span v-if="lastSync">Updated {{ agoOf(Math.floor(lastSync / 1000)) }} ago · auto refresh</span>
@@ -862,12 +885,47 @@ watch(accountId, () => refresh(true));
 
 /* cards */
 .cs-card {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--ln);
   border-radius: 14px;
   padding: 16px 17px;
   margin-bottom: 13px;
+  /* halka sa upar uthta hai — flat nahi lagta */
+  transition: transform 0.18s ease, box-shadow 0.18s ease,
+    border-color 0.18s ease;
+  animation: csRise 0.42s cubic-bezier(0.22, 0.8, 0.3, 1) both;
 }
+.cs-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--g) 40%, var(--ln));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+.cs-dash.lite .cs-card:hover {
+  box-shadow: 0 10px 26px rgba(15, 28, 36, 0.09);
+}
+@keyframes csRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* thoda thoda kar ke aate hain */
+.cs-kpis .cs-card:nth-child(1) { animation-delay: 0.02s; }
+.cs-kpis .cs-card:nth-child(2) { animation-delay: 0.07s; }
+.cs-kpis .cs-card:nth-child(3) { animation-delay: 0.12s; }
+.cs-kpis .cs-card:nth-child(4) { animation-delay: 0.17s; }
+.cs-queue { animation-delay: 0.2s; }
+.cs-row.b { animation: none; }
+.cs-row.b > .cs-card:nth-child(1) { animation-delay: 0.24s; }
+.cs-row.b > .cs-card:nth-child(2) { animation-delay: 0.29s; }
+.cs-row.c3 > .cs-card:nth-child(1) { animation-delay: 0.3s; }
+.cs-row.c3 > .cs-card:nth-child(2) { animation-delay: 0.34s; }
+.cs-row.c3 > .cs-card:nth-child(3) { animation-delay: 0.38s; }
 .cs-row {
   display: grid;
   gap: 13px;
@@ -875,6 +933,46 @@ watch(accountId, () => refresh(true));
 }
 .cs-row.b {
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+}
+.cs-row.c3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* speed card */
+.cs-speed {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.cs-sp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--fld);
+  border-radius: 11px;
+  padding: 12px 13px;
+}
+.cs-spic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.cs-spic span {
+  width: 16px;
+  height: 16px;
+}
+.cs-sp b {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.cs-sp > div > span {
+  font-size: 11px;
+  color: var(--tx3);
 }
 .cs-row > .cs-card {
   margin-bottom: 0;
@@ -890,6 +988,20 @@ watch(accountId, () => refresh(true));
 .cs-kpi {
   margin-bottom: 0;
   padding: 15px 16px;
+  overflow: hidden;
+}
+/* upar patli rangeen lakeer — hover par chamakti hai */
+.cs-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.25;
+  transition: opacity 0.18s;
+}
+.cs-kpi:hover::before {
+  opacity: 0.9;
 }
 .cs-kh {
   display: flex;
@@ -908,6 +1020,13 @@ watch(accountId, () => refresh(true));
 .cs-kic span {
   width: 15px;
   height: 15px;
+}
+.cs-kpi .cs-kv,
+.cs-kpi .cs-kfp {
+  color: var(--tx);
+}
+.cs-kpi .cs-kfp {
+  color: var(--tx3);
 }
 .cs-kn {
   font-size: 11px;
@@ -1055,6 +1174,36 @@ watch(accountId, () => refresh(true));
   width: 100%;
   height: 260px;
   display: block;
+}
+/* line khud ban-ti hui aati hai */
+.cs-svg path[stroke] {
+  stroke-dasharray: 2200;
+  stroke-dashoffset: 2200;
+  animation: csDraw 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+}
+@keyframes csDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.cs-svg path[fill^='url'] {
+  animation: csFade 0.7s ease 0.7s both;
+}
+@keyframes csFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* bars aur rings bhi bharte hue */
+@media (prefers-reduced-motion: reduce) {
+  .cs-card,
+  .cs-svg path[stroke],
+  .cs-svg path[fill^='url'] {
+    animation: none;
+  }
 }
 .cs-gl {
   stroke: var(--ln);
@@ -1409,6 +1558,14 @@ watch(accountId, () => refresh(true));
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (max-width: 1100px) {
+  .cs-row.c3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cs-row.c3 > .cs-card:last-child {
+    grid-column: 1 / -1;
+  }
+}
 @media (max-width: 980px) {
   .cs-row.b {
     grid-template-columns: 1fr;
@@ -1442,6 +1599,12 @@ watch(accountId, () => refresh(true));
   .cs-bnm {
     width: 82px;
   }
+  .cs-row.c3 {
+    grid-template-columns: 1fr;
+  }
+  .cs-row.c3 > .cs-card:last-child {
+    grid-column: auto;
+  }
   .cs-tbl th:nth-child(4),
   .cs-tbl td:nth-child(4) {
     display: none;
@@ -1452,4 +1615,14 @@ watch(accountId, () => refresh(true));
     grid-template-columns: 1fr;
   }
 }
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
 </style>
