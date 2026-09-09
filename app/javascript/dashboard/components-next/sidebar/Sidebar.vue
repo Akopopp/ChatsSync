@@ -113,24 +113,38 @@ const botsOnline = computed(() => {
 
 /* ---- theme ---- */
 let themeObs = null;
+let themePoll = null;
 const isDark = ref(true);
-const probeEl = ref(null);
-const probeDark = () => {
-  const el = probeEl.value;
-  if (el) {
-    try {
-      return getComputedStyle(el).display !== 'none';
-    } catch (e) {
-      /* ignore */
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
     }
+  } catch (e) {
+    /* ignore */
   }
   return (
     document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark')
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
   );
 };
 const readTheme = () => {
-  isDark.value = probeDark();
+  const d = detectDark();
+  if (d !== isDark.value) isDark.value = d;
 };
 
 /* Theme ek hi jagah se lagti hai taake rail ka button aur Chatwoot ke
@@ -157,9 +171,10 @@ const applyTheme = dark => {
   );
 };
 const toggleTheme = () => {
-  const next = !isDark.value;
-  isDark.value = next;
-  applyTheme(next);
+  applyTheme(!isDark.value);
+  // rang badalne mein ek do frame lagte hain — phir khud parh lenge
+  setTimeout(readTheme, 60);
+  setTimeout(readTheme, 400);
 };
 
 onMounted(() => {
@@ -185,12 +200,14 @@ onMounted(() => {
   }
   readTheme();
   themeObs = new MutationObserver(readTheme);
-  // sirf class nahi — data-theme waghera bhi pakdo
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
+  // aakhri zamanat: theme kisi bhi tareeqe se badle, ek second mein pakda jayega
+  themePoll = setInterval(readTheme, 1000);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('chatssync:toggle-rail', onRailToggle);
+  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
