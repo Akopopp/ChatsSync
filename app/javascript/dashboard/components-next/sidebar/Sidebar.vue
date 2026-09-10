@@ -585,18 +585,25 @@ watch(
 
 <style scoped>
 /* v16 ke asal rang */
+/* ===== RANG =====
+   Rail ke rang ab Chatwoot ke apne palette (--slate-*) se aate hain.
+   Woh variables `_next-colors.scss` mein `.dark` ke neeche khud badal
+   jaate hain — yani rail bina kisi JavaScript ke theme ke saath chalti
+   hai. Pehle yahan pakke hex rang the aur JS se dark/light ka pata
+   lagate the; woh nazuk tha aur rail dark par atak jaati thi.
+   Sirf hara rang hamara apna hai (Chatwoot ke palette mein green nahi). */
 .cs-rail {
-  --rail: #202c33;
-  --rail-hov: #2a3942;
-  --rail-on: #103529;
-  --rail-ic: #aebac1;
+  --rail: rgb(var(--slate-2));
+  --rail-hov: rgb(var(--slate-4));
+  --rail-on: rgb(0 168 132 / 0.16);
+  --rail-ic: rgb(var(--slate-11));
   --rail-ic-on: #00a884;
-  --fld-b: #2a3942;
+  --fld-b: rgb(var(--slate-6));
   --badge: #00a884;
-  --badge-tx: #0b141a;
-  --menu: #233138;
-  --tx: #e9edef;
-  --tx3: #8696a0;
+  --badge-tx: #ffffff;
+  --menu: rgb(var(--slate-2));
+  --tx: rgb(var(--slate-12));
+  --tx3: rgb(var(--slate-11));
 
   position: relative;
   z-index: 40;
@@ -612,19 +619,9 @@ watch(
   color: var(--tx);
   transition: width 0.16s ease, transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
-:global(html:not(.dark)) .cs-rail {
-  --rail: #f0f2f5;
-  --rail-hov: #e3e6ea;
-  --rail-on: #dcefe9;
-  --rail-ic: #54656f;
-  --rail-ic-on: #008069;
-  --fld-b: #e4e7e9;
-  --badge: #25d366;
-  --badge-tx: #053e20;
-  --menu: #ffffff;
-  --tx: #111b21;
-  --tx3: #667781;
-  border-right: 1px solid var(--fld-b);
+/* border dono theme mein — rang khud slate se aata hai */
+.cs-rail {
+  border-inline-end: 1px solid var(--fld-b);
 }
 .cs-rail * {
   box-sizing: border-box;
@@ -809,8 +806,8 @@ watch(
   inset-inline-start: 50px;
   top: 50%;
   transform: translateY(-50%) scale(0.92);
-  background: #000;
-  color: #fff;
+  background: rgb(var(--slate-12));
+  color: rgb(var(--slate-1));
   font-size: 12px;
   padding: 5px 10px;
   border-radius: 6px;
@@ -850,7 +847,7 @@ watch(
   max-height: 72vh;
   overflow-y: auto;
 }
-:global(html:not(.dark)) .cs-rl-sub {
+.cs-rl-sub {
   border: 1px solid var(--fld-b);
 }
 .cs-rl-sub.inline {
