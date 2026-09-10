@@ -37,19 +37,24 @@ const authHeaders = () => {
       if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
       const sess = JSON.parse(txt);
       if (sess['access-token']) {
+        /* SIRF ye paanch headers — bilkul wahi jo Chatwoot ka apna
+           APIHelper.js bhejta hai.
+           `api_access_token` YAHAN NAHI BHEJNA. Chatwoot ka usool ye hai
+           ke woh header maujood ho to session ki parwah nahi karta —
+           usay ek alag long-lived API token samajh kar check karta hai
+           (authenticate_access_token!). Hum us mein devise ka session
+           token bhej rahe the, jo API token hai hi nahi, isliye server
+           foran 401 "Invalid Access Token" de deta tha. */
         h['access-token'] = sess['access-token'];
         h['token-type'] = sess['token-type'] || 'Bearer';
         h.client = sess.client;
         h.expiry = sess.expiry;
         h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
       }
     }
   } catch (e) {
     /* ignore */
   }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
   return h;
 };
 
