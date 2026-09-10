@@ -4407,12 +4407,13 @@ watch(
   position: relative;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  /* content neeche se chipke — kam messages par upar khali jagah rehti
-     thi aur composer ke oopar bara suna hissa nazar aata tha */
-  justify-content: flex-end;
 }
-/* messages zyada hon to ye sikuR jaata hai, warna baqi jagah kha kar
-   messages ko neeche rakhta hai */
+/* Content neeche se chipke — kam messages par upar khali jagah rehti thi.
+   NOTE: yahan "justify-content: flex-end" NAHI lagana. Scroll container
+   par woh Chrome mein scroll toR deta hai (content upar ki taraf overflow
+   ho kar pahunch se bahar chala jaata hai). Ye spacer akela kaafi hai:
+   khali jagah ho to phail jaata hai, messages zyada hon to 0 reh jaata
+   hai — aur scroll bilkul theek rehta hai. */
 .cs-push {
   flex: 1 0 auto;
   min-height: 0;
