@@ -12,7 +12,6 @@
      DELETE /notifications/:id
    ===================================================================== */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import axios from 'axios';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -22,6 +21,12 @@ const router = useRouter();
 
 const accountId = useMapGetter('getCurrentAccountId');
 const currentUser = useMapGetter('getCurrentUser');
+/* Chatwoot ka apna notifications store. Rail ka badge bhi isi se aata
+   hai aur woh chal raha hai — matlab module maujood aur theek hai.
+   Websocket se naya notification bhi seedha isi mein aata hai, isliye
+   naya message aate hi list mein nazar aa jayega. */
+const storeNotifs = useMapGetter('notifications/getNotifications');
+const storeMeta = useMapGetter('notifications/getMeta');
 
 /* ---------------- safe dispatch ---------------- */
 const warned = {};
@@ -45,32 +50,67 @@ const safeD = (name, payload) => {
 
 /* ---------------- API ---------------- */
 /* ===================================================================
-   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
-   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
-   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
-   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
-   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
-   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
-   lagte the, server par kabhi nahi jaate the.
-   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
-   khud sambhalta hai.
+   AUTH
+   Ek daur mein ise bare `axios` par le gaya tha — woh ghalti thi: us
+   import par Chatwoot ke auth headers lagte hi nahi, isliye Contacts,
+   Inbox aur Dashboard teeno 401 par gir gaye.
+   Ab wapas cookie ke headers, magar do sudhaar ke saath:
+     1. token HAR call par taaza parha jaata hai
+     2. 401 aaye to 250ms ruk kar EK baar dobara — devise-token-auth har
+        request par token badalta hai, aur kabhi kabhi hum purana token
+        pakad lete hain. Dobara koshish par cookie mein naya token aa
+        chuka hota hai.
    =================================================================== */
+const authHeaders = () => {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const raw = (document.cookie.match(
+      /(?:^|;\s*)cw_d_session_info=([^;]+)/
+    ) || [])[1];
+    if (raw) {
+      let txt = decodeURIComponent(raw);
+      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
+      const sess = JSON.parse(txt);
+      if (sess['access-token']) {
+        h['access-token'] = sess['access-token'];
+        h['token-type'] = sess['token-type'] || 'Bearer';
+        h.client = sess.client;
+        h.expiry = sess.expiry;
+        h.uid = sess.uid;
+        h.api_access_token = sess['access-token'];
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const tok = currentUser.value?.access_token;
+  if (tok) h.api_access_token = tok;
+  return h;
+};
+
+const rawFetch = (url, opts = {}) =>
+  fetch(url, { credentials: 'same-origin', ...opts, headers: authHeaders() });
+
+/* 401 par ek baar dobara — token rotate ho chuka hota hai */
+const httpJson = (url, opts = {}) =>
+  rawFetch(url, opts).then(r => {
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    return new Promise(res => setTimeout(res, 250))
+      .then(() => rawFetch(url, opts))
+      .then(r2 => {
+        if (!r2.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r2.status}`);
+        return r2.status === 204 ? null : r2.json().catch(() => null);
+      });
+  });
 
 
 /* opts wahi shakl rakhta hai jo pehle fetch ke saath thi, taake
    baqi code badalna na pade */
-const api = (path, opts = {}) => {
-  const { method = 'get', body, headers, ...rest } = opts;
-  return axios({
-    method,
-    url: `/api/v1/accounts/${accountId.value}${path}`,
-    ...(body === undefined
-      ? {}
-      : { data: typeof body === 'string' ? JSON.parse(body) : body }),
-    ...(headers ? { headers } : {}),
-    ...rest,
-  }).then(r => r.data);
-};
+const api = (path, opts = {}) =>
+  httpJson(`/api/v1/accounts/${accountId.value}${path}`, opts);
 
 /* Chatwoot ke do shakl hain: {data:{payload,meta}} ya {payload,meta} */
 const unwrap = res => {
@@ -79,11 +119,18 @@ const unwrap = res => {
 };
 
 /* ---------------- state ---------------- */
-const items = ref([]);
+const useStore_ = ref(false); // store se chal raha hai ya REST se
+const localItems = ref([]);
+const items = computed(() => {
+  if (!useStore_.value) return localItems.value;
+  const list = storeNotifs.value;
+  return Array.isArray(list) ? list : [];
+});
 const loading = ref(true);
 const loadingMore = ref(false);
 const page = ref(1);
 const noMore = ref(false);
+const lastCount = ref(0);
 const unreadCount = ref(0);
 const selectedId = ref(null);
 
@@ -224,14 +271,39 @@ const timeOf = n => {
 };
 
 /* ---------------- load ---------------- */
-const fetchPage = (p, reset = false) =>
-  api(`/notifications?page=${p}`)
+/* Pehle Chatwoot ka action. Na mile to hi REST par jaate hain. */
+const fetchPage = (p, reset = false) => {
+  if (has('notifications/index')) {
+    useStore_.value = true;
+    return safeD('notifications/index', { page: p })
+      .then(() => {
+        const m = storeMeta.value || {};
+        if (typeof m.unreadCount === 'number') unreadCount.value = m.unreadCount;
+        else if (typeof m.unread_count === 'number')
+          unreadCount.value = m.unread_count;
+        const got = (storeNotifs.value || []).length;
+        if (!got || (!reset && got <= lastCount.value)) noMore.value = true;
+        else page.value = p;
+        lastCount.value = got;
+        return storeNotifs.value || [];
+      })
+      .catch(err => {
+        console.warn('[ChatsSync] notifications/index failed', err);
+        noMore.value = true;
+        return [];
+      });
+  }
+  useStore_.value = false;
+  return api(`/notifications?page=${p}`)
     .then(res => {
       const { payload, meta: m } = unwrap(res);
-      if (reset) items.value = payload;
+      if (reset) localItems.value = payload;
       else {
-        const seen = new Set(items.value.map(x => x.id));
-        items.value = [...items.value, ...payload.filter(x => !seen.has(x.id))];
+        const seen = new Set(localItems.value.map(x => x.id));
+        localItems.value = [
+          ...localItems.value,
+          ...payload.filter(x => !seen.has(x.id)),
+        ];
       }
       if (typeof m.unread_count === 'number') unreadCount.value = m.unread_count;
       if (!payload.length) noMore.value = true;
@@ -240,15 +312,17 @@ const fetchPage = (p, reset = false) =>
     })
     .catch(err => {
       console.warn('[ChatsSync] notifications load failed', err);
-      if (reset) items.value = [];
+      if (reset) localItems.value = [];
       noMore.value = true;
       toast('Could not load notifications', 'err');
       return [];
     });
+};
 
 const reload = () => {
   loading.value = true;
   noMore.value = false;
+  lastCount.value = 0;
   page.value = 1;
   fetchPage(1, true).finally(() => {
     loading.value = false;
@@ -300,17 +374,26 @@ const pills = computed(() =>
 /* ---------------- actions ---------------- */
 const markRead = n => {
   if (!n || !isUnread(n)) return Promise.resolve();
-  n.read_at = Math.floor(Date.now() / 1000);
+  try {
+    n.read_at = Math.floor(Date.now() / 1000);
+  } catch (e) {
+    /* store ka object frozen ho to koi baat nahi */
+  }
   unreadCount.value = Math.max(0, unreadCount.value - 1);
+  if (has('notifications/read')) {
+    return safeD('notifications/read', {
+      primaryActorType: n.primary_actor_type,
+      primaryActorId: n.primary_actor_id,
+      unreadCount: unreadCount.value,
+    }).catch(() => {});
+  }
   return api('/notifications/read_all', {
     method: 'POST',
     body: JSON.stringify({
       primary_actor_type: n.primary_actor_type,
       primary_actor_id: n.primary_actor_id,
     }),
-  }).catch(() => {
-    /* UI pehle hi update ho chuka — chup rehna theek hai */
-  });
+  }).catch(() => {});
 };
 
 const openNotif = n => {
@@ -335,10 +418,17 @@ const markAllRead = () => {
   }
   const now = Math.floor(Date.now() / 1000);
   items.value.forEach(n => {
-    if (!n.read_at) n.read_at = now;
+    try {
+      if (!n.read_at) n.read_at = now;
+    } catch (e) {
+      /* ignore */
+    }
   });
   unreadCount.value = 0;
-  api('/notifications/read_all', { method: 'POST' })
+  (has('notifications/readAll')
+    ? safeD('notifications/readAll')
+    : api('/notifications/read_all', { method: 'POST' })
+  )
     .then(() => toast('All notifications marked read'))
     .catch(() => {
       toast('Could not mark all read', 'err');
@@ -363,7 +453,8 @@ const deleteRead = () => {
         body: JSON.stringify({ type: 'read' }),
       })
         .then(() => {
-          items.value = items.value.filter(isUnread);
+          localItems.value = localItems.value.filter(isUnread);
+          reload();
           toast('Read notifications cleared');
         })
         .catch(() => toast('Could not clear notifications', 'err'));
@@ -375,9 +466,13 @@ const dropOne = n => {
   const id = n?.id;
   if (!id) return;
   const was = isUnread(n);
-  items.value = items.value.filter(x => x.id !== id);
+  localItems.value = localItems.value.filter(x => x.id !== id);
   if (was) unreadCount.value = Math.max(0, unreadCount.value - 1);
-  api(`/notifications/${id}`, { method: 'DELETE' }).catch(() => {
+  api(`/notifications/${id}`, { method: 'DELETE' })
+    .then(() => {
+      if (useStore_.value) reload();
+    })
+    .catch(() => {
     toast('Could not delete notification', 'err');
     reload();
   });
@@ -475,16 +570,21 @@ onMounted(() => {
   // har 60s par sirf naya page 1 — poori list dobara nahi
   poller = setInterval(() => {
     if (document.hidden) return;
+    safeD('notifications/unReadCount');
+    if (useStore_.value) {
+      safeD('notifications/index', { page: 1 });
+      return;
+    }
     api('/notifications?page=1')
       .then(res => {
         const { payload, meta: m } = unwrap(res);
         if (typeof m.unread_count === 'number') unreadCount.value = m.unread_count;
-        const seen = new Set(items.value.map(x => x.id));
+        const seen = new Set(localItems.value.map(x => x.id));
         const fresh = payload.filter(x => !seen.has(x.id));
-        if (fresh.length) items.value = [...fresh, ...items.value];
+        if (fresh.length) localItems.value = [...fresh, ...localItems.value];
       })
       .catch(() => {});
-  }, 60000);
+  }, 30000);
 });
 
 onBeforeUnmount(() => {
@@ -817,7 +917,8 @@ onBeforeUnmount(() => {
 .cs-pills {
   display: flex;
   gap: 7px;
-  padding: 10px 12px;
+  /* header se chipki hui lagti thin — ab saaf faasla */
+  padding: 14px 12px 12px;
   overflow-x: auto;
   flex-shrink: 0;
   scrollbar-width: none;
