@@ -282,17 +282,37 @@ const openId = computed(() => Number(props.conversationId) || 0);
    chat khuli ho ya API kuch bhi kahe */
 const forceUnread = ref(LS('unread'));
 
+/* ===== UNREAD =====
+   Asal sach Chatwoot ka `unread_count` hai — server khud hisaab lagata
+   hai aur naya message aate hi barha deta hai.
+
+   readNow sirf ek CHHOTA sa parda hai: markRead ke foran baad kabhi
+   kabhi pehle se chali hui API ka purana count wapas aa jaata hai aur
+   badge palak jhapakte dikh kar gayab hota hai. Us 3 second ke liye
+   usay dabate hain — bas.
+
+   PEHLE yahan hamesha rehne wala true/false flag tha, isi liye "Mark
+   all chats as read" ke baad chat DOBARA kabhi unread nahi hoti thi.
+   Phir waqt ka muqabla lagaya tha, magar usi second mein aane wala
+   message chhoot jaata tha. Ab count ka farq dekha jaata hai — count
+   badla to foran unread, chahe wahi second ho. */
 const isUnread = c => {
   if (!c) return false;
   if (forceUnread.value[c.id]) return true;
-  return (
-    (c.unread_count || 0) > 0 &&
-    c.id !== openId.value &&
-    !readNow.value[c.id]
-  );
+  const cur = c.unread_count || 0;
+  if (cur <= 0) return false;
+  if (c.id === openId.value) return false;
+  const rec = readNow.value[c.id];
+  if (!rec || typeof rec !== 'object') return true;
+  // count badal gaya = naya message aa gaya
+  if (cur !== rec.n) return true;
+  return Date.now() - Number(rec.at || 0) > 3000;
 };
 
-const readNow = ref(LS('read'));
+/* Ye ab sirf 3 second ka parda hai, isliye localStorage se purana kuch
+   uthane ki zaroorat hi nahi — har baar khali se shuru. Purani
+   `id: true` wali entries khud-ba-khud bekaar ho jaati hain. */
+const readNow = ref({});
 
 const unreadIn = key => setFor(key).filter(isUnread).length;
 
@@ -1383,7 +1403,11 @@ const inboxName = id =>
 /* ---------------- actions ---------------- */
 const markRead = c => {
   if (!c) return;
-  readNow.value = { ...readNow.value, [c.id]: true };
+  // { at: kab, n: us waqt ka count } — 3 second ka parda, phir server sach
+  readNow.value = {
+    ...readNow.value,
+    [c.id]: { at: Date.now(), n: c.unread_count || 0 },
+  };
   saveLS('read', readNow.value);
   if (forceUnread.value[c.id]) {
     const f = { ...forceUnread.value };
