@@ -9,7 +9,6 @@
    hai — auth headers aur token rotation woh khud sambhalta hai.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import axios from 'axios';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -44,32 +43,67 @@ const safeD = (name, payload) => {
 
 /* ---------------- API ---------------- */
 /* ===================================================================
-   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
-   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
-   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
-   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
-   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
-   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
-   lagte the, server par kabhi nahi jaate the.
-   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
-   khud sambhalta hai.
+   AUTH
+   Ek daur mein ise bare `axios` par le gaya tha — woh ghalti thi: us
+   import par Chatwoot ke auth headers lagte hi nahi, isliye Contacts,
+   Inbox aur Dashboard teeno 401 par gir gaye.
+   Ab wapas cookie ke headers, magar do sudhaar ke saath:
+     1. token HAR call par taaza parha jaata hai
+     2. 401 aaye to 250ms ruk kar EK baar dobara — devise-token-auth har
+        request par token badalta hai, aur kabhi kabhi hum purana token
+        pakad lete hain. Dobara koshish par cookie mein naya token aa
+        chuka hota hai.
    =================================================================== */
+const authHeaders = () => {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const raw = (document.cookie.match(
+      /(?:^|;\s*)cw_d_session_info=([^;]+)/
+    ) || [])[1];
+    if (raw) {
+      let txt = decodeURIComponent(raw);
+      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
+      const sess = JSON.parse(txt);
+      if (sess['access-token']) {
+        h['access-token'] = sess['access-token'];
+        h['token-type'] = sess['token-type'] || 'Bearer';
+        h.client = sess.client;
+        h.expiry = sess.expiry;
+        h.uid = sess.uid;
+        h.api_access_token = sess['access-token'];
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const tok = currentUser.value?.access_token;
+  if (tok) h.api_access_token = tok;
+  return h;
+};
+
+const rawFetch = (url, opts = {}) =>
+  fetch(url, { credentials: 'same-origin', ...opts, headers: authHeaders() });
+
+/* 401 par ek baar dobara — token rotate ho chuka hota hai */
+const httpJson = (url, opts = {}) =>
+  rawFetch(url, opts).then(r => {
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    return new Promise(res => setTimeout(res, 250))
+      .then(() => rawFetch(url, opts))
+      .then(r2 => {
+        if (!r2.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r2.status}`);
+        return r2.status === 204 ? null : r2.json().catch(() => null);
+      });
+  });
 
 
 /* opts wahi shakl rakhta hai jo pehle fetch ke saath thi, taake
    baqi code badalna na pade */
-const api = (path, opts = {}) => {
-  const { method = 'get', body, headers, ...rest } = opts;
-  return axios({
-    method,
-    url: `/api/v1/accounts/${accountId.value}${path}`,
-    ...(body === undefined
-      ? {}
-      : { data: typeof body === 'string' ? JSON.parse(body) : body }),
-    ...(headers ? { headers } : {}),
-    ...rest,
-  }).then(r => r.data);
-};
+const api = (path, opts = {}) =>
+  httpJson(`/api/v1/accounts/${accountId.value}${path}`, opts);
 
 /* ---------------- state ---------------- */
 const contacts = ref([]);
@@ -741,10 +775,17 @@ const onImportFile = e => {
   fd.append('import_file', file);
   importing.value = true;
   toast('Uploading — import background mein chalta hai');
-  // FormData ke saath Content-Type axios khud lagata hai (boundary ke saath)
-  axios
-    .post(`/api/v1/accounts/${accountId.value}/contacts/import`, fd)
-    .then(() => {
+  // FormData ke saath Content-Type khud browser set karta hai (boundary)
+  const h = authHeaders();
+  delete h['Content-Type'];
+  fetch(`/api/v1/accounts/${accountId.value}/contacts/import`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: h,
+    body: fd,
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('import ' + r.status);
       toast('Import started — contacts thoRi der mein aa jayenge');
       setTimeout(reload, 5000);
     })
