@@ -1669,15 +1669,27 @@ const toggleTm = () => {
   tmenu.value = !w;
 };
 
+/* touch event par clientX/clientY khud event par nahi hote —
+   woh e.touches[0] mein hote hain. Pehle NaN ban jaata tha. */
+const evXY = e => {
+  const t = e?.touches?.[0] || e?.changedTouches?.[0];
+  const x = Number(e?.clientX ?? t?.clientX);
+  const y = Number(e?.clientY ?? t?.clientY);
+  return {
+    x: Number.isFinite(x) ? x : window.innerWidth / 2,
+    y: Number.isFinite(y) ? y : window.innerHeight / 2,
+  };
+};
+
 const openMenu = (e, c) => {
   e.preventDefault();
   closeAll();
   const H = 470; // menu ki taqreeban unchai
-  const y = Math.max(8, Math.min(e.clientY, window.innerHeight - H - 8));
+  const p = evXY(e);
   menu.value = {
     open: true,
-    x: Math.max(8, Math.min(e.clientX, window.innerWidth - 244)),
-    y,
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 244)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - H - 8)),
     chat: c,
     up: false,
   };
@@ -1711,12 +1723,22 @@ const fitMenu = el => {
     const pad = 10;
     const maxT = window.innerHeight - r.height - pad;
     const maxL = window.innerWidth - r.width - pad;
-    const t = Math.max(pad, Math.min(r.top, maxT));
-    const l = Math.max(pad, Math.min(r.left, maxL));
-    if (menu.value.open && Math.abs(t - menu.value.y) > 1) menu.value.y = t;
-    if (menu.value.open && Math.abs(l - menu.value.x) > 1) menu.value.x = l;
-    if (mmenu.value.open && Math.abs(t - mmenu.value.y) > 1) mmenu.value.y = t;
-    if (mmenu.value.open && Math.abs(l - mmenu.value.x) > 1) mmenu.value.x = l;
+    /* AHEM: pehle yahan r.top / r.left (yani NAAPI HUI position) clamp
+       kar ke wapas likh dete the. Agar menu par koi transform/animation
+       ho to rect har render par thoda saRakta hai, nayi value likhi
+       jaati hai, phir render — loop ban jaata tha aur menu kheenchta
+       kheenchta screen ke kone mein chala jaata tha.
+       Ab STORED value clamp hoti hai. Ye idempotent hai — pehle se
+       clamped value dobara clamp karne se kuch nahi badalta. */
+    const fix = m => {
+      if (!m.open) return;
+      const t = Math.max(pad, Math.min(m.y, maxT));
+      const l = Math.max(pad, Math.min(m.x, maxL));
+      if (Math.abs(t - m.y) > 1) m.y = t;
+      if (Math.abs(l - m.x) > 1) m.x = l;
+    };
+    fix(menu.value);
+    fix(mmenu.value);
   });
 };
 
@@ -1893,10 +1915,11 @@ const openMsgMenu = (e, m) => {
   e.preventDefault();
   e.stopPropagation();
   closeAll();
+  const p = evXY(e);
   mmenu.value = {
     open: true,
-    x: Math.max(8, Math.min(e.clientX, window.innerWidth - 224)),
-    y: Math.max(8, Math.min(e.clientY, window.innerHeight - 300)),
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 224)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - 300)),
     msg: m,
   };
 };
@@ -2918,6 +2941,8 @@ watch(
 
       <div ref="threadRef" class="cs-thread" @scroll="onThreadScroll">
         <div v-if="loadingOlder" class="cs-older">Loading older…</div>
+        <!-- kam messages hon to unhe neeche dhakel do, WhatsApp jaisa -->
+        <div class="cs-push" />
         <template v-for="b in blocks" :key="b.id">
           <div v-if="b.kind === 'day'" class="cs-day">{{ b.text }}</div>
           <div v-else-if="b.kind === 'sys'" class="cs-sysm">{{ b.text }}</div>
@@ -4382,6 +4407,15 @@ watch(
   position: relative;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+  /* content neeche se chipke — kam messages par upar khali jagah rehti
+     thi aur composer ke oopar bara suna hissa nazar aata tha */
+  justify-content: flex-end;
+}
+/* messages zyada hon to ye sikuR jaata hai, warna baqi jagah kha kar
+   messages ko neeche rakhta hai */
+.cs-push {
+  flex: 1 0 auto;
+  min-height: 0;
 }
 .cs-day,
 .cs-sysm {
@@ -6917,6 +6951,18 @@ watch(
   .cs-app {
     overflow: hidden;
     max-width: 100vw;
+    /* keyboard khulne par 100vh galat rehta hai — dvh asli jagah deta
+       hai, isliye header oopar chipka rehta hai jaise WhatsApp mein */
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+  .cs-th {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .cs-thread {
+    padding: 12px 4%;
   }
   .cs-panel {
     width: 100%;
@@ -7126,21 +7172,19 @@ watch(
 }
 
 /* menus: halka sa upar se aana */
+/* SIRF opacity. transform yahan nahi lagana — getBoundingClientRect
+   usay shamil karta hai aur fitMenu ki position bigar jaati hai. */
 .cs-hm,
 .cs-tm,
-.cs-cmenu,
-.cs-mmenu {
-  animation: csPop 0.13s ease-out;
-  transform-origin: top right;
+.cs-cmenu {
+  animation: csPop 0.12s ease-out;
 }
 @keyframes csPop {
   from {
     opacity: 0;
-    transform: scale(0.97) translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -7168,8 +7212,7 @@ watch(
 @media (prefers-reduced-motion: reduce) {
   .cs-hm,
   .cs-tm,
-  .cs-cmenu,
-  .cs-mmenu {
+  .cs-cmenu {
     animation: none;
   }
 }
