@@ -5,7 +5,6 @@
    Data Chatwoot ke apne endpoints se — koi backend kaam nahi.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { useMapGetter } from 'dashboard/composables/store.js';
 
@@ -16,21 +15,64 @@ const currentAccount = useMapGetter('getCurrentAccount');
 
 /* ---------------- API ---------------- */
 /* ===================================================================
-   AUTH — pehle cookie (cw_d_session_info) se access-token nikaal kar
-   fetch() ke saath bhejte the. Woh GHALAT tha: Chatwoot devise-token-auth
-   par hai jo HAR request par token badal deta hai (rotation). Chatwoot ka
-   axios interceptor naya token khud cookie mein likhta hai, magar jab tak
-   hamari fetch pahunchti thi woh token istemal ho kar rotate ho chuka
-   hota tha — nateeja 401. Isi liye labels sirf browser ki memory mein
-   lagte the, server par kabhi nahi jaate the.
-   Ab Chatwoot ka apna axios use hota hai: headers aur rotation dono woh
-   khud sambhalta hai.
+   AUTH
+   Ek daur mein ise bare `axios` par le gaya tha — woh ghalti thi: us
+   import par Chatwoot ke auth headers lagte hi nahi, isliye Contacts,
+   Inbox aur Dashboard teeno 401 par gir gaye.
+   Ab wapas cookie ke headers, magar do sudhaar ke saath:
+     1. token HAR call par taaza parha jaata hai
+     2. 401 aaye to 250ms ruk kar EK baar dobara — devise-token-auth har
+        request par token badalta hai, aur kabhi kabhi hum purana token
+        pakad lete hain. Dobara koshish par cookie mein naya token aa
+        chuka hota hai.
    =================================================================== */
+const authHeaders = () => {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const raw = (document.cookie.match(
+      /(?:^|;\s*)cw_d_session_info=([^;]+)/
+    ) || [])[1];
+    if (raw) {
+      let txt = decodeURIComponent(raw);
+      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
+      const sess = JSON.parse(txt);
+      if (sess['access-token']) {
+        h['access-token'] = sess['access-token'];
+        h['token-type'] = sess['token-type'] || 'Bearer';
+        h.client = sess.client;
+        h.expiry = sess.expiry;
+        h.uid = sess.uid;
+        h.api_access_token = sess['access-token'];
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const tok = currentUser.value?.access_token;
+  if (tok) h.api_access_token = tok;
+  return h;
+};
+
+const rawFetch = (url, opts = {}) =>
+  fetch(url, { credentials: 'same-origin', ...opts, headers: authHeaders() });
+
+/* 401 par ek baar dobara — token rotate ho chuka hota hai */
+const httpJson = (url, opts = {}) =>
+  rawFetch(url, opts).then(r => {
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    return new Promise(res => setTimeout(res, 250))
+      .then(() => rawFetch(url, opts))
+      .then(r2 => {
+        if (!r2.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r2.status}`);
+        return r2.status === 204 ? null : r2.json().catch(() => null);
+      });
+  });
 
 const call = (ver, path) =>
-  axios
-    .get(`/api/${ver}/accounts/${accountId.value}${path}`)
-    .then(r => r.data);
+  httpJson(`/api/${ver}/accounts/${accountId.value}${path}`);
 const v1 = p => call('v1', p);
 const v2 = p => call('v2', p);
 const soft = (p, fb = null) => p.catch(() => fb);
@@ -942,19 +984,28 @@ watch(accountId, () => refresh(true));
 .cs-row.c3 > .cs-card:nth-child(1) { animation-delay: 0.3s; }
 .cs-row.c3 > .cs-card:nth-child(2) { animation-delay: 0.34s; }
 .cs-row.c3 > .cs-card:nth-child(3) { animation-delay: 0.38s; }
+/* GRID ki jagah FLEX. auto-fit grid wide screen par khali track
+   chhoR deti thi (isi liye dashboard mein itni khali jagah lag rahi thi).
+   flex-wrap + flex-grow har haal mein poori chauRai bhar deta hai, aur
+   viewport nahi balke asli jagah dekh kar toot-ta hai — mobile par bhi
+   theek. */
 .cs-row {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 13px;
   margin-bottom: 13px;
+  align-items: stretch;
 }
-/* auto-fit + min() = container ki chauRai dekh kar khud toot-ta hai.
-   Pehle media query viewport dekhti thi, isliye mobile par kabhi
-   kabhi PC wala layout reh jaata tha. */
-.cs-row.b {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+.cs-row > .cs-card {
+  flex: 1 1 300px;
+  min-width: 0;
 }
-.cs-row.c3 {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+/* chart wala card doguna chauRa */
+.cs-row.b > .cs-card:first-child {
+  flex: 2.2 1 420px;
+}
+.cs-row.c3 > .cs-card {
+  flex: 1 1 250px;
 }
 
 /* speed card */
@@ -999,10 +1050,14 @@ watch(accountId, () => refresh(true));
 
 /* KPI */
 .cs-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 13px;
   margin-bottom: 13px;
+}
+.cs-kpis > .cs-card {
+  flex: 1 1 190px;
+  min-width: 0;
 }
 .cs-kpi {
   margin-bottom: 0;
@@ -1493,9 +1548,13 @@ watch(accountId, () => refresh(true));
 
 /* workspace */
 .cs-sgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+.cs-sgrid > .cs-scell {
+  flex: 1 1 92px;
+  min-width: 0;
 }
 .cs-scell {
   background: var(--fld);
