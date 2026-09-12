@@ -118,7 +118,6 @@ const botsOnline = computed(() => {
 
 /* ---- theme ---- */
 let themeObs = null;
-let themePoll = null;
 const isDark = ref(true);
 /* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
    Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
@@ -207,12 +206,13 @@ onMounted(() => {
   themeObs = new MutationObserver(readTheme);
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
-  // aakhri zamanat: theme kisi bhi tareeqe se badle, ek second mein pakda jayega
-  themePoll = setInterval(readTheme, 1000);
+  /* Pehle yahan har second ek poll chalti thi. Ab uski zaroorat nahi —
+     rail ke rang Chatwoot ke apne --slate-* se aate hain jo khud badalte
+     hain. isDark sirf moon/sun icon ke liye chahiye, aur uske liye
+     observer kaafi hai. Mobile par ye bojh bekar tha. */
 });
 onBeforeUnmount(() => {
   window.removeEventListener('chatssync:toggle-rail', onRailToggle);
-  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
@@ -592,7 +592,7 @@ watch(
 .cs-rail {
   --rail: rgb(var(--slate-2));
   --rail-hov: rgb(var(--slate-4));
-  --rail-on: rgb(0 168 132 / 0.16);
+  --rail-on: rgb(0 168 132 / 0.18);
   --rail-ic: rgb(var(--slate-11));
   --rail-ic-on: #00a884;
   --fld-b: rgb(var(--slate-6));
@@ -997,12 +997,32 @@ watch(
    3. Purani "body aside ..." wali CSS (agar bundle mein reh jaye) ka tor.
    ===================================================================== */
 @media (max-width: 767px) {
+  /* Chatwoot ka apna floating launcher band — hamara istemal hota hai */
   #mobile-sidebar-launcher,
   [data-testid='mobile-sidebar-launcher'] {
     display: none !important;
   }
+  /* Hamari screens (Chats/Contacts/Inbox/Dashboard) ka apna
+     header-hamburger hai, wahan floating wala nahi chahiye */
   body.cs-own-header .cs-rl-ham {
     display: none !important;
+  }
+
+  /* ===== STOCK PAGES KA MOBILE =====
+     (Campaigns, Reports, Settings, Templates, Gallery)
+
+     1. Hamara hamburger position:fixed hai, isliye woh page ke unwaan
+        ke UPAR chaR jaata tha — "Reports" ke lafz par. Ab main ko upar
+        se jagah de di hai taake button apni jagah baithe.
+     2. In pages ke tables aur forms desktop ke liye bane hain. main par
+        overflow-hidden laga hai, isliye mobile par content kat jaata
+        tha. Ab horizontal scroll ho jaata hai — kuch chhupta nahi. */
+  body:not(.cs-own-header) main {
+    padding-top: 52px;
+    overflow-x: auto;
+  }
+  body:not(.cs-own-header) main table {
+    min-width: max-content;
   }
 }
 
