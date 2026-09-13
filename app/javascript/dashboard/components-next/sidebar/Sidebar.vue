@@ -1063,9 +1063,6 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
   body:not(.cs-own-header) main [class*='lg:grid-cols'] {
     grid-template-columns: 1fr !important;
   }
-  body:not(.cs-own-header) main [class*='grid'] > div {
-    min-width: 0;
-  }
 
   /* chart ki 288px unchai mobile par bohat thi */
   body:not(.cs-own-header) main .h-72 {
@@ -1112,7 +1109,7 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
      Min-width milte hi parent ka overflow-x kaam karne lagta hai —
      cells poore size ke, aur ungli se slide. */
   body:not(.cs-own-header) main [class*='grid-cols-[repeat(24'] {
-    min-width: 620px;
+    min-width: 700px;
   }
 
   /* MetricCard ka header do column mein tang parta tha */
