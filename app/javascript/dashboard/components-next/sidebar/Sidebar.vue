@@ -996,7 +996,105 @@ watch(
       button bhi chhupa do — warna do button nazar aate hain.
    3. Purani "body aside ..." wali CSS (agar bundle mein reh jaye) ka tor.
    ===================================================================== */
+/* =====================================================================
+   STOCK PAGES KI SKIN
+   (Campaigns · Reports · Settings · Templates · Gallery)
+
+   In pages ki apni files bilkul nahi chhui gayin — sirf unke building
+   blocks par ek layer lagti hai. Isi liye teeno tabs ek saath hamari
+   look le lete hain aur kuch tootne ka khatra nahi.
+   Rang hamesha Chatwoot ke apne --slate-* se, taake light/dark dono
+   apne aap chalen.
+   Sab kuch body:not(.cs-own-header) se bandha hai — Chats, Contacts,
+   Inbox aur Dashboard par ye kuch nahi lagata.
+   ===================================================================== */
+
+/* content itna simat jaata tha ke dono taraf badi khali jagah bachti thi */
+body:not(.cs-own-header) main .max-w-5xl {
+  max-width: 1280px;
+}
+
+/* cards — hamare panels jaisa kinara aur halka saya */
+body:not(.cs-own-header) main [class*='bg-n-solid-2'],
+body:not(.cs-own-header) main [class*='bg-n-solid-1'] {
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+}
+
+/* page ka unwaan — hamare headings ke wazan par */
+body:not(.cs-own-header) main [class*='text-heading-1'] {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+/* buttons aur chips ka hara accent */
+body:not(.cs-own-header) main button[class*='bg-n-brand'],
+body:not(.cs-own-header) main a[class*='bg-n-brand'] {
+  background-color: #00a884;
+}
+body:not(.cs-own-header) main button[class*='bg-n-brand']:hover,
+body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
+  filter: brightness(1.08);
+}
+
 @media (max-width: 767px) {
+  /* ---- mobile: stock pages ---- */
+
+  /* wrapper ki 24px padding mobile par bohat zyada thi */
+  body:not(.cs-own-header) main .px-6 {
+    padding-inline: 12px;
+  }
+  body:not(.cs-own-header) main .pt-6 {
+    padding-top: 14px;
+  }
+  body:not(.cs-own-header) main .pb-5 {
+    padding-bottom: 12px;
+  }
+  body:not(.cs-own-header) main .pb-12 {
+    padding-bottom: 28px;
+  }
+  body:not(.cs-own-header) main .max-w-5xl {
+    max-width: 100%;
+  }
+
+  /* do-column grids (metric cards, charts) ek column mein */
+  body:not(.cs-own-header) main [class*='md:grid-cols'],
+  body:not(.cs-own-header) main [class*='lg:grid-cols'] {
+    grid-template-columns: 1fr !important;
+  }
+  body:not(.cs-own-header) main [class*='grid'] > div {
+    min-width: 0;
+  }
+
+  /* chart ki 288px unchai mobile par bohat thi */
+  body:not(.cs-own-header) main .h-72 {
+    height: 210px;
+  }
+
+  /* header ka unwaan aur button ek line mein tang parte the */
+  body:not(.cs-own-header) main .justify-between.w-full {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* filter chips: date picker + group-by + business hours */
+  body:not(.cs-own-header) main .items-center.w-full {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  body:not(.cs-own-header) main [class*='ltr:ml-auto'] {
+    margin-inline-start: 0 !important;
+  }
+
+  /* tables katne ke bajaye slide hon */
+  body:not(.cs-own-header) main .overflow-auto {
+    overflow-x: auto;
+  }
+  body:not(.cs-own-header) main table {
+    min-width: max-content;
+  }
+
   /* Chatwoot ka apna floating launcher band — hamara istemal hota hai */
   #mobile-sidebar-launcher,
   [data-testid='mobile-sidebar-launcher'] {
