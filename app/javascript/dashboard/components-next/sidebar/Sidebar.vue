@@ -1042,6 +1042,8 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
   /* ---- mobile: stock pages ---- */
 
   /* wrapper ki 24px padding mobile par bohat zyada thi */
+  /* NOTE: yahan pehle "main { overflow-x: auto }" tha — usi se POORA
+     page slide hota tha. Scroll frame ke ANDAR chahiye, bahar nahi. */
   body:not(.cs-own-header) main .px-6 {
     padding-inline: 12px;
   }
@@ -1098,7 +1100,15 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
      min-w-[700px] ka hai, plus 80px labels = 780px. Mobile par itni
      jagah nahi milti aur horizontal scroll bhi nahi tha, isliye
      heatmap kat jaata tha. */
+  /* Heatmap ka container MetricCard ke andar hai jo "flex flex-col" hai.
+     Flex ke bachche ka min-width khud-ba-khud "auto" hota hai — yani
+     woh apne content (700px) se chhota ho hi nahi sakta. Isliye card
+     chauRa hota tha, card page ko chauRa karta tha, aur scroll frame se
+     bahar chala jaata tha.
+     min-width: 0 dete hi woh sikuR jaata hai aur apna overflow-x khud
+     sambhalta hai — bilkul Agents/Labels ki tables ki tarah. */
   body:not(.cs-own-header) main [class*='grid-cols-[80px_1fr]'] {
+    min-width: 0;
     overflow-x: auto;
     overscroll-behavior-x: contain;
   }
@@ -1122,11 +1132,20 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
   }
   /* agent aur team ki tables slide hon */
   body:not(.cs-own-header) main .card-body {
+    min-width: 0;
     overflow-x: auto;
+  }
+  /* card khud bhi flex column hai — uske bachche bhi sikuR sakein */
+  body:not(.cs-own-header) main [class*='min-h-[10rem]'] > * {
+    min-width: 0;
   }
   body:not(.cs-own-header) main [class*='min-h-[10rem]'] {
     padding-inline: 14px;
     min-height: 0;
+    /* card khud bhi apni jagah tak mehdood — warna woh content jitna
+       chauRa ho kar page ko saath kheench leta hai */
+    min-width: 0;
+    max-width: 100%;
   }
 
   /* Chatwoot ka apna floating launcher band — hamara istemal hota hai */
@@ -1151,7 +1170,9 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
         tha. Ab horizontal scroll ho jaata hai — kuch chhupta nahi. */
   body:not(.cs-own-header) main {
     padding-top: 52px;
-    overflow-x: auto;
+    /* aakhri zamanat: page KABHI chauRa na ho. Scroll hamesha card ya
+       table ke apne frame ke andar rahe, poori screen slide na ho. */
+    overflow-x: hidden;
   }
   body:not(.cs-own-header) main table {
     min-width: max-content;
