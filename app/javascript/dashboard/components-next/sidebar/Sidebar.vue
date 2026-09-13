@@ -1095,6 +1095,34 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
     min-width: max-content;
   }
 
+  /* ---- Reports > Overview ----
+     Heatmap ka container "overflow-y-scroll grid-cols-[80px_1fr]" hai —
+     yani sirf UPAR-NEECHE ka scroll. Andar 24 ghanton ka grid
+     min-w-[700px] ka hai, plus 80px labels = 780px. Mobile par itni
+     jagah nahi milti aur horizontal scroll bhi nahi tha, isliye
+     heatmap kat jaata tha. */
+  body:not(.cs-own-header) main [class*='grid-cols-[80px_1fr]'] {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* MetricCard ka header do column mein tang parta tha */
+  body:not(.cs-own-header) main .card-header {
+    grid-template-columns: 1fr !important;
+    margin-bottom: 16px;
+  }
+  body:not(.cs-own-header) main .card-header [class*='justify-end'] {
+    justify-content: flex-start;
+  }
+  /* agent aur team ki tables slide hon */
+  body:not(.cs-own-header) main .card-body {
+    overflow-x: auto;
+  }
+  body:not(.cs-own-header) main [class*='min-h-[10rem]'] {
+    padding-inline: 14px;
+    min-height: 0;
+  }
+
   /* Chatwoot ka apna floating launcher band — hamara istemal hota hai */
   #mobile-sidebar-launcher,
   [data-testid='mobile-sidebar-launcher'] {
