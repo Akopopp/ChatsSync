@@ -1105,6 +1105,15 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
     overflow-x: auto;
     overscroll-behavior-x: contain;
   }
+  /* Aur ye asal fix: 24 ghanton ka grid ko min-width do, warna woh
+     400px mein thoons jaata hai aur har cell patli lakeer ban jaati
+     hai. (BaseHeatmap mein jo min-w-[700px] likha hai woh sirf
+     v-if="isLoading" wale skeleton par hai, asal grid par nahi.)
+     Min-width milte hi parent ka overflow-x kaam karne lagta hai —
+     cells poore size ke, aur ungli se slide. */
+  body:not(.cs-own-header) main [class*='grid-cols-[repeat(24'] {
+    min-width: 620px;
+  }
 
   /* MetricCard ka header do column mein tang parta tha */
   body:not(.cs-own-header) main .card-header {
