@@ -18,6 +18,37 @@ const route = useRoute();
 
 const RECONNECTED_BANNER_TIMEOUT = 2000;
 
+/* ===== BANNER KAB DIKHE =====
+   PEHLE websocket toot-te hi FORAN banner aa jaata tha, aur jur-ne ke
+   baad "Reconnected" 2 second aur dikhta tha. Yani ek second ka toot-na
+   bhi 3-4 second ka banner ban jaata tha — awam ko yahi bura lagta tha.
+
+   Chatwoot khud maanta hai ke websocket ka toot-na 3 second tak pata
+   hi nahi chalta (ReconnectService.js mein DISCONNECT_DELAY_THRESHOLD
+   = 15), yani halka sa toot-na aam baat hai.
+
+   Ab websocket wale waqeaat par 8 second ka intezaar. Us se pehle jur
+   gaya to banner dikhta hi nahi — WhatsApp ki tarah khamoshi se kaam
+   ho jaata hai. Data phir bhi taaza hota hai, woh ReconnectService ke
+   onReconnect mein hota hai; is banner se uska koi taalluq nahi.
+
+   Browser ka ASLI offline (net band) foran dikhta hai — woh sahi hai. */
+const WS_BANNER_DELAY = 8000;
+let wsBannerTimer = null;
+
+const clearWsBannerTimer = () => {
+  clearTimeout(wsBannerTimer);
+  wsBannerTimer = null;
+};
+
+const showBannerAfterDelay = () => {
+  if (wsBannerTimer) return;
+  wsBannerTimer = setTimeout(() => {
+    wsBannerTimer = null;
+    showNotification.value = true;
+  }, WS_BANNER_DELAY);
+};
+
 const showNotification = ref(!navigator.onLine);
 const isDisconnected = ref(false);
 const isReconnecting = ref(false);
@@ -43,6 +74,7 @@ const closeNotification = () => {
   showNotification.value = false;
   isReconnected.value = false;
   clearTimeout(reconnectTimeout);
+  clearWsBannerTimer();
 };
 
 const isInAnyOfTheRoutes = routeName => {
@@ -55,12 +87,20 @@ const isInAnyOfTheRoutes = routeName => {
 
 const updateWebsocketStatus = () => {
   isDisconnected.value = true;
-  showNotification.value = true;
+  // foran nahi — 8 second se pehle jur gaya to banner dikhega hi nahi
+  showBannerAfterDelay();
 };
 
 const handleReconnectionCompleted = () => {
+  clearWsBannerTimer();
   isDisconnected.value = false;
   isReconnecting.value = false;
+  // banner dikha hi nahi tha to "Reconnected" bhi mat dikhao —
+  // khamoshi se kaam ho gaya
+  if (!showNotification.value) {
+    isReconnected.value = false;
+    return;
+  }
   isReconnected.value = true;
   showNotification.value = true;
   reconnectTimeout = setTimeout(closeNotification, RECONNECTED_BANNER_TIMEOUT);
@@ -70,7 +110,7 @@ const handleReconnecting = () => {
   if (isInAnyOfTheRoutes(route.name)) {
     isReconnecting.value = true;
     isReconnected.value = false;
-    showNotification.value = true;
+    showBannerAfterDelay();
   } else {
     handleReconnectionCompleted();
   }
@@ -103,6 +143,7 @@ useEmitter(
 useEmitter(BUS_EVENTS.WEBSOCKET_RECONNECT, handleReconnecting);
 
 onBeforeUnmount(() => {
+  clearWsBannerTimer();
   clearTimeout(reconnectTimeout);
 });
 </script>
