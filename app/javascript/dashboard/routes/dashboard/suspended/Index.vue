@@ -18,24 +18,60 @@ const setupListenerForWidgetEvent = () => {
 };
 
 /* Plan expire hone par banda is page par phas jaata tha — na koi
-   button, na nikalne ka rasta. Ab neeche Logout hai taake woh doosre
-   account se login kar sake.
-   Chatwoot ka apna 'logout' action istemal hota hai (wahi jo profile
-   menu mein hai). Kisi wajah se woh na chale to seedha login page. */
-const doLogout = () => {
-  const go = () => {
-    window.location.href = '/app/login';
-  };
-  try {
-    const r = store.dispatch('logout');
-    if (r && typeof r.then === 'function') {
-      r.then(go).catch(go);
-      return;
+   button, na nikalne ka rasta. Ab neeche Logout hai.
+
+   PEHLE sirf store.dispatch('logout') aur phir /app/login par bhej
+   dete the. Masla ye tha ke session ki cookie baaqi reh jaati thi, to
+   Chatwoot login page par dekh kar wapas account par bhej deta tha —
+   aur account suspended hai, to ghoom kar wahi page.
+
+   Ab teen cheezein: server par sign_out, phir cookies khud saaf, phir
+   redirect. Cookie mit gayi to Chatwoot wapas nahi bhej sakta. */
+const clearSession = () => {
+  ['cw_d_session_info', 'auth_data', 'user'].forEach(name => {
+    try {
+      document.cookie =
+        name + '=; Max-Age=0; path=/; SameSite=Lax';
+      document.cookie =
+        name + '=; Max-Age=0; path=/; domain=' + window.location.hostname;
+    } catch (e) {
+      /* ignore */
     }
+  });
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
   } catch (e) {
     /* ignore */
   }
-  go();
+};
+
+const doLogout = () => {
+  const go = () => {
+    clearSession();
+    // replace() taake back button wapas yahin na le aaye
+    window.location.replace('/app/login');
+  };
+
+  // Chatwoot ka apna endpoint — session server par bhi khatam ho
+  fetch('/auth/sign_out', {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+  })
+    .catch(() => {})
+    .finally(() => {
+      try {
+        const r = store.dispatch('logout');
+        if (r && typeof r.then === 'function') {
+          r.then(go).catch(go);
+          return;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+      go();
+    });
 };
 
 onMounted(() => {
