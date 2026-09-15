@@ -85,44 +85,68 @@ class Notification < ApplicationRecord
     }
   end
 
-  # rubocop:disable Metrics/MethodLength
+  MESSAGE_NOTIFICATION_TYPES = %w[
+    conversation_creation
+    assigned_conversation_new_message
+    participating_conversation_new_message
+    conversation_mention
+  ].freeze
+
+  SHORT_NOTIFICATION_TITLES = {
+    'conversation_assignment' => 'Assigned to you',
+    'sla_missed_first_response' => 'First reply overdue',
+    'sla_missed_next_response' => 'Next reply overdue',
+    'sla_missed_resolution' => 'Resolution overdue'
+  }.freeze
+
+  # WhatsApp jaisa: TITLE mein bande ka NAAM + conversation number.
+  #
+  # PEHLE yahan i18n se lambi line banti thi, jaise
+  #   "A conversation is made in 454"
+  # aur asal message neeche chhota sa reh jaata tha. Naam pehle se
+  # message_body() ke andar mojood tha — bas usay upar le aaye hain.
+  #
+  # Ab aisa dikhta hai:
+  #   Abdullah · #454
+  #   Ok kro yar baki dekh lo
   def push_message_title
-    notification_title_map = {
-      'conversation_creation' => 'notifications.notification_title.conversation_creation',
-      'conversation_assignment' => 'notifications.notification_title.conversation_assignment',
-      'assigned_conversation_new_message' => 'notifications.notification_title.assigned_conversation_new_message',
-      'participating_conversation_new_message' => 'notifications.notification_title.assigned_conversation_new_message',
-      'conversation_mention' => 'notifications.notification_title.conversation_mention',
-      'sla_missed_first_response' => 'notifications.notification_title.sla_missed_first_response',
-      'sla_missed_next_response' => 'notifications.notification_title.sla_missed_next_response',
-      'sla_missed_resolution' => 'notifications.notification_title.sla_missed_resolution'
-    }
-
-    i18n_key = notification_title_map[notification_type]
-    return '' unless i18n_key
-
-    if notification_type == 'conversation_creation'
-      I18n.t(i18n_key, display_id: conversation.display_id, inbox_name: primary_actor.inbox.name)
-    elsif %w[conversation_assignment assigned_conversation_new_message participating_conversation_new_message
-             conversation_mention].include?(notification_type)
-      I18n.t(i18n_key, display_id: conversation.display_id)
-    else
-      I18n.t(i18n_key, display_id: primary_actor.display_id)
+    if MESSAGE_NOTIFICATION_TYPES.include?(notification_type)
+      who = push_sender_name
+      return who.present? ? "#{who} · ##{conversation.display_id}" : "##{conversation.display_id}"
     end
-  end
-  # rubocop:enable Metrics/MethodLength
 
+    short = SHORT_NOTIFICATION_TITLES[notification_type]
+    return '' if short.blank?
+
+    id = notification_type == 'conversation_assignment' ? conversation.display_id : primary_actor.display_id
+    "#{short} · ##{id}"
+  end
+
+  # BODY mein ab SIRF message. Naam title mein chala gaya hai, isliye
+  # yahan dobara nahi lagta ("Abdullah: Abdullah: ok" wali repetition
+  # khatam).
   def push_message_body
+    actor = notification_actor
+    return '' if actor.blank?
+
+    message_content(actor)
+  end
+
+  # jis message se title aur body dono bante hain
+  def notification_actor
     case notification_type
     when 'conversation_creation', 'sla_missed_first_response'
-      message_body(conversation.messages.first)
+      conversation.messages.first
     when 'assigned_conversation_new_message', 'participating_conversation_new_message', 'conversation_mention'
-      message_body(secondary_actor)
+      secondary_actor
     when 'conversation_assignment', 'sla_missed_next_response', 'sla_missed_resolution'
-      message_body((conversation.messages.incoming.last || conversation.messages.outgoing.last))
-    else
-      ''
+      conversation.messages.incoming.last || conversation.messages.outgoing.last
     end
+  end
+
+  # title ke liye naam — usi message se, warna contact ka naam
+  def push_sender_name
+    sender_name(notification_actor).presence || conversation.contact&.name.to_s
   end
 
   def conversation
