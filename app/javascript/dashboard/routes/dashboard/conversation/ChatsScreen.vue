@@ -120,34 +120,47 @@ const onThreadScroll = e => {
    page 1 wapas deta tha aur 25 se aage kabhi kuch nahi aata tha. */
 const listPage = ref(1);
 const noMoreChats = ref(false);
+const emptyTries = ref(0);
+
+/* Server ek baar mein 25 chats deta hai. Aage ke liye page number
+   bhejna paRta hai.
+   PEHLE ek hi khali jawab par noMoreChats hamesha ke liye true ho
+   jaata tha — aur mount par fetchAllConversations bina params ke
+   chalta tha, to filters mel nahi khate the aur page 2 wahi 25 wapas
+   de deta tha. Nateeja: 150 chats hon to bhi sirf 25 dikhtin.
+   Ab do khali jawab ke baad rukte hain, aur params dono jagah ek
+   jaise hain. */
+const FETCH_PARAMS = { status: 'all', assigneeType: 'all' };
+
+const loadMoreChats = () => {
+  if (loadingMore.value || noMoreChats.value) return;
+  loadingMore.value = true;
+  const before = (allChats.value || []).length;
+  const page = listPage.value + 1;
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page })
+    .then(() => {
+      if ((allChats.value || []).length > before) {
+        listPage.value = page;
+        emptyTries.value = 0;
+      } else {
+        // ek khali jawab par haar mat maano — agla page bhi dekh lo
+        listPage.value = page;
+        emptyTries.value += 1;
+        if (emptyTries.value >= 2) noMoreChats.value = true;
+      }
+    })
+    .catch(() => {
+      emptyTries.value += 1;
+      if (emptyTries.value >= 2) noMoreChats.value = true;
+    })
+    .finally(() => {
+      loadingMore.value = false;
+    });
+};
 
 const onListScroll = e => {
   const el = e.target;
-  if (
-    el.scrollHeight - el.scrollTop - el.clientHeight < 240 &&
-    !loadingMore.value &&
-    !noMoreChats.value
-  ) {
-    loadingMore.value = true;
-    const before = (allChats.value || []).length;
-    const page = listPage.value + 1;
-    safeD('fetchAllConversations', {
-      page,
-      status: 'all',
-      assigneeType: 'all',
-    })
-      .then(() => {
-        // kuch naya nahi aaya -> list khatam, ab mat poochho
-        if ((allChats.value || []).length > before) listPage.value = page;
-        else noMoreChats.value = true;
-      })
-      .catch(() => {
-        noMoreChats.value = true;
-      })
-      .finally(() => {
-        loadingMore.value = false;
-      });
-  }
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) loadMoreChats();
 };
 const recorderRef = ref(null);
 const fileInput = ref(null);
@@ -2103,7 +2116,13 @@ const fepOf = c => {
 
   const h = Math.floor(leftSec / 3600);
   const m = Math.floor((leftSec % 3600) / 60);
-  return { live: true, left: `Free · ${h}h ${m}m left` };
+  return {
+    live: true,
+    // avatar par nazar aane wala chhota sa waqt — mobile par hover
+    // nahi hota, isliye tooltip kaafi nahi tha
+    tag: h >= 1 ? `${h}h` : `${m}m`,
+    left: `Free · ${h}h ${m}m left`,
+  };
 };
 
 const isMuted = c =>
@@ -2229,7 +2248,9 @@ onMounted(() => {
     page: 1,
   });
   store.dispatch('setChatStatusFilter', 'all');
-  safeD('fetchAllConversations');
+  // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
+  // wapas de deta tha
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2688,6 +2709,13 @@ watch(
               :class="{ dead: !fepOf(c).live }"
               :title="fepOf(c).left"
             />
+            <span
+              v-if="fepOf(c) && fepOf(c).tag"
+              class="cs-feptm"
+              :title="fepOf(c).left"
+            >
+              {{ fepOf(c).tag }}
+            </span>
           </div>
           <div class="cs-rb">
             <div class="cs-r1">
@@ -2761,6 +2789,17 @@ watch(
 
         <div v-if="!rows.length && !listLoading" class="cs-empty-list">
           No chats, contacts or messages found
+        </div>
+
+        <!-- scroll wala tareeqa kisi wajah se na chale to haath se
+             bhi aage laya ja sake -->
+        <div v-if="loadingMore" class="cs-loadmore">Loading more…</div>
+        <div
+          v-else-if="!noMoreChats && !q && rows.length >= 20"
+          class="cs-loadmore act"
+          @click="loadMoreChats"
+        >
+          Load more chats
         </div>
       </div>
     </div>
@@ -4241,6 +4280,30 @@ watch(
 .cs-fep.dead {
   background: #ef4444;
 }
+/* bacha hua waqt — avatar ke neeche chipka hua, bilkul chhota.
+   Row ki unchai nahi badhata kyunki absolute hai. */
+.cs-feptm {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #22c55e;
+  color: #05230f;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 7px;
+  border: 1.5px solid var(--panel);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.cs-row:hover .cs-feptm {
+  border-color: var(--hov);
+}
+.cs-row.on .cs-feptm {
+  border-color: var(--sel);
+}
 .cs-row:hover .cs-fep,
 .cs-row.on .cs-fep {
   border-color: var(--hov);
@@ -4426,6 +4489,19 @@ watch(
 }
 .cs-sub .cs-mi {
   text-transform: capitalize;
+}
+.cs-loadmore {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--tx3);
+  padding: 14px 0 22px;
+}
+.cs-loadmore.act {
+  color: var(--g);
+  cursor: pointer;
+}
+.cs-loadmore.act:hover {
+  text-decoration: underline;
 }
 .cs-empty-list {
   padding: 40px 20px;
