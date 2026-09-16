@@ -48,12 +48,75 @@ class Whatsapp::IncomingMessageBaseService
 
   def process_statuses
     status = @processed_params[:statuses].first
+    # FEP ka nishan status webhook mein aata hai, message webhook mein nahi.
+    # Isi liye ye line message wale raste se pehle chalti hai.
+    record_free_entry_point(status)
     return unless find_message_by_source_id(status[:id])
 
     update_whatsapp_identifiers_from_status(status)
     update_message_with_status(@message, status)
   rescue ArgumentError => e
     Rails.logger.error "Error while processing whatsapp status update #{e.message}"
+  end
+
+  # ===================================================================
+  # FREE ENTRY POINT (FEP)
+  #
+  # Jo customer kisi ad ya FB/IG ke WhatsApp button se aata hai, uski
+  # conversation Meta ke liye ek arse tak MUFT hoti hai. Meta khud
+  # batata hai — status webhook mein:
+  #
+  #   "pricing"      => { "billable" => false,
+  #                       "category" => "referral_conversion",
+  #                       "type"     => "free_entry_point" }
+  #   "conversation" => { "id" => "...",
+  #                       "expiration_timestamp" => "1789...",
+  #                       "origin" => { "type" => "referral_conversion" } }
+  #
+  # Hum do cheezein conversation par mehfooz karte hain:
+  #   cs_fep            -> ye muft window hai ya nahi
+  #   cs_fep_expires_at -> kab khatam hogi (Meta ka apna waqt, hamara
+  #                        andaaza nahi)
+  #
+  # Inhi do se ChatsScreen hara/laal dot dikhata hai.
+  # ===================================================================
+  def record_free_entry_point(status)
+    return if status.blank?
+
+    pricing = status[:pricing] || status['pricing'] || {}
+    convo = status[:conversation] || status['conversation'] || {}
+    ptype = (pricing[:type] || pricing['type']).to_s
+    origin = ((convo[:origin] || convo['origin'] || {})[:type] ||
+              (convo[:origin] || convo['origin'] || {})['type']).to_s
+
+    is_fep = ptype == 'free_entry_point' ||
+             origin.include?('referral') ||
+             ptype.include?('referral')
+    return unless is_fep
+
+    conversation = find_conversation_for_status(status)
+    return if conversation.blank?
+
+    expires = convo[:expiration_timestamp] || convo['expiration_timestamp']
+    attrs = conversation.additional_attributes || {}
+    attrs['cs_fep'] = true
+    attrs['cs_fep_expires_at'] = expires.to_i if expires.present?
+    attrs['cs_fep_category'] = (pricing[:category] || pricing['category']).to_s
+    conversation.update!(additional_attributes: attrs)
+  rescue StandardError => e
+    # Ye kabhi message process hone ke raaste mein na aaye
+    Rails.logger.warn "[CHATSSYNC_FEP] #{e.message}"
+  end
+
+  def find_conversation_for_status(status)
+    msg = Message.find_by(source_id: status[:id] || status['id'])
+    return msg.conversation if msg.present?
+
+    waid = status[:recipient_id] || status['recipient_id']
+    return if waid.blank?
+
+    contact_inbox = @inbox.contact_inboxes.find_by(source_id: waid)
+    contact_inbox&.conversations&.last
   end
 
   def update_message_with_status(message, status)
@@ -215,3 +278,4 @@ class Whatsapp::IncomingMessageBaseService
     @contact.name == phone_number || @contact.name == formatted_phone_number
   end
 end
+root@ChatsSync:~/staging-build#
