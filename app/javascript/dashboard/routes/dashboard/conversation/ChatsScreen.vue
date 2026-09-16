@@ -1,0 +1,7330 @@
+<script setup>
+/* =====================================================================
+   ChatsScreen.vue  —  ChatsSync ka apna Chats tab
+   index.html (chatssync-v16) ka markup, Chatwoot ka data.
+   Chatwoot ke ChatList / ConversationBox / MessagesView / ReplyBox
+   ismein use NAHI hote — poora markup apna hai.
+   ===================================================================== */
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
+import { useMapGetter } from 'dashboard/composables/store.js';
+import { emitter } from 'shared/helpers/mitt';
+import { BUS_EVENTS } from 'shared/constants/busEvents';
+import MessageFormatter from 'shared/helpers/MessageFormatter.js';
+import AudioChip from 'next/message/chips/Audio.vue';
+import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
+
+const props = defineProps({
+  conversationId: { type: [String, Number], default: 0 },
+  inboxId: { type: [String, Number], default: 0 },
+});
+
+const store = useStore();
+const router = useRouter();
+
+/* ---------------- store ---------------- */
+const allChats = useMapGetter('getAllConversations');
+const currentChat = useMapGetter('getSelectedChat');
+const currentUser = useMapGetter('getCurrentUser');
+const inboxesList = useMapGetter('inboxes/getInboxes');
+const accountId = useMapGetter('getCurrentAccountId');
+const listLoading = useMapGetter('getChatListLoadingStatus');
+const agentsList = useMapGetter('agents/getAgents');
+const teamsList = useMapGetter('teams/getTeams');
+const typingGetter = useMapGetter('conversationTypingStatus/getUserList');
+
+const typingNames = computed(() => {
+  try {
+    const u = typingGetter.value?.(currentChat.value?.id) || [];
+    return u.map(x => x.name).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+});
+
+/* ---------------- local state ---------------- */
+const q = ref('');
+const filt = ref('all');
+const draft = ref('');
+const isRecording = ref(false);
+const recState = ref('');
+const recTime = ref('0:00');
+const sendAfterRec = ref(false);
+const pendingFiles = ref([]);
+const failed = ref([]);
+let failId = 0;
+
+const retryFail = f => {
+  failed.value = failed.value.filter(x => x.id !== f.id);
+  pushMessage(f.payload)
+    .then(scrollDown)
+    .catch(() => {
+      failed.value.push(f);
+      toast('Still failing', 'err');
+    });
+};
+const threadRef = ref(null);
+const loadingOlder = ref(false);
+const loadingMore = ref(false);
+const showDown = ref(false);
+const firstUnreadId = ref(null);
+
+const atBottom = ref(true);
+const noMoreOlder = ref(false);
+let lastFetch = 0;
+
+const onThreadScroll = e => {
+  const el = e.target;
+  const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+  atBottom.value = gap < 80;
+  showDown.value = gap > 320;
+
+  if (
+    el.scrollTop < 120 &&
+    !loadingOlder.value &&
+    !noMoreOlder.value &&
+    Date.now() - lastFetch > 900 &&
+    messages.value.length >= 15
+  ) {
+    lastFetch = Date.now();
+    loadingOlder.value = true;
+    const before = messages.value[0]?.id;
+    const h0 = el.scrollHeight;
+    const t0 = el.scrollTop;
+    // smooth scroll ko band karo warna position bahal karte waqt
+    // browser animate karta hai aur chat upar-neeche koodti hai
+    el.style.scrollBehavior = 'auto';
+    const n0 = messages.value.length;
+    const done = () => {
+      nextTick(() => {
+        requestAnimationFrame(() => {
+          // kuch naya nahi aaya -> aur purane hain hi nahi, ab mat poochho
+          if (messages.value.length === n0) noMoreOlder.value = true;
+          el.scrollTop = t0 + (el.scrollHeight - h0);
+          el.style.scrollBehavior = '';
+          loadingOlder.value = false;
+        });
+      });
+    };
+    const r = safeD('fetchPreviousMessages', {
+      conversationId: currentChat.value.id,
+      before,
+    });
+    if (r && r.finally) r.finally(done);
+    else setTimeout(done, 400);
+  }
+};
+
+/* Pehle page number bheja hi nahi jaata tha, isliye server hamesha
+   page 1 wapas deta tha aur 25 se aage kabhi kuch nahi aata tha. */
+const listPage = ref(1);
+const noMoreChats = ref(false);
+
+const onListScroll = e => {
+  const el = e.target;
+  if (
+    el.scrollHeight - el.scrollTop - el.clientHeight < 240 &&
+    !loadingMore.value &&
+    !noMoreChats.value
+  ) {
+    loadingMore.value = true;
+    const before = (allChats.value || []).length;
+    const page = listPage.value + 1;
+    safeD('fetchAllConversations', {
+      page,
+      status: 'all',
+      assigneeType: 'all',
+    })
+      .then(() => {
+        // kuch naya nahi aaya -> list khatam, ab mat poochho
+        if ((allChats.value || []).length > before) listPage.value = page;
+        else noMoreChats.value = true;
+      })
+      .catch(() => {
+        noMoreChats.value = true;
+      })
+      .finally(() => {
+        loadingMore.value = false;
+      });
+  }
+};
+const recorderRef = ref(null);
+const fileInput = ref(null);
+const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
+const isMobile = ref(window.innerWidth <= 768);
+const isLight = ref(false);
+const showArchived = ref(false);
+/* mobile par panel tabhi chhupao jab thread WAQAI khulа ho,
+   warna dono chhup jaate the aur screen kaali ho jaati thi */
+const threadOpen = computed(
+  () => !!props.conversationId && !!currentChat.value?.id
+);
+/* key mein account id — warna doosre account par purana
+   pin/archive/read data takra jaata hai */
+const lsKey = k => {
+  const aid =
+    accountId.value ||
+    (window.location.pathname.match(/\/accounts\/(\d+)/) || [])[1] ||
+    '0';
+  return `cs_${aid}_${k}`;
+};
+const LS = k => {
+  try {
+    return JSON.parse(localStorage.getItem(lsKey(k)) || '{}');
+  } catch (e) {
+    return {};
+  }
+};
+const saveLS = (k, v) => {
+  try {
+    localStorage.setItem(lsKey(k), JSON.stringify(v));
+  } catch (e) {
+    /* ignore */
+  }
+};
+const pinned = ref(LS('pin'));
+const muted = ref(LS('mute'));
+const archived = ref(LS('arch'));
+
+/* ---------------- helpers ---------------- */
+const initials = name =>
+  (name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase();
+
+const COLORS = [
+  '#7F77DD', '#E5793A', '#12A150', '#D9455F',
+  '#2F7FD1', '#C247A8', '#4A9E8F', '#B5852B',
+];
+const colorFor = id => COLORS[Math.abs(Number(id) || 0) % COLORS.length];
+
+const clock = ts => {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ap}`;
+};
+
+const dayLabel = ts => {
+  const d = new Date(ts * 1000);
+  const t = new Date();
+  const same = (a, b) => a.toDateString() === b.toDateString();
+  if (same(d, t)) return 'Today';
+  const y = new Date(t);
+  y.setDate(y.getDate() - 1);
+  if (same(d, y)) return 'Yesterday';
+  return d.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: d.getFullYear() === t.getFullYear() ? undefined : 'numeric',
+  });
+};
+
+const listTime = ts => {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const t = new Date();
+  if (d.toDateString() === t.toDateString()) return clock(ts).replace(/ [AP]M$/, '');
+  const y = new Date(t);
+  y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  const diff = (t - d) / 86400000;
+  if (diff < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' });
+};
+
+const chipFor = inboxId => {
+  const ib = (inboxesList.value || []).find(i => i.id === inboxId);
+  const ct = ib?.channel_type || '';
+  if (/Whatsapp/.test(ct)) return { t: 'WA', c: 'wa' };
+  if (/FacebookPage/.test(ct)) return { t: 'FB', c: 'fb' };
+  if (/Instagram/.test(ct)) return { t: 'IG', c: 'ig' };
+  return null;
+};
+
+/* ---------------- list ---------------- */
+
+/* har pill ka apna set — count asli conversations se aata hai,
+   fake nahi. unread = jitni chats mein bina padhe message hain.
+   Chat kholte hi unread_count 0 ho jaata hai to number khud ghat jata hai. */
+const setFor = key => {
+  const L = (allChats.value || []).filter(c => !isArchived(c));
+  if (key === 'all') return L;
+  if (key === 'unread') return L.filter(isUnread);
+  if (key === 'mine')
+    return L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
+  // "Unassigned" = jiska koi assignee hi nahi
+  if (key === 'unassigned') return L.filter(c => !c.meta?.assignee?.id);
+  if (key.startsWith('in-')) {
+    const id = Number(key.slice(3));
+    return L.filter(c => c.inbox_id === id);
+  }
+  if (key.startsWith('lb-')) {
+    const t = key.slice(3);
+    return L.filter(c => (c.labels || []).includes(t));
+  }
+  return L;
+};
+
+/* jo chat abhi khuli hai woh padhi hui hai — usay unread mat gino,
+   chahe API ka unread_count abhi refresh na hua ho */
+const openId = computed(() => Number(props.conversationId) || 0);
+
+/* forceUnread: "Mark as unread" ka sabse upar haq — chahe
+   chat khuli ho ya API kuch bhi kahe */
+const forceUnread = ref(LS('unread'));
+
+/* ===== UNREAD =====
+   Asal sach Chatwoot ka `unread_count` hai — server khud hisaab lagata
+   hai aur naya message aate hi barha deta hai.
+
+   readNow sirf ek CHHOTA sa parda hai: markRead ke foran baad kabhi
+   kabhi pehle se chali hui API ka purana count wapas aa jaata hai aur
+   badge palak jhapakte dikh kar gayab hota hai. Us 3 second ke liye
+   usay dabate hain — bas.
+
+   PEHLE yahan hamesha rehne wala true/false flag tha, isi liye "Mark
+   all chats as read" ke baad chat DOBARA kabhi unread nahi hoti thi.
+   Phir waqt ka muqabla lagaya tha, magar usi second mein aane wala
+   message chhoot jaata tha. Ab count ka farq dekha jaata hai — count
+   badla to foran unread, chahe wahi second ho. */
+const isUnread = c => {
+  if (!c) return false;
+  if (forceUnread.value[c.id]) return true;
+  const cur = c.unread_count || 0;
+  if (cur <= 0) return false;
+  if (c.id === openId.value) return false;
+  const rec = readNow.value[c.id];
+  if (!rec || typeof rec !== 'object') return true;
+  // count badal gaya = naya message aa gaya
+  if (cur !== rec.n) return true;
+  return Date.now() - Number(rec.at || 0) > 3000;
+};
+
+/* Ye ab sirf 3 second ka parda hai, isliye localStorage se purana kuch
+   uthane ki zaroorat hi nahi — har baar khali se shuru. Purani
+   `id: true` wali entries khud-ba-khud bekaar ho jaati hain. */
+const readNow = ref({});
+
+const unreadIn = key => setFor(key).filter(isUnread).length;
+
+const pills = computed(() => {
+  const base = [
+    { k: 'all', n: 'All' },
+    { k: 'unread', n: 'Unread' },
+    { k: 'mine', n: 'Mine' },
+    { k: 'unassigned', n: 'Unassigned' },
+  ];
+  (inboxesList.value || []).forEach(ib => {
+    base.push({ k: `in-${ib.id}`, n: ib.name });
+  });
+  (labelsList.value || []).forEach(l => {
+    base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
+  });
+  return base.map(p => ({
+    ...p,
+    unread: unreadIn(p.k),
+    total: setFor(p.k).length,
+    // All par sirf total, Unread par sirf unread, baqi par dono
+    showTotal: p.k !== 'unread',
+    showUnread: p.k !== 'all',
+  }));
+});
+
+const PILL_LIMIT = 5;
+const visiblePills = computed(() =>
+  showAllPills.value ? pills.value : pills.value.slice(0, PILL_LIMIT)
+);
+const hiddenPillCount = computed(() =>
+  Math.max(0, pills.value.length - PILL_LIMIT)
+);
+
+const rows = computed(() => {
+  let L = [...(allChats.value || [])];
+  if (props.inboxId) {
+    const iid = Number(props.inboxId);
+    const only = L.filter(c => c.inbox_id === iid);
+    if (only.length) L = only;
+  }
+  if (fStatus.value === 'snoozed')
+    L = L.filter(c => c.status === 'snoozed' || !!c.snoozed_until);
+  else if (fStatus.value !== 'all')
+    L = L.filter(c => c.status === fStatus.value);
+  if (fAssignee.value === 'me')
+    L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
+  else if (fAssignee.value === 'none') L = L.filter(c => !c.meta?.assignee);
+  if (fPriority.value !== 'all')
+    L = L.filter(c => (c.priority || 'none') === fPriority.value);
+  if (fUnreplied.value) {
+    L = L.filter(c => {
+      const m = lastOf(c);
+      return m && m.message_type === 0 && c.status !== 'resolved';
+    });
+  }
+  if (fHasAttach.value) {
+    L = L.filter(c =>
+      (c.messages || []).some(m => (m.attachments || []).length > 0)
+    );
+  }
+
+  const f = filt.value;
+  if (f === 'unread') L = L.filter(isUnread);
+  else if (f === 'mine')
+    L = L.filter(c => c.meta?.assignee?.id === currentUser.value?.id);
+  else if (f === 'unassigned') L = L.filter(c => !c.meta?.assignee?.id);
+  else if (f.startsWith('lb-')) {
+    const t = f.slice(3);
+    L = L.filter(c => (c.labels || []).includes(t));
+  } else if (f.startsWith('in-')) {
+    const id = Number(f.slice(3));
+    L = L.filter(c => c.inbox_id === id);
+  }
+  const s = q.value.trim().toLowerCase();
+  if (s) {
+    L = L.filter(c => {
+      const n = c.meta?.sender?.name || '';
+      const p = c.meta?.sender?.phone_number || '';
+      const m = c.messages?.length
+        ? c.messages[c.messages.length - 1]?.content || ''
+        : '';
+      return `${n} ${p} ${m}`.toLowerCase().includes(s);
+    });
+  }
+  L = L.filter(c => (showArchived.value ? isArchived(c) : !isArchived(c)));
+
+  const k = sortBy.value;
+  const val = c => {
+    if (k === 'created_at_desc' || k === 'created_at_asc') return c.created_at || 0;
+    if (k === 'priority_desc') {
+      const P = { urgent: 4, high: 3, medium: 2, low: 1 };
+      return P[c.priority] || 0;
+    }
+    if (k === 'waiting_since_desc') return -(c.waiting_since || c.timestamp || 0);
+    return c.timestamp || 0;
+  };
+  const asc = k === 'created_at_asc';
+
+  return L.slice().sort((a, b) => {
+    const p = (isPinned(b) ? 1 : 0) - (isPinned(a) ? 1 : 0);
+    if (p) return p;
+    return asc ? val(a) - val(b) : val(b) - val(a);
+  });
+});
+
+/* API snake_case deti hai, AudioChip camelCase maangta hai.
+   Cache isliye ke har render par naya object banne se AudioChip
+   dobara render hota tha (bajti hui voice ruk sakti thi). */
+const attachCache = new Map();
+const attach = a => {
+  if (attachCache.size > 600) attachCache.clear();
+  const k = a.id || a.data_url || a.dataUrl;
+  const hit = attachCache.get(k);
+  if (hit) return hit;
+  const o = {
+    ...a,
+    id: a.id,
+    dataUrl: a.data_url || a.dataUrl,
+    fileType: a.file_type || a.fileType,
+    fileName: a.file_name || a.fileName,
+    extension: a.extension,
+    transcribedText: a.transcribed_text || a.transcribedText,
+  };
+  attachCache.set(k, o);
+  return o;
+};
+const aUrl = a => a.data_url || a.dataUrl || '';
+const aType = a => a.file_type || a.fileType || 'file';
+
+const plain = html => {
+  if (!html) return '';
+  let out = '';
+  try {
+    const f = new MessageFormatter(String(html));
+    if (f.plainText) out = f.plainText;
+  } catch (e) {
+    /* fallback niche */
+  }
+  if (!out) {
+    out = String(html)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]*>/g, '');
+  }
+  return out.replace(/&nbsp;/g, ' ').replace(/[\s\u00a0]+$/g, '');
+};
+
+const previewOf = c => {
+  const m = c.messages?.length ? c.messages[c.messages.length - 1] : null;
+  if (!m) return 'No messages yet';
+  if (m.content) return plain(m.content);
+  const a = m.attachments?.[0];
+  if (a) {
+    const map = {
+      image: 'Photo',
+      audio: 'Voice message',
+      video: 'Video',
+      file: 'Document',
+    };
+    return map[a.file_type] || 'Attachment';
+  }
+  return '';
+};
+
+const lastOf = c =>
+  c?.messages?.length ? c.messages[c.messages.length - 1] : null;
+
+
+/* ---------------- thread ---------------- */
+const messages = computed(() => currentChat.value?.messages || []);
+
+const blocks = computed(() => {
+  const out = [];
+  let lastDay = null;
+  let prevSender = null;
+  let lastAgent = null;
+  messages.value.forEach(m => {
+    const d = dayLabel(m.created_at);
+    if (d !== lastDay) {
+      out.push({ kind: 'day', id: `d${m.id}`, text: d });
+      lastDay = d;
+      prevSender = null;
+    }
+    if (m.message_type === 2) {
+      out.push({ kind: 'sys', id: m.id, text: m.content });
+      prevSender = null;
+      return;
+    }
+    const key = `${m.message_type}-${m.private ? 'p' : ''}-${m.sender?.id || ''}`;
+    const first = key !== prevSender;
+    // naam sirf outgoing par, aur sirf jab agent badle — 1-on-1 chat
+    // mein har bubble par apna naam WhatsApp nahi dikhata
+    const showName =
+      first &&
+      m.message_type === 1 &&
+      !!m.sender?.name &&
+      m.sender.id !== lastAgent;
+    if (m.message_type === 1 && m.sender?.id) lastAgent = m.sender.id;
+    out.push({ kind: 'msg', id: m.id, m, first, showName });
+    prevSender = key;
+  });
+  return out;
+});
+
+/* content ke aakhir ki khali lines bubble ko oonchа kar deti thin
+   aur copy karne par bhi saath aati thin */
+const trimC = t => String(t || '').replace(/[\s\u00a0]+$/g, '');
+
+/* WhatsApp jaisa "Read more" — lamba message kata hua dikhta hai,
+   har click par agla hissa khulta hai */
+const CHUNK = 700;
+const expanded = ref({});
+
+const isLong = m => plain(m.content || '').length > CHUNK;
+
+const shownLen = m => (expanded.value[m.id] || 1) * CHUNK;
+
+const clippedHtml = m => {
+  const full = trimC(m.content);
+  if (!isLong(m)) return bodyHtml(m);
+  const txt = plain(m.content);
+  const lim = shownLen(m);
+  if (txt.length <= lim) return bodyHtml(m);
+  // lafz ke beech se na kaate
+  let cut = txt.lastIndexOf(' ', lim);
+  if (cut < lim * 0.7) cut = lim;
+  const part = txt.slice(0, cut);
+  return tidyHtml(new MessageFormatter(part + '…').formattedMessage);
+};
+
+const moreLeft = m => {
+  const txt = plain(m.content || '');
+  return Math.max(0, txt.length - shownLen(m));
+};
+
+const readMore = m => {
+  expanded.value = {
+    ...expanded.value,
+    [m.id]: (expanded.value[m.id] || 1) + 1,
+  };
+};
+
+const readLess = m => {
+  const e = { ...expanded.value };
+  delete e[m.id];
+  expanded.value = e;
+};
+/* Formatter ek line break ke liye <br> deta hai MAGAR HTML source mein
+   asli \n bhi chhod deta hai. .cs-tx par white-space:pre-wrap laga hai,
+   isliye woh \n DOOSRA line break ban jaata tha — har line ke beech
+   ek khali line. Yahan sirf woh fazool \n hataye jaate hain. */
+const BLOCK_TAG = '(?:p|div|ul|ol|li|blockquote|h[1-6])';
+const tidyHtml = h => {
+  let out = String(h || '');
+  out = out
+    .replace(/<br\s*\/?>[^\S\r\n]*\r?\n/gi, '<br>')
+    .replace(/\r?\n[^\S\r\n]*<br\s*\/?>/gi, '<br>')
+    .replace(new RegExp('(</?' + BLOCK_TAG + '[^>]*>)[^\\S\\r\\n]*\\r?\\n', 'gi'), '$1')
+    .replace(new RegExp('\\r?\\n[^\\S\\r\\n]*(</?' + BLOCK_TAG + '[^>]*>)', 'gi'), '$1');
+  return out.replace(/(<br\s*\/?>|\s|&nbsp;)+$/gi, '');
+};
+
+const bodyHtml = m => tidyHtml(new MessageFormatter(trimC(m.content)).formattedMessage);
+
+const contact = computed(() => currentChat.value?.meta?.sender || {});
+
+/* contact profile drawer */
+const showProfile = ref(false);
+const isNote = ref(false);
+const showEmoji = ref(false);
+const showTpl = ref(false);
+const replyTo = ref(null);
+const fwdMsg = ref(null);
+const fwdPick = ref([]);
+const infoMsg = ref(null);
+
+/* apna confirm dialog — browser wala nahi */
+const ask = ref(null);
+const confirmBox = (title, body, okText, onOk, danger = true) =>
+  new Promise(resolve => {
+    ask.value = {
+      title,
+      body,
+      okText: okText || 'Confirm',
+      danger,
+      ok: () => {
+        ask.value = null;
+        onOk?.();
+        resolve(true);
+      },
+      cancel: () => {
+        ask.value = null;
+        resolve(false);
+      },
+    };
+  });
+
+/* toast */
+const toasts = ref([]);
+let toastId = 0;
+const toast = (text, kind = 'ok') => {
+  const id = ++toastId;
+  toasts.value.push({ id, text, kind });
+  setTimeout(() => {
+    toasts.value = toasts.value.filter(t => t.id !== id);
+  }, 3200);
+};
+
+/* ===================================================================
+   API auth — pehle sirf currentUser.access_token bhejta tha jo har
+   version mein mojood nahi hota. Uske bagair server 401 deta tha,
+   catch chup-chaap gir jaata tha aur label kabhi save nahi hota tha.
+   Ab devise ki cookie se poore headers bhi jaate hain.
+   =================================================================== */
+/* ===================================================================
+   AUTH
+   Ek daur mein ise bare `axios` par le gaya tha — woh ghalti thi: us
+   import par Chatwoot ke auth headers lagte hi nahi, isliye Contacts,
+   Inbox aur Dashboard teeno 401 par gir gaye.
+   Ab wapas cookie ke headers, magar do sudhaar ke saath:
+     1. token HAR call par taaza parha jaata hai
+     2. 401 aaye to 250ms ruk kar EK baar dobara — devise-token-auth har
+        request par token badalta hai, aur kabhi kabhi hum purana token
+        pakad lete hain. Dobara koshish par cookie mein naya token aa
+        chuka hota hai.
+   =================================================================== */
+const authHeaders = () => {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const raw = (document.cookie.match(
+      /(?:^|;\s*)cw_d_session_info=([^;]+)/
+    ) || [])[1];
+    if (raw) {
+      let txt = decodeURIComponent(raw);
+      if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
+      const sess = JSON.parse(txt);
+      if (sess['access-token']) {
+        h['access-token'] = sess['access-token'];
+        h['token-type'] = sess['token-type'] || 'Bearer';
+        h.client = sess.client;
+        h.expiry = sess.expiry;
+        h.uid = sess.uid;
+        h.api_access_token = sess['access-token'];
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const tok = currentUser.value?.access_token;
+  if (tok) h.api_access_token = tok;
+  return h;
+};
+
+const rawFetch = (url, opts = {}) =>
+  fetch(url, { credentials: 'same-origin', ...opts, headers: authHeaders() });
+
+/* 401 par ek baar dobara — token rotate ho chuka hota hai */
+const httpJson = (url, opts = {}) =>
+  rawFetch(url, opts).then(r => {
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    return new Promise(res => setTimeout(res, 250))
+      .then(() => rawFetch(url, opts))
+      .then(r2 => {
+        if (!r2.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r2.status}`);
+        return r2.status === 204 ? null : r2.json().catch(() => null);
+      });
+  });
+
+const req = (method, path, data) =>
+  httpJson(`/api/v1/accounts/${accountId.value}${path}`, {
+    method: String(method).toUpperCase(),
+    ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+  });
+
+/* Chatwoot ka documented endpoint. labels ki POORI list bhejni hoti
+   hai — server usi ko final maan leta hai (replace, add nahi). */
+const setLabelsApi = (cid, labels) =>
+  req('post', `/conversations/${cid}/labels`, { labels });
+
+/* HAR label ka raasta yahin se guzarta hai.
+   1. REST API  2. na chale to Chatwoot ka conversationLabels/update
+   Dono fail hon to UI wapas purani haalat par — jhooti tick nahi. */
+const applyLabels = (c, labels) => {
+  if (!c || !c.id) return Promise.reject(new Error('no chat'));
+  const next = [...new Set((labels || []).filter(Boolean))];
+  const prev = Array.isArray(c.labels) ? [...c.labels] : [];
+  try {
+    c.labels = next;
+  } catch (e) {
+    /* ignore */
+  }
+  return setLabelsApi(c.id, next)
+    .catch(err => {
+      if (has('conversationLabels/update')) {
+        return safeD('conversationLabels/update', {
+          conversationId: c.id,
+          labels: next,
+        });
+      }
+      throw err;
+    })
+    .then(res => {
+      // list wala object aur khuli hui chat alag ho sakte hain
+      const twin = (allChats.value || []).find(x => x.id === c.id);
+      if (twin && twin !== c) {
+        try {
+          twin.labels = next;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      if (currentChat.value && currentChat.value.id === c.id && currentChat.value !== c) {
+        try {
+          currentChat.value.labels = next;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      return res;
+    })
+    .catch(err => {
+      try {
+        c.labels = prev;
+      } catch (e) {
+        /* ignore */
+      }
+      console.warn('[ChatsSync] label save failed', err);
+      throw err;
+    });
+};
+
+const delMessage = (cid, mid) =>
+  req('delete', `/conversations/${cid}/messages/${mid}`);
+const lightbox = ref(null);
+const fwdQ = ref('');
+const tq = ref('');
+const showTq = ref(false);
+const tmenu = ref(false);
+const agm = ref(false);
+const agQ = ref('');
+
+const agentHits = computed(() => {
+  const k = agQ.value.trim().toLowerCase();
+  const L = agentsList.value || [];
+  if (!k) return L;
+  return L.filter(a =>
+    `${a.name || ''} ${a.email || ''}`.toLowerCase().includes(k)
+  );
+});
+
+const toggleAgm = () => {
+  const w = agm.value;
+  closeAll();
+  agm.value = !w;
+  agQ.value = '';
+};
+
+const pickAgent = a => {
+  agm.value = false;
+  safeD('assignAgent', {
+      conversationId: currentChat.value.id,
+      agentId: a?.id || null,
+    })
+    ?.then?.(() => toast(a ? `Assigned to ${a.name}` : 'Unassigned'))
+    ?.catch?.(() => toast('Could not assign', 'err'));
+};
+const tsub = ref('');
+const msgSelect = ref(false);
+const msgPicked = ref([]);
+
+const exportChat = () => {
+  tmenu.value = false;
+  const lines = messages.value.map(m => {
+    const who =
+      m.message_type === 1 ? m.sender?.name || 'Agent' : contact.value.name || 'Customer';
+    const t = `${dayLabel(m.created_at)} ${clock(m.created_at)}`;
+    const body = plain(m.content || '') || `[${aType(m.attachments?.[0] || {})}]`;
+    return `[${t}] ${who}: ${body}`;
+  });
+  const blob = new Blob([lines.join('\n')], {
+    type: 'text/plain;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${contact.value.name || 'chat'}-${currentChat.value.id}.txt`;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  // foran revoke karne se download cancel ho jaata tha
+  setTimeout(() => {
+    try {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      /* ignore */
+    }
+  }, 1500);
+  toast(`Chat exported — ${lines.length} messages`);
+};
+
+const clearChat = () => {
+  tmenu.value = false;
+  const cid = currentChat.value?.id;
+  if (!cid) return;
+  const n = messages.value.length;
+  confirmBox(
+    'Clear chat',
+    `Delete all ${n} messages from this conversation? The conversation itself stays. This only clears your dashboard — the customer still sees them on WhatsApp.`,
+    'Clear',
+    async () => {
+      let done = 0;
+      for (const m of [...messages.value]) {
+        try {
+          await delMessage(cid, m.id);
+          done += 1;
+        } catch (e) {
+          /* skip */
+        }
+      }
+      toast(`${done} messages cleared`);
+      safeD('getConversation', cid)?.catch?.(() => {});
+    }
+  );
+};
+
+const tAct = (name, arg) => {
+  const c = currentChat.value;
+  if (!c) return;
+  tmenu.value = false;
+  tsub.value = '';
+  const d = (a, p) => safeD(a, p).catch(() => {});
+  if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id });
+  else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
+  else if (name === 'label') {
+    const cur = c.labels || [];
+    const next = cur.includes(arg) ? cur.filter(x => x !== arg) : [...cur, arg];
+    applyLabels(c, next).catch(() => toast('Could not update labels', 'err'));
+  } else if (name === 'mute') {
+    const m = !isMuted(c);
+    d(m ? 'muteConversation' : 'unmuteConversation', c.id);
+    setAttr(c, { cs_muted: m });
+    muted.value = { ...muted.value, [c.id]: m };
+    saveLS('mute', muted.value);
+  } else if (name === 'resolved')
+    d('toggleStatus', { conversationId: c.id, status: 'resolved' });
+  else if (name === 'delete') {
+    confirmBox(
+      'Delete conversation',
+      'Delete this conversation? This cannot be undone.',
+      'Delete',
+      () => {
+        store
+          .dispatch('deleteConversation', c.id)
+          ?.then?.(() => toast('Conversation deleted'))
+          ?.catch?.(() => toast('Delete failed', 'err'));
+      }
+    );
+  }
+};
+const emojiQ = ref('');
+const showCanned = ref(false);
+const cannedQ = ref('');
+const newCanned = ref(null);
+
+const openNewCanned = () => {
+  showCanned.value = false;
+  newCanned.value = { short_code: '', content: draft.value.replace(/^\//, '') };
+};
+
+const saveCanned = () => {
+  const c = newCanned.value;
+  if (!c?.short_code?.trim() || !c?.content?.trim()) {
+    toast('Shortcode and message are required', 'err');
+    return;
+  }
+  safeD('createCannedResponse', {
+      short_code: c.short_code.trim().replace(/\s+/g, '_'),
+      content: c.content,
+    })
+    ?.then?.(() => {
+      toast('Canned response saved');
+      newCanned.value = null;
+      safeD('getCannedResponse')?.catch?.(() => {});
+    })
+    ?.catch?.(() => toast('Could not save', 'err'));
+};
+
+/* channel connection errors — pills ke upar laal patti */
+const channelErrors = computed(() =>
+  (inboxesList.value || [])
+    .filter(
+      ib =>
+        ib.reauthorization_required ||
+        ib.health_status === 'unhealthy' ||
+        ib.connection_status === 'disconnected'
+    )
+    .map(ib => ({
+      id: ib.id,
+      name: ib.name,
+      msg: ib.reauthorization_required
+        ? 'Reconnect required — the channel token expired or the number is locked'
+        : 'Connection problem — messages may not be delivered',
+    }))
+);
+const cannedList = useMapGetter('getCannedResponses');
+
+const tqHits = computed(() => {
+  const k = tq.value.trim().toLowerCase();
+  if (!k) return [];
+  return messages.value.filter(m =>
+    plain(m.content || '').toLowerCase().includes(k)
+  );
+});
+
+const jumpTo = id => {
+  const el = document.getElementById('csm' + id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1400);
+};
+
+const EMOJI_NAMES = {
+  '👍': 'thumbs up like ok', '❤️': 'heart love red', '😂': 'laugh lol funny',
+  '🙏': 'thanks pray please', '🔥': 'fire hot', '✅': 'check done tick',
+  '❌': 'cross no wrong', '🎉': 'party celebrate', '😊': 'smile happy',
+  '😢': 'sad cry', '😮': 'wow surprised', '💯': 'hundred perfect',
+};
+const emojiHits = computed(() => {
+  const k = emojiQ.value.trim().toLowerCase();
+  if (!k) return EMOJIS;
+  return EMOJIS.filter(e => (EMOJI_NAMES[e] || '').includes(k));
+});
+
+const cannedHits = computed(() => {
+  const k = cannedQ.value.trim().toLowerCase();
+  const L = cannedList.value || [];
+  if (!k) return L.slice(0, 30);
+  return L.filter(c =>
+    `${c.short_code || ''} ${c.content || ''}`.toLowerCase().includes(k)
+  ).slice(0, 30);
+});
+
+const useCanned = c => {
+  draft.value = plain(c.content || '');
+  showCanned.value = false;
+  cannedQ.value = '';
+};
+
+/* "/" likhte hi canned khul jaye */
+watch(draft, v => {
+  const on = v.startsWith('/') && !v.includes('\n');
+  if (on) {
+    if (!showCanned.value) safeD('getCannedResponse')?.catch?.(() => {});
+    showCanned.value = true;
+    cannedQ.value = v.slice(1);
+  } else if (showCanned.value) {
+    showCanned.value = false;
+  }
+});
+
+/* drag-drop aur paste */
+const dragOver = ref(false);
+const onDrop = e => {
+  dragOver.value = false;
+  [...(e.dataTransfer?.files || [])].forEach(f =>
+    pendingFiles.value.push({ file: f, name: f.name })
+  );
+};
+const onPaste = e => {
+  const items = [...(e.clipboardData?.items || [])];
+  items.forEach(it => {
+    if (it.kind === 'file') {
+      const f = it.getAsFile();
+      if (f) pendingFiles.value.push({ file: f, name: f.name || 'pasted.png' });
+    }
+  });
+};
+/* preview URL reactive object ke BAHAR rakho — pehle template ke
+   andar f._url set hota tha jo render ke dauran reactivity trigger
+   karta tha */
+const thumbCache = new Map();
+const revokeThumb = f => {
+  const u = thumbCache.get(f?.file);
+  if (u) {
+    try {
+      URL.revokeObjectURL(u);
+    } catch (e) {
+      /* ignore */
+    }
+    thumbCache.delete(f.file);
+  }
+};
+
+const dropFile = i => {
+  revokeThumb(pendingFiles.value[i]);
+  pendingFiles.value.splice(i, 1);
+};
+
+const thumbOf = f => {
+  if (!f?.file?.type?.startsWith('image/')) return null;
+  let u = thumbCache.get(f.file);
+  if (!u) {
+    u = URL.createObjectURL(f.file);
+    thumbCache.set(f.file, u);
+  }
+  return u;
+};
+
+/* snooze */
+const snooze = hrs => {
+  const c = menu.value.chat;
+  closeMenu();
+  if (!c) return;
+  const until = Math.floor(Date.now() / 1000) + hrs * 3600;
+  safeD('toggleStatus', {
+      conversationId: c.id,
+      status: 'snoozed',
+      snoozedUntil: until,
+    })
+    ?.catch?.(() => {});
+};
+
+/* link preview */
+const firstLink = m => {
+  const t = plain(m.content || '');
+  const mm = t.match(/https?:\/\/[^\s<>"']+/);
+  return mm ? mm[0] : null;
+};
+const hostOf = u => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch (e) {
+    return u;
+  }
+};
+const newLabel = ref('');
+
+/* ===== LABEL PICKER =====
+   single  = ek chat. Click par foran lagta/hat-ta hai, tick nazar aati hai.
+   bulk    = kai chats. Tick karo -> Add. Purane labels barqarar rehte hain.
+   remove  = kai chats. Tick karo -> Remove. Sirf ticked labels hattay hain. */
+const lp = ref({ open: false, mode: 'single', chats: [], sel: [], q: '' });
+
+const lpOpen = (mode, chats) => {
+  closeAll();
+  const list = (Array.isArray(chats) ? chats : [chats]).filter(Boolean);
+  if (!list.length) return;
+  lp.value = {
+    open: true,
+    mode,
+    chats: list,
+    q: '',
+    // single mein chat ke mojooda labels pehle se tick.
+    // bulk/remove khaali se shuru — warna aadhe chats ke labels ud jaate the.
+    sel: mode === 'single' ? [...(list[0]?.labels || [])] : [],
+  };
+};
+
+const lpHits = computed(() => {
+  const k = lp.value.q.trim().toLowerCase();
+  let L = [...(labelsList.value || [])];
+  if (lp.value.mode === 'remove') {
+    // sirf woh labels jo selected chats par WAQAI lagay huay hain
+    const on = new Set();
+    lp.value.chats.forEach(c => (c.labels || []).forEach(t => on.add(t)));
+    L = L.filter(l => on.has(l.title));
+    on.forEach(t => {
+      if (!L.some(l => l.title === t)) L.push({ title: t, color: '#8696a0' });
+    });
+  }
+  return k ? L.filter(l => (l.title || '').toLowerCase().includes(k)) : L;
+});
+
+/* kitni selected chats par ye label pehle se laga hai */
+const lpCount = t =>
+  lp.value.chats.filter(c => (c.labels || []).includes(t)).length;
+
+const lpToggle = t => {
+  const sel = [...lp.value.sel];
+  const i = sel.indexOf(t);
+  if (i >= 0) sel.splice(i, 1);
+  else sel.push(t);
+  lp.value.sel = sel;
+
+  // single chat: foran server par bhejo
+  if (lp.value.mode === 'single') {
+    const c = lp.value.chats[0];
+    applyLabels(c, sel)
+      .then(() => toast(i >= 0 ? `"${t}" removed` : `"${t}" added`))
+      .catch(() => {
+        lp.value.sel = [...(c.labels || [])];
+        toast('Could not update labels', 'err');
+      });
+  }
+};
+
+const lpDone = () => {
+  lp.value.open = false;
+  picked.value = [];
+  selectMode.value = false;
+};
+
+/* BULK ADD — mojooda labels ke SAATH naye jodo */
+const lpApply = () => {
+  const sel = [...lp.value.sel];
+  const chats = [...lp.value.chats];
+  lpDone();
+  if (!sel.length || !chats.length) return;
+  Promise.all(
+    chats.map(c => applyLabels(c, [...new Set([...(c.labels || []), ...sel])]))
+  )
+    .then(() => toast(`${sel.length} label(s) added — ${chats.length} chat(s)`))
+    .catch(() => toast('Some labels failed', 'err'));
+};
+
+/* BULK REMOVE — sirf ticked labels hatao, baqi jyon ke tyon */
+const lpRemove = () => {
+  const sel = [...lp.value.sel];
+  const chats = [...lp.value.chats];
+  lpDone();
+  if (!sel.length || !chats.length) return;
+  Promise.all(
+    chats.map(c =>
+      applyLabels(c, (c.labels || []).filter(t => !sel.includes(t)))
+    )
+  )
+    .then(() => toast(`${sel.length} label(s) removed — ${chats.length} chat(s)`))
+    .catch(() => toast('Some labels failed', 'err'));
+};
+
+const lpClearAll = () => {
+  const chats = [...lp.value.chats];
+  lp.value.sel = [];
+  lpDone();
+  Promise.all(chats.map(c => applyLabels(c, [])))
+    .then(() => toast(`All labels removed — ${chats.length} chat(s)`))
+    .catch(() => toast('Failed', 'err'));
+};
+
+const lpNew = () => {
+  const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
+  if (!t) return;
+  newLabel.value = '';
+  const after = () => {
+    safeD('labels/get');
+    if (!lp.value.sel.includes(t)) lpToggle(t);
+  };
+  const exists = (labelsList.value || []).some(l => l.title === t);
+  if (exists) after();
+  else
+    safeD('labels/create', { title: t, color: '#00A884' })
+      .then(after)
+      .catch(after);
+};
+const showAllPills = ref(false);
+const hmenu = ref(false);
+const hsub = ref('');
+const hmFlip = ref(false);
+
+/* submenu ki side: daayen jagah na ho to baaen kholo */
+const fitHm = el => {
+  if (!el) return;
+  nextTick(() => {
+    const r = el.getBoundingClientRect();
+    hmFlip.value = r.right + 200 > window.innerWidth;
+  });
+};
+const selectMode = ref(false);
+const picked = ref([]);
+
+const SORTS = [
+  { k: 'last_activity_at_desc', n: 'Latest' },
+  { k: 'created_at_desc', n: 'Newest first' },
+  { k: 'created_at_asc', n: 'Oldest first' },
+  { k: 'priority_desc', n: 'Priority' },
+  { k: 'waiting_since_desc', n: 'Longest waiting' },
+];
+const sortBy = ref('last_activity_at_desc');
+
+/* filter panel */
+const showFilter = ref(false);
+const fStatus = ref('all');
+const fAssignee = ref('all');
+const fPriority = ref('all');
+const fUnreplied = ref(false);
+const fHasAttach = ref(false);
+
+const activeFilterCount = computed(() => {
+  let n = 0;
+  if (fStatus.value !== 'all') n += 1;
+  if (fAssignee.value !== 'all') n += 1;
+  if (fPriority.value !== 'all') n += 1;
+  if (fUnreplied.value) n += 1;
+  if (fHasAttach.value) n += 1;
+  return n;
+});
+
+const clearAllFilters = () => {
+  filt.value = 'all';
+  q.value = '';
+  fStatus.value = 'all';
+  fAssignee.value = 'all';
+  fPriority.value = 'all';
+  fUnreplied.value = false;
+  fHasAttach.value = false;
+  showArchived.value = false;
+  toast('Filters cleared');
+};
+
+const clearFilters = () => {
+  fStatus.value = 'all';
+  fAssignee.value = 'all';
+  fPriority.value = 'all';
+  fUnreplied.value = false;
+  fHasAttach.value = false;
+};
+
+const togglePick = id => {
+  const i = picked.value.indexOf(id);
+  if (i >= 0) picked.value.splice(i, 1);
+  else picked.value.push(id);
+};
+
+const bmenu = ref(false);
+const bsub = ref('');
+
+/* Bulk label panel — ChatsSync jaisa: search + tick + confirm */
+const bulk = (name, arg) => {
+  const ids = [...picked.value];
+  if (!ids.length) return;
+  const chats = ids
+    .map(id => (allChats.value || []).find(x => x.id === id))
+    .filter(Boolean);
+
+  const finish = msg => {
+    picked.value = [];
+    selectMode.value = false;
+    bmenu.value = false;
+    bsub.value = '';
+    toast(`${msg} — ${chats.length} chat(s)`);
+  };
+
+  if (name === 'delete') {
+    confirmBox(
+      'Delete conversations',
+      `Delete ${chats.length} conversation(s)? This cannot be undone.`,
+      'Delete',
+      () => {
+        chats.forEach(c => safeD('deleteConversation', c.id).catch(() => {}));
+        finish('Deleted');
+      }
+    );
+    return;
+  }
+
+  chats.forEach(c => {
+    if (name === 'read') markRead(c);
+    else if (name === 'resolved')
+      safeD('toggleStatus', { conversationId: c.id, status: 'resolved' });
+    else if (name === 'pending')
+      safeD('toggleStatus', { conversationId: c.id, status: 'pending' });
+    else if (name === 'archive') setAttr(c, { cs_archived: true });
+    else if (name === 'agent')
+      safeD('assignAgent', { conversationId: c.id, agentId: arg?.id || null });
+    else if (name === 'team')
+      safeD('assignTeam', { conversationId: c.id, teamId: arg?.id });
+    else if (name === 'priority')
+      safeD('assignPriority', { conversationId: c.id, priority: arg });
+    else if (name === 'label' || name === 'unlabel') {
+      const cur = c.labels || [];
+      const next =
+        name === 'label'
+          ? [...new Set([...cur, arg])]
+          : cur.filter(x => x !== arg);
+      applyLabels(c, next).catch(() => {});
+    }
+  });
+
+  const M = {
+    read: 'Marked read',
+    resolved: 'Resolved',
+    pending: 'Marked pending',
+    archive: 'Archived',
+    agent: arg?.name ? `Assigned to ${arg.name}` : 'Unassigned',
+    team: `Assigned to ${arg?.name || 'team'}`,
+    priority: `Priority: ${arg || 'none'}`,
+    label: `Label "${arg}" added`,
+    unlabel: `Label "${arg}" removed`,
+  };
+  finish(M[name] || 'Done');
+};
+
+const markAllRead = () => {
+  (rows.value || []).forEach(c => {
+    if ((c.unread_count || 0) > 0) markRead(c);
+  });
+  hmenu.value = false;
+  toast('All chats marked as read');
+};
+
+const applySort = k => {
+  sortBy.value = k;
+  hmenu.value = false;
+  hsub.value = '';
+  safeD('setChatSortFilter', k);
+};
+
+const goSettings = () => {
+  hmenu.value = false;
+  router.push({ name: 'general_settings_index', params: { accountId: accountId.value } });
+};
+
+const doLogout = () => {
+  hmenu.value = false;
+  const go = () => {
+    window.location.href = '/app/login';
+  };
+  if (!has('logout')) {
+    go();
+    return;
+  }
+  safeD('logout').then(go).catch(go);
+};
+const labelsList = useMapGetter('labels/getLabels');
+
+const REACTS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+const EMOJIS = (
+  '😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 😘 😗 😋 😜 🤪 🤗 ' +
+  '🤔 🤐 😐 😑 😶 😏 😒 🙄 😬 😔 😪 😴 😷 🤒 🤕 🥳 😎 🤓 🧐 😕 ' +
+  '😟 🙁 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 ' +
+  '👍 👎 👌 ✌️ 🤞 🤝 🙏 💪 👏 🙌 👋 ✋ 🤚 ☝️ 👆 👇 👉 👈 ✍️ 💅 ' +
+  '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 🔥 ⭐ ✨ 🎉 🎊 🎁 🏆 ✅ ❌ ⚠️'
+).split(' ');
+
+const addEmoji = e => {
+  draft.value += e;
+};
+
+const templates = computed(() => {
+  const ib = (inboxesList.value || []).find(
+    i => i.id === currentChat.value?.inbox_id
+  );
+  return ib?.message_templates || [];
+});
+
+const useTemplate = t => {
+  const body = (t.components || []).find(c => c.type === 'BODY');
+  draft.value = body?.text || t.name || '';
+  showTpl.value = false;
+};
+
+const phoneOf = c => {
+  const sn = c?.meta?.sender || c || {};
+  return sn.phone_number || sn.identifier || '';
+};
+
+/* asli tick: Chatwoot/WhatsApp ka status field
+   sent -> ek tick | delivered -> do grey | read -> do neele
+   failed -> laal (!) */
+const tickOf = m => {
+  if (!m || m.message_type !== 1) return null;
+  const st = m.status || 'sent';
+  if (st === 'failed') return { i: 'i-lucide-circle-alert', c: 'err' };
+  if (st === 'read') return { i: 'i-lucide-check-check', c: 'blue' };
+  if (st === 'delivered') return { i: 'i-lucide-check-check', c: '' };
+  if (st === 'progress' || st === 'pending')
+    return { i: 'i-lucide-clock-3', c: '' };
+  return { i: 'i-lucide-check', c: '' };
+};
+
+const dropLabel = (c, l) => {
+  const next = (c.labels || []).filter(x => x !== l);
+  applyLabels(c, next)
+    .then(() => toast(`Label "${l}" removed`))
+    .catch(() => toast('Could not remove label', 'err'));
+};
+
+const inboxName = id =>
+  (inboxesList.value || []).find(i => i.id === id)?.name || '';
+
+/* ---------------- actions ---------------- */
+const markRead = c => {
+  if (!c) return;
+  // { at: kab, n: us waqt ka count } — 3 second ka parda, phir server sach
+  readNow.value = {
+    ...readNow.value,
+    [c.id]: { at: Date.now(), n: c.unread_count || 0 },
+  };
+  saveLS('read', readNow.value);
+  if (forceUnread.value[c.id]) {
+    const f = { ...forceUnread.value };
+    delete f[c.id];
+    forceUnread.value = f;
+    saveLS('unread', f);
+  }
+  // store ka object bhi update karo warna API ka purana count
+  // pills aur badge mein dikhta rehta hai
+  try {
+    c.unread_count = 0;
+  } catch (e) {
+    /* ignore */
+  }
+  safeD('markMessagesRead', { id: c.id })?.catch?.(() => {});
+};
+
+const openChat = c => {
+  // dobara click = padh liya (force unread bhi hat jaata hai)
+  if ((c.unread_count || 0) > 0 || forceUnread.value[c.id]) markRead(c);
+  router.push({
+    name: 'inbox_conversation',
+    params: { accountId: accountId.value, conversation_id: c.id },
+  });
+};
+
+const goBack = () => {
+  router.push({
+    name: 'home',
+    params: { accountId: accountId.value },
+  });
+};
+
+const onRecError = () => {
+  isRecording.value = false;
+  recState.value = '';
+  sendAfterRec.value = false;
+};
+
+const scrollDown = () => {
+  nextTick(() => {
+    const el = threadRef.value;
+    if (!el) return;
+    el.style.scrollBehavior = 'auto';
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      el.style.scrollBehavior = '';
+    });
+  });
+};
+
+/* Chatwoot ke version ke hisaab se action ka naam alag hota hai.
+   Jo mojood ho wahi use karo — andaza mat lagao. */
+/* Chatwoot ke version ke saath action ke naam badalte hain.
+   Jo mojood na ho uspar Vuex chup-chaap "unknown action type"
+   phenk deta hai aur .then kabhi nahi chalta. Isliye pehle check. */
+const warned = {};
+const has = name => !!(store._actions && store._actions[name]);
+
+const safeD = (name, payload) => {
+  if (!has(name)) {
+    if (!warned[name]) {
+      warned[name] = 1;
+      console.warn('[ChatsSync] action not found:', name);
+    }
+    return Promise.resolve(null);
+  }
+  try {
+    const r = store.dispatch(name, payload);
+    return r && typeof r.then === 'function' ? r : Promise.resolve(r);
+  } catch (e) {
+    console.warn('[ChatsSync] dispatch failed:', name, e);
+    return Promise.reject(e);
+  }
+};
+
+const sendAction = () => {
+  const names = Object.keys(store._actions || {});
+  return (
+    ['createPendingMessageAndSend', 'sendMessage', 'sendMessageWithData'].find(
+      n => names.includes(n)
+    ) || 'sendMessage'
+  );
+};
+
+const pushMessage = payload => safeD(sendAction(), payload);
+
+const doSend = () => {
+  const text = draft.value.trim();
+  if (!text && !pendingFiles.value.length) return;
+  if (!currentChat.value?.id) return;
+  const payload = {
+    conversationId: currentChat.value.id,
+    message: text,
+    private: isNote.value,
+    files: pendingFiles.value.map(f => f.file),
+    ccEmails: '',
+    bccEmails: '',
+    toEmails: '',
+  };
+  if (replyTo.value?.id) {
+    payload.contentAttributes = { in_reply_to: replyTo.value.id };
+  }
+  if (forceUnread.value[currentChat.value.id]) markRead(currentChat.value);
+  const sent = text;
+  const files = pendingFiles.value;
+  files.forEach(revokeThumb);
+  draft.value = '';
+  pendingFiles.value = [];
+  replyTo.value = null;
+  scrollDown();
+
+  pushMessage(payload)
+    .then(scrollDown)
+    .catch(e => {
+      console.error('[ChatsSync] send fail', e);
+      failed.value.push({ id: ++failId, text: sent, files, payload });
+      toast('Message not sent — tap Retry', 'err');
+    });
+};
+
+/* textarea likhne ke saath khud bara ho — WhatsApp jaisa */
+const growBox = () => {
+  const el = document.querySelector('.cs-cin');
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 132) + 'px';
+};
+
+watch(draft, () => nextTick(growBox));
+
+const onKey = e => {
+  if (e.key !== 'Enter') return;
+  // Ctrl/Cmd+Enter hamesha bhejta hai
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    doSend();
+    return;
+  }
+  // Mobile: Enter = nayi line. Bhejna sirf ➤ button se.
+  if (isMobile.value) return;
+  if (!e.shiftKey) {
+    e.preventDefault();
+    doSend();
+  }
+};
+
+const pickFile = () => fileInput.value?.click();
+const onFiles = e => {
+  [...e.target.files].forEach(f => pendingFiles.value.push({ file: f, name: f.name }));
+  e.target.value = '';
+};
+
+/* audio — Chatwoot ka apna recorder use kar rahe hain */
+/* WhatsApp voice note (PTT) SIRF audio/ogg (Opus) par banta hai —
+   koi flag nahi, container hi faisla karta hai.
+   PEHLE yahan MediaRecorder.isTypeSupported('audio/ogg') poocha jaata
+   tha. Chrome us par false deta hai (woh sirf webm record karta hai),
+   isliye hum mp3 par gir jaate the aur voice "file" ban jaati thi.
+   Magar Chatwoot ka AudioRecorder OGG khud encode karta hai — isi liye
+   pehle Chrome par bhi theek jaati thi. Ab hamesha OGG. */
+const audioFormat = computed(() => 'audio/ogg');
+
+
+const startRec = () => {
+  isRecording.value = true;
+  recState.value = '';
+  recTime.value = '0:00';
+};
+
+const cancelRec = () => {
+  sendAfterRec.value = false;
+  try {
+    recorderRef.value?.cancelRecording();
+  } catch (e) {
+    /* ignore */
+  }
+  // foran unmount karne se mic ka stream band nahi hota
+  setTimeout(() => {
+    isRecording.value = false;
+    recState.value = '';
+  }, 180);
+};
+const pauseRec = () => recorderRef.value?.pauseResumeRecording();
+const finishRec = () => {
+  sendAfterRec.value = true;
+  recorderRef.value?.stopRecording();
+};
+const onRecProgress = t => {
+  recTime.value = String(t).replace(/^0(\d:)/, '$1');
+};
+const onRecDone = file => {
+  if (!file) return;
+  if (sendAfterRec.value) {
+    sendAfterRec.value = false;
+    isRecording.value = false;
+    recState.value = '';
+    /* WhatsApp voice note (PTT) tabhi banta hai jab file OGG/Opus ho
+       aur Chatwoot ko isVoiceMessage flag mile. Warna woh usay
+       aam audio file ki tarah bhejta hai. */
+    const f = file.file;
+    try {
+      f.isVoiceMessage = true;
+    } catch (e) {
+      /* ignore */
+    }
+    pushMessage({
+      conversationId: currentChat.value.id,
+      message: '',
+      private: false,
+      files: [f],
+      isVoiceMessage: true,
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+      contentAttributes: { is_recorded_audio: true },
+    })
+      .then(scrollDown)
+      .catch(e => console.error('[ChatsSync] voice fail', e));
+  }
+};
+
+/* right-click */
+const sub = ref('');
+/* mobile: long press = right click */
+let lpTimer = null;
+let lpMoved = false;
+const lpStart = (e, fn, arg) => {
+  if (!isMobile.value) return;
+  lpMoved = false;
+  const t = e.touches?.[0];
+  const x = t?.clientX || 0;
+  const y = t?.clientY || 0;
+  lpTimer = setTimeout(() => {
+    if (lpMoved) return;
+    if (navigator.vibrate) navigator.vibrate(18);
+    fn({ preventDefault() {}, stopPropagation() {}, clientX: x, clientY: y }, arg);
+  }, 480);
+};
+const lpMove = () => {
+  lpMoved = true;
+  closeRail();
+  clearTimeout(lpTimer);
+};
+const lpEnd = () => clearTimeout(lpTimer);
+
+const closeAll = () => {
+  menu.value.open = false;
+  mmenu.value.open = false;
+  hmenu.value = false;
+  tmenu.value = false;
+  agm.value = false;
+  sub.value = '';
+  hsub.value = '';
+  tsub.value = '';
+};
+
+/* Chatwoot ka mobile sidebar khol do — uska apna floating
+   button hum chhupa dete hain (target design mein hamburger
+   header ke andar hai, neeche tairta hua button nahi) */
+const railOpen = ref(false);
+
+/* Rail ab Sidebar.vue khud sambhalta hai.
+   PEHLE closeRail() har document click par aside par Tailwind ki class
+   'ltr:-translate-x-full' laga deta tha (= translateX(-100%)), isliye
+   sidebar khul kar agle click par hi gaayab ho jaati thi. Ab yahan se
+   aside ko haath hi nahi lagate. */
+const openRail = () => {
+  window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
+};
+const closeRail = () => {
+  railOpen.value = false;
+};
+
+const toggleHm = () => {
+  const w = hmenu.value;
+  closeAll();
+  hmenu.value = !w;
+};
+const toggleTm = () => {
+  const w = tmenu.value;
+  closeAll();
+  tmenu.value = !w;
+};
+
+/* touch event par clientX/clientY khud event par nahi hote —
+   woh e.touches[0] mein hote hain. Pehle NaN ban jaata tha. */
+const evXY = e => {
+  const t = e?.touches?.[0] || e?.changedTouches?.[0];
+  const x = Number(e?.clientX ?? t?.clientX);
+  const y = Number(e?.clientY ?? t?.clientY);
+  return {
+    x: Number.isFinite(x) ? x : window.innerWidth / 2,
+    y: Number.isFinite(y) ? y : window.innerHeight / 2,
+  };
+};
+
+const openMenu = (e, c) => {
+  e.preventDefault();
+  closeAll();
+  const H = 470; // menu ki taqreeban unchai
+  const p = evXY(e);
+  menu.value = {
+    open: true,
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 244)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - H - 8)),
+    chat: c,
+    up: false,
+  };
+};
+const closeMenu = () => {
+  menu.value.open = false;
+  mmenu.value.open = false;
+  sub.value = '';
+  hmenu.value = false;
+  hsub.value = '';
+  tmenu.value = false;
+  tsub.value = '';
+  agm.value = false;
+  bmenu.value = false;
+  bsub.value = '';
+  closeRail();
+  showEmoji.value = false;
+  showTpl.value = false;
+  showCanned.value = false;
+};
+
+/* Render ke baad asli naap le kar menu ko screen ke andar lao.
+   Pehle main el.style.top set karta tha — magar :style binding
+   har re-render par usay wapas overwrite kar deta tha. Isliye ab
+   reactive value hi badalte hain. */
+const fitMenu = el => {
+  if (!el) return;
+  nextTick(() => {
+    const r = el.getBoundingClientRect();
+    if (!r.height) return;
+    const pad = 10;
+    const maxT = window.innerHeight - r.height - pad;
+    const maxL = window.innerWidth - r.width - pad;
+    /* AHEM: pehle yahan r.top / r.left (yani NAAPI HUI position) clamp
+       kar ke wapas likh dete the. Agar menu par koi transform/animation
+       ho to rect har render par thoda saRakta hai, nayi value likhi
+       jaati hai, phir render — loop ban jaata tha aur menu kheenchta
+       kheenchta screen ke kone mein chala jaata tha.
+       Ab STORED value clamp hoti hai. Ye idempotent hai — pehle se
+       clamped value dobara clamp karne se kuch nahi badalta. */
+    const fix = m => {
+      if (!m.open) return;
+      const t = Math.max(pad, Math.min(m.y, maxT));
+      const l = Math.max(pad, Math.min(m.x, maxL));
+      if (Math.abs(t - m.y) > 1) m.y = t;
+      if (Math.abs(l - m.x) > 1) m.x = l;
+    };
+    fix(menu.value);
+    fix(mmenu.value);
+  });
+};
+
+/* Chatwoot ki custom_attributes API — server par save hota hai,
+   isliye PC aur mobile dono par ek jaisa. localStorage sirf
+   fallback hai agar API fail ho jaye. */
+const setAttr = (c, patch) => {
+  const merged = { ...(c.custom_attributes || {}), ...patch };
+  // turant UI update
+  if (c.custom_attributes) Object.assign(c.custom_attributes, patch);
+  else c.custom_attributes = { ...patch };
+
+  const r = safeD('updateCustomAttributes', {
+    conversationId: c.id,
+    customAttributes: merged,
+  });
+  if (r && r.catch) {
+    r.catch(() => {
+      // API na chale to kam az kam is device par yaad rahe
+      if (patch.cs_pinned !== undefined) {
+        pinned.value = { ...pinned.value, [c.id]: patch.cs_pinned };
+        saveLS('pin', pinned.value);
+      }
+      if (patch.cs_archived !== undefined) {
+        archived.value = { ...archived.value, [c.id]: patch.cs_archived };
+        saveLS('arch', archived.value);
+      }
+      if (patch.cs_muted !== undefined) {
+        muted.value = { ...muted.value, [c.id]: patch.cs_muted };
+        saveLS('mute', muted.value);
+      }
+    });
+  }
+  return r;
+};
+
+const act = (name, arg) => {
+  const c = menu.value.chat;
+  if (!c) return;
+  // label lagate waqt menu band mat karo — ek se zyada laga sako
+  if (name !== 'label' && name !== 'newlabel') closeMenu();
+  const d = (a, p) => safeD(a, p).catch(() => {});
+
+  if (name === 'unread') {
+    const r = { ...readNow.value };
+    delete r[c.id];
+    readNow.value = r;
+    saveLS('read', r);
+    forceUnread.value = { ...forceUnread.value, [c.id]: true };
+    saveLS('unread', forceUnread.value);
+    if (!(c.unread_count > 0)) {
+      try {
+        c.unread_count = 1;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    d('markMessagesUnread', { id: c.id });
+    toast('Marked as unread');
+  }
+  else if (name === 'resolved')
+    d('toggleStatus', { conversationId: c.id, status: 'resolved' });
+  else if (name === 'pending')
+    d('toggleStatus', { conversationId: c.id, status: 'pending' });
+  else if (name === 'open')
+    d('toggleStatus', { conversationId: c.id, status: 'open' });
+  else if (name === 'priority')
+    d('assignPriority', { conversationId: c.id, priority: arg });
+  else if (name === 'mute') {
+    const v = !isMuted(c);
+    muted.value = { ...muted.value, [c.id]: v };
+    saveLS('mute', muted.value);
+    setAttr(c, { cs_muted: v });
+    d(v ? 'muteConversation' : 'unmuteConversation', c.id);
+    toast(v ? 'Chat muted' : 'Chat unmuted');
+  } else if (name === 'pin') {
+    const v = !isPinned(c);
+    setAttr(c, { cs_pinned: v });
+    toast(v ? 'Chat pinned' : 'Chat unpinned');
+  } else if (name === 'archive') {
+    const next = !isArchived(c);
+    // WhatsApp jaisa: archive karte hi mute. Dono ek hi patch mein,
+    // warna doosri call pehli ka merge overwrite kar deti thi.
+    const patch = { cs_archived: next };
+    if (next !== isMuted(c)) patch.cs_muted = next;
+    setAttr(c, patch);
+    toast(next ? 'Chat archived' : 'Chat unarchived');
+    if (patch.cs_muted !== undefined) {
+      muted.value = { ...muted.value, [c.id]: patch.cs_muted };
+      saveLS('mute', muted.value);
+      d(patch.cs_muted ? 'muteConversation' : 'unmuteConversation', c.id);
+    }
+  } else if (name === 'copy') {
+    copyText(
+      `${window.location.origin}/app/accounts/${accountId.value}/conversations/${c.id}`
+    );
+  } else if (name === 'block') {
+    d('contacts/update', {
+      id: c.meta?.sender?.id,
+      blocked: !c.meta?.sender?.blocked,
+    });
+  } else if (name === 'label') {
+    const cur = Array.isArray(c.labels) ? [...c.labels] : [];
+    const on = cur.includes(arg);
+    const next = on ? cur.filter(x => x !== arg) : [...cur, arg];
+    applyLabels(c, next)
+      .then(() => toast(on ? `Label "${arg}" removed` : `Label "${arg}" added`))
+      .catch(() => toast('Could not update labels', 'err'));
+    return; // menu khula rehne do taake aur labels laga sako
+  } else if (name === 'newlabel') {
+    const t = (newLabel.value || '').trim().replace(/\s+/g, '-').toLowerCase();
+    if (!t) return;
+    newLabel.value = '';
+    const next = [...new Set([...(c.labels || []), t])];
+    const apply = () => {
+      applyLabels(c, next)
+        .then(() => {
+          toast(`Label "${t}" added`);
+          safeD('labels/get');
+        })
+        .catch(() => toast('Could not add label', 'err'));
+    };
+    // Label pehle SERVER par banao, PHIR chat par lagao. Pehle main
+    // dono ek saath chala deta tha — label bana bhi nahi hota tha aur
+    // setLabels chup-chaap gir jaata tha.
+    const exists = (labelsList.value || []).some(l => l.title === t);
+    if (exists) apply();
+    else
+      safeD('labels/create', { title: t, color: '#00A884' })
+        .then(apply)
+        .catch(apply);
+  } else if (name === 'agent') d('assignAgent', { conversationId: c.id, agentId: arg?.id })
+  else if (name === 'team') d('assignTeam', { conversationId: c.id, teamId: arg?.id });
+  else if (name === 'delete') {
+    confirmBox(
+      'Delete conversation',
+      'Delete this conversation? This cannot be undone.',
+      'Delete',
+      () => {
+        store
+          .dispatch('deleteConversation', c.id)
+          ?.then?.(() => toast('Conversation deleted'))
+          ?.catch?.(() => toast('Delete failed', 'err'));
+      }
+    );
+  }
+};
+
+const copyText = t => {
+  if (!t) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(t).catch(() => fallbackCopy(t));
+  } else {
+    fallbackCopy(t);
+  }
+};
+const fallbackCopy = t => {
+  const ta = document.createElement('textarea');
+  ta.value = t;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+  } catch (e) {
+    /* ignore */
+  }
+  document.body.removeChild(ta);
+};
+
+const mmenu = ref({ open: false, x: 0, y: 0, msg: null });
+const openMsgMenu = (e, m) => {
+  e.preventDefault();
+  e.stopPropagation();
+  closeAll();
+  const p = evXY(e);
+  mmenu.value = {
+    open: true,
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 224)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - 300)),
+    msg: m,
+  };
+};
+const msgAct = (name, arg) => {
+  const m = mmenu.value.msg;
+  mmenu.value.open = false;
+  if (!m) return;
+  if (name === 'copy') copyText(plain(m.content || ''));
+  else if (name === 'forward') {
+    fwdMsg.value = m;
+    fwdPick.value = [];
+  }
+  else if (name === 'reply') {
+    replyTo.value = m;
+  } else if (name === 'info') {
+    infoMsg.value = m;
+  } else if (name === 'react') {
+    pushMessage({
+      conversationId: currentChat.value.id,
+      message: arg,
+      private: false,
+      files: [],
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+      contentAttributes: { in_reply_to: m.id },
+    }).then(scrollDown);
+  } else if (name === 'note') {
+    isNote.value = true;
+    draft.value = plain(m.content || '');
+  } else if (name === 'delete') {
+    const cid = currentChat.value?.id;
+    if (!cid) return;
+    delMessage(cid, m.id)
+      .then(() => {
+        toast('Message deleted');
+        safeD('getConversation', cid)?.catch?.(() => {});
+      })
+      .catch(() => toast('Could not delete message', 'err'));
+  }
+};
+
+/* bulk message delete — wahi REST endpoint, deleteMessage action nahi */
+const removeMessages = ids => {
+  const cid = currentChat.value?.id;
+  const list = [...(ids || [])];
+  if (!cid || !list.length) return;
+  Promise.all(list.map(id => delMessage(cid, id).catch(() => null))).then(() => {
+    toast(`${list.length} message(s) deleted`);
+    safeD('getConversation', cid)?.catch?.(() => {});
+  });
+};
+
+const act2 = name => {
+  menu.value.chat = currentChat.value;
+  menu.value.open = true;
+  act(name);
+};
+
+const doForward = () => {
+  const m = fwdMsg.value;
+  if (!m || !fwdPick.value.length) return;
+  const body = plain(m.content || '');
+  fwdPick.value.forEach(cid => {
+    pushMessage({
+      conversationId: cid,
+      message: body,
+      private: false,
+      files: [],
+      ccEmails: '',
+      bccEmails: '',
+      toEmails: '',
+    });
+  });
+  fwdMsg.value = null;
+  fwdPick.value = [];
+};
+
+const toggleFwd = id => {
+  const i = fwdPick.value.indexOf(id);
+  if (i >= 0) fwdPick.value.splice(i, 1);
+  else fwdPick.value.push(id);
+};
+
+/* server ka field pehle, warna local — jab backend chale to
+   sab agents ko nazar aayega */
+const isPinned = c =>
+  !!(
+    c?.custom_attributes?.cs_pinned ||
+    c?.additional_attributes?.pinned_at ||
+    pinned.value[c?.id]
+  );
+const isArchived = c =>
+  !!(
+    c?.custom_attributes?.cs_archived ||
+    c?.additional_attributes?.archived_at ||
+    archived.value[c?.id]
+  );
+/* ===== 24-ghante ki window =====
+   Chatwoot server khud hisaab laga kar conversation par `can_reply`
+   bhejta hai. Wahi istemal karte hain taake logic Chatwoot se alag
+   na ho jaye. false ka matlab: customer ke aakhri message ko 24 ghante
+   guzar gaye — ab sirf approved template ja sakta hai.
+   (Free entry point ki 72 ghante wali riayat sirf PAISON par asar
+   daalti hai, is 24-ghante ke qaide par nahi.) */
+const windowOpen = computed(() => currentChat.value?.can_reply !== false);
+const lastInAt = computed(() => {
+  const list = messages.value || [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.message_type === 0) return list[i].created_at;
+  }
+  return null;
+});
+const windowLeft = computed(() => {
+  if (!windowOpen.value || !lastInAt.value) return '';
+  const left = 86400 - (Date.now() / 1000 - Number(lastInAt.value));
+  if (left <= 0 || left > 86400) return '';
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  if (h >= 1) return `${h}h ${m}m left`;
+  return `${m}m left`;
+});
+
+/* ===== FREE ENTRY POINT (FEP) =====
+   Jo customer ad ya FB/IG ke WhatsApp button se aata hai, uski
+   conversation Meta ke liye ek arse tak MUFT hoti hai. Meta khud
+   status webhook mein batata hai (pricing.type = free_entry_point)
+   aur window khatam hone ka waqt bhi deta hai — hamara andaaza nahi.
+
+   Woh waqt Ruby ki taraf conversation par mehfooz hota hai:
+   additional_attributes.cs_fep aur cs_fep_expires_at.
+
+   Yahan bas usay parh kar avatar ke kone par chhota sa dot:
+     hara = muft window chal rahi hai
+     laal = khatam, ab paise lagenge
+   Hover par bacha hua waqt ghanton mein. */
+const fepOn = ref(LS('fepdots') !== false);
+const fepNow = ref(Math.floor(Date.now() / 1000));
+
+const toggleFep = () => {
+  fepOn.value = !fepOn.value;
+  saveLS('fepdots', fepOn.value);
+  hmenu.value = false;
+  toast(fepOn.value ? 'Free-window dots on' : 'Free-window dots off');
+};
+
+const fepOf = c => {
+  if (!fepOn.value) return null;
+  const a = c?.additional_attributes || {};
+  if (!a.cs_fep) return null;
+
+  const exp = Number(a.cs_fep_expires_at || 0);
+  if (!exp) return { live: true, left: 'Free entry point' };
+
+  const leftSec = exp - fepNow.value;
+  if (leftSec <= 0) return { live: false, left: 'Free window ended' };
+
+  const h = Math.floor(leftSec / 3600);
+  const m = Math.floor((leftSec % 3600) / 60);
+  return { live: true, left: `Free · ${h}h ${m}m left` };
+};
+
+const isMuted = c =>
+  !!(c?.muted || c?.custom_attributes?.cs_muted || muted.value[c?.id]);
+
+/* reply ka quote dhoondo */
+const quotedOf = m => {
+  const rid = m?.content_attributes?.in_reply_to;
+  if (!rid) return null;
+  return messages.value.find(x => x.id === rid) || null;
+};
+
+/* reactions agar data mein hon */
+const reactionsOf = m => {
+  const r = m?.content_attributes?.reactions;
+  if (!r) return [];
+  if (Array.isArray(r)) return r;
+  return Object.entries(r).map(([e, n]) => ({ emoji: e, count: n }));
+};
+
+const fwdRows = computed(() => {
+  const q2 = fwdQ.value.trim().toLowerCase();
+  const L = allChats.value || [];
+  if (!q2) return L;
+  return L.filter(c =>
+    `${c.meta?.sender?.name || ''} ${phoneOf(c)}`.toLowerCase().includes(q2)
+  );
+});
+
+const archivedCount = computed(
+  () => (allChats.value || []).filter(isArchived).length
+);
+
+/* ---------------- lifecycle ---------------- */
+let themeObs = null;
+let themePoll = null;
+let fepTimer = null;
+let recWatchdog = null;
+
+const onResize = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
+
+/* Chatwoot ka dark class kahin bhi ho sakta hai — DOM se poochho */
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return (
+    document.documentElement.classList.contains('dark') ||
+    document.body.classList.contains('dark') ||
+    !!document.querySelector('.dark')
+  );
+};
+const readTheme = () => {
+  const l = !detectDark();
+  if (l !== isLight.value) isLight.value = l;
+};
+/* Sidebar theme badalte hi ye event bhejta hai — MutationObserver
+   kabhi kabhi der se chalta hai, isliye dono. */
+const onThemeEvent = e => {
+  isLight.value = !e?.detail?.dark;
+};
+
+const onHotkey = e => {
+  if (e.key === 'Escape') {
+    closeMenu();
+    showProfile.value = false;
+    fwdMsg.value = null;
+    infoMsg.value = null;
+    lightbox.value = null;
+    showFilter.value = false;
+    showTq.value = false;
+    showEmoji.value = false;
+    showCanned.value = false;
+    newCanned.value = null;
+    ask.value = null;
+    if (selectMode.value) {
+      selectMode.value = false;
+      picked.value = [];
+    }
+    if (msgSelect.value) {
+      msgSelect.value = false;
+      msgPicked.value = [];
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    document.querySelector('.cs-psr input')?.focus();
+  }
+};
+
+onMounted(() => {
+  // is screen ka apna header-hamburger hai, to Chatwoot ka tairta hua
+  // launcher yahin chhupa do. Stock pages par woh chalta rahega.
+  document.body.classList.add('cs-own-header');
+  closeRail();
+  store.dispatch('inboxes/get');
+  store.dispatch('teams/get');
+  store.dispatch('labels/get');
+  store.dispatch('agents/get');
+  store.dispatch('setActiveInbox', props.inboxId || null);
+  store.dispatch('updateChatListFilters', {
+    assigneeType: 'all',
+    status: 'all',
+    page: 1,
+  });
+  store.dispatch('setChatStatusFilter', 'all');
+  safeD('fetchAllConversations');
+  document.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', onHotkey);
+  window.addEventListener('resize', onResize);
+
+  readTheme();
+  window.addEventListener('chatssync:theme', onThemeEvent);
+  themePoll = setInterval(readTheme, 1000);
+  // bacha hua waqt har minute taaza — dot hare se laal khud ho jaye
+  fepTimer = setInterval(() => {
+    fepNow.value = Math.floor(Date.now() / 1000);
+  }, 60000);
+  themeObs = new MutationObserver(readTheme);
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
+});
+
+/* Component hatte waqt sab kuch band karo. Warna doosre tab par
+   jaane ke baad bhi Esc / Ctrl+K yahan aate rehte the aur
+   observer chalta rehta tha. */
+onBeforeUnmount(() => {
+  document.body.classList.remove('cs-own-header');
+  document.removeEventListener('click', closeMenu);
+  document.removeEventListener('keydown', onHotkey);
+  window.removeEventListener('resize', onResize);
+  window.removeEventListener('chatssync:theme', onThemeEvent);
+  clearInterval(themePoll);
+  clearInterval(fepTimer);
+  if (themeObs) {
+    themeObs.disconnect();
+    themeObs = null;
+  }
+  clearTimeout(lpTimer);
+  clearTimeout(recWatchdog);
+  toasts.value = [];
+  // file preview ke object URL free karo
+  pendingFiles.value.forEach(revokeThumb);
+  closeRail();
+});
+
+watch(
+  () => props.conversationId,
+  id => {
+    if (!id) {
+      store.dispatch('clearSelectedState');
+      return;
+    }
+    const c = (allChats.value || []).find(x => x.id === Number(id));
+    if (c && c.id !== currentChat.value?.id) {
+      Promise.resolve(store.dispatch('setActiveChat', { data: c }))
+        .then(() => {
+          emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE, {});
+          scrollDown();
+        })
+        .catch(() => {});
+    } else if (!c) {
+      safeD('getConversation', id);
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => allChats.value?.length,
+  () => {
+    const id = Number(props.conversationId);
+    if (!id) return;
+    const c = (allChats.value || []).find(x => x.id === id);
+    if (c && c.id !== currentChat.value?.id) {
+      Promise.resolve(store.dispatch('setActiveChat', { data: c }))
+        .then(scrollDown)
+        .catch(() => {});
+    }
+  }
+);
+
+watch(
+  () => currentChat.value?.id,
+  () => {
+    atBottom.value = true;
+    if (attachCache.size > 400) attachCache.clear();
+    noMoreOlder.value = false;
+    lastFetch = 0;
+    lastCount = 0;
+    const u = currentChat.value?.unread_count || 0;
+    const M = messages.value;
+    firstUnreadId.value =
+      u > 0 && M.length ? M[Math.max(0, M.length - u)]?.id : null;
+    if (currentChat.value?.id && !forceUnread.value[currentChat.value.id]) {
+      markRead(currentChat.value);
+      // list wala object alag ho sakta hai — usay bhi saaf karo
+      const inList = (allChats.value || []).find(
+        x => x.id === currentChat.value.id
+      );
+      if (inList && inList !== currentChat.value) {
+        try {
+          inList.unread_count = 0;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    }
+  }
+);
+
+let lastCount = 0;
+watch(
+  () => messages.value.length,
+  n => {
+    // purane messages upar jud rahe hain -> scroll ko haath mat lagao
+    if (loadingOlder.value) {
+      lastCount = n;
+      return;
+    }
+    // sirf tab neeche jao jab pehle se neeche the ya naya message aaya
+    if (n > lastCount && atBottom.value) scrollDown();
+    lastCount = n;
+  }
+);
+</script>
+
+<template>
+  <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: threadOpen }">
+    <!-- ============ LEFT: CHATS PANEL ============ -->
+    <div class="cs-panel">
+      <div v-if="selectMode" class="cs-ph cs-phsel">
+        <span
+          class="cs-ic i-lucide-x"
+          @click="
+            selectMode = false;
+            picked = [];
+          "
+        />
+        <h1 class="cs-selh">{{ picked.length }} selected</h1>
+        <div class="cs-sbrow">
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="picked = rows.map(r => r.id)"
+          >
+            <span class="i-lucide-check-square" />
+            <span>All</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="bulk('read')"
+          >
+            <span class="i-lucide-mail-open" />
+            <span>Read</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click="bulk('resolved')"
+          >
+            <span class="i-lucide-check" />
+            <span>Resolve</span>
+          </button>
+          <button
+            class="cs-sb"
+            :disabled="!picked.length"
+            @click.stop="bmenu = !bmenu"
+          >
+            <span class="i-lucide-more-horizontal" />
+            <span>More</span>
+          </button>
+
+          <div v-if="bmenu" class="cs-bm" @click.stop>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'ag' ? '' : 'ag'"
+            >
+              <span class="i-lucide-user-plus" /><span>Assign agent</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'ag'" class="cs-sub cs-sub--tall" @click.stop>
+                <div class="cs-mi" @click.stop="bulk('agent', { id: null })">
+                  <span>Unassign</span>
+                </div>
+                <div
+                  v-for="a in agentsList"
+                  :key="a.id"
+                  class="cs-mi"
+                  @click.stop="bulk('agent', a)"
+                >
+                  <span>{{ a.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'tm' ? '' : 'tm'"
+            >
+              <span class="i-lucide-users" /><span>Assign team</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'tm'" class="cs-sub cs-sub--tall" @click.stop>
+                <div
+                  v-for="t in teamsList"
+                  :key="t.id"
+                  class="cs-mi"
+                  @click.stop="bulk('team', t)"
+                >
+                  <span>{{ t.name }}</span>
+                </div>
+                <div v-if="!teamsList.length" class="cs-mi">
+                  <span>No teams</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="cs-mi"
+              @click="
+                bmenu = false;
+                lpOpen(
+                  'bulk',
+                  picked.map(id => allChats.find(x => x.id === id)).filter(Boolean)
+                );
+              "
+            >
+              <span class="i-lucide-tag" /><span>Add labels</span>
+            </div>
+            <div
+              class="cs-mi"
+              @click="
+                bmenu = false;
+                lpOpen(
+                  'remove',
+                  picked.map(id => allChats.find(x => x.id === id)).filter(Boolean)
+                );
+              "
+            >
+              <span class="i-lucide-tag" /><span>Remove labels</span>
+            </div>
+            <div
+              class="cs-mi cs-has-sub"
+              @click.stop="bsub = bsub === 'pr' ? '' : 'pr'"
+            >
+              <span class="i-lucide-flag" /><span>Priority</span>
+              <span class="cs-arw i-lucide-chevron-right" />
+              <div v-if="bsub === 'pr'" class="cs-sub" @click.stop>
+                <div
+                  v-for="pp in ['urgent', 'high', 'medium', 'low', 'none']"
+                  :key="pp"
+                  class="cs-mi"
+                  @click.stop="bulk('priority', pp === 'none' ? null : pp)"
+                >
+                  <span style="text-transform: capitalize">{{ pp }}</span>
+                </div>
+              </div>
+            </div>
+            <hr />
+            <div class="cs-mi" @click="bulk('pending')">
+              <span class="i-lucide-clock" /><span>Mark as pending</span>
+            </div>
+            <div class="cs-mi" @click="bulk('archive')">
+              <span class="i-lucide-archive" /><span>Archive</span>
+            </div>
+            <hr />
+            <div class="cs-mi danger" @click="bulk('delete')">
+              <span class="i-lucide-trash-2" /><span>Delete</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="cs-ph">
+        <span
+          v-if="isMobile"
+          class="cs-ic cs-ham"
+          title="Menu"
+          @click.stop="openRail"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+            <path d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+        </span>
+        <h1>Chats</h1>
+        <span class="cs-ic" title="Menu" @click.stop="toggleHm">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <circle cx="12" cy="5" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="12" cy="19" r="1.9" />
+          </svg>
+        </span>
+        <div
+          v-if="hmenu"
+          :ref="fitHm"
+          class="cs-hm"
+          :class="{ flipL: hmFlip }"
+          @click.stop
+        >
+          <div
+            class="cs-mi"
+            @click="
+              selectMode = true;
+              hmenu = false;
+            "
+          >
+            <span class="i-lucide-check-square" /><span>Select chats</span>
+          </div>
+          <div class="cs-mi" @click="markAllRead">
+            <span class="i-lucide-mail-open" /><span>Mark all as read</span>
+          </div>
+          <div class="cs-mi" @click.stop="toggleFep">
+            <span class="i-lucide-circle-dot" />
+            <span>Free-window dots</span>
+            <span v-if="fepOn" class="cs-arw i-lucide-check" />
+          </div>
+          <hr />
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="hsub = hsub === 'sort' ? '' : 'sort'"
+          >
+            <span class="i-lucide-arrow-up-down" /><span>Sort by</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="hsub === 'sort'" class="cs-sub" @click.stop>
+              <div
+                v-for="o in SORTS"
+                :key="o.k"
+                class="cs-mi"
+                @click.stop="applySort(o.k)"
+              >
+                <span>{{ o.n }}</span>
+                <span v-if="sortBy === o.k" class="cs-arw i-lucide-check" />
+              </div>
+            </div>
+          </div>
+          <div
+            class="cs-mi"
+            @click="
+              showFilter = true;
+              hmenu = false;
+            "
+          >
+            <span class="i-lucide-list-filter" /><span>Filter conversations</span>
+            <span v-if="activeFilterCount" class="cs-fcn">
+              {{ activeFilterCount }}
+            </span>
+          </div>
+          <hr />
+          <div class="cs-mi" @click="goSettings">
+            <span class="i-lucide-settings" /><span>Settings</span>
+          </div>
+          <div class="cs-mi" @click="doLogout">
+            <span class="i-lucide-log-out" /><span>Log out</span>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="cs-psr" :class="{ act: q }">
+        <span class="i-lucide-search" />
+        <input v-model="q" placeholder="Search chats, contacts or messages" />
+        <span v-if="q" class="cs-clr i-lucide-x" @click="q = ''" />
+      </div>
+
+      <div class="cs-pills">
+        <div
+          v-for="p in visiblePills"
+          :key="p.k"
+          class="cs-pl"
+          :class="{ on: filt === p.k, lb: p.lb }"
+          @click="filt = p.k"
+        >
+          <span
+            v-if="p.lb"
+            class="cs-pld"
+            :style="{ background: p.color || 'var(--g)' }"
+          />
+          <span>{{ p.n }}</span>
+          <span v-if="p.showUnread && p.unread" class="cs-plu">
+            {{ p.unread }}
+          </span>
+          <span v-if="p.showTotal && p.total" class="cs-plt">
+            {{ p.total }}
+          </span>
+        </div>
+        <div
+          v-if="hiddenPillCount && !showAllPills"
+          class="cs-pl cs-plmore"
+          @click="showAllPills = true"
+        >
+          <span class="i-lucide-chevron-down" />
+          <span>{{ hiddenPillCount }}</span>
+        </div>
+        <div
+          v-if="showAllPills && hiddenPillCount"
+          class="cs-pl cs-plmore"
+          @click="showAllPills = false"
+        >
+          <span class="i-lucide-chevron-up" />
+        </div>
+      </div>
+
+      <!-- pills ke neeche wali filter patti hata di gayi -->
+
+      <div v-if="channelErrors.length" class="cs-cerr">
+        <span class="i-lucide-alert-triangle" />
+        <div class="cs-cerrb">
+          <div class="cs-cerrn">{{ channelErrors[0].name }}</div>
+          <div class="cs-cerrm">{{ channelErrors[0].msg }}</div>
+        </div>
+        <span v-if="channelErrors.length > 1" class="cs-cerrc">
+          +{{ channelErrors.length - 1 }}
+        </span>
+      </div>
+
+      <div class="cs-list" @scroll="onListScroll">
+        <div
+          v-if="!q"
+          class="cs-arch"
+          :class="{ on: showArchived }"
+          @click="showArchived = !showArchived"
+        >
+          <span :class="showArchived ? 'i-lucide-arrow-left' : 'i-lucide-archive'" />
+          <span class="cs-arch-t">{{ showArchived ? 'Back to chats' : 'Archived' }}</span>
+          <span class="cs-arch-c">{{ archivedCount }}</span>
+        </div>
+
+        <div
+          v-for="c in rows"
+          :key="c.id"
+          class="cs-row"
+          :class="{
+            on: Number(conversationId) === c.id,
+            unrd: isUnread(c),
+          }"
+          @click="selectMode ? togglePick(c.id) : openChat(c)"
+          @contextmenu="openMenu($event, c)"
+          @touchstart="lpStart($event, openMenu, c)"
+          @touchmove="lpMove"
+          @touchend="lpEnd"
+        >
+          <span
+            v-if="selectMode"
+            class="cs-ck"
+            :class="
+              picked.includes(c.id)
+                ? 'i-lucide-check-circle-2 on'
+                : 'i-lucide-circle'
+            "
+          />
+          <div class="cs-avw">
+            <div class="cs-av" :style="{ background: colorFor(c.id) }">
+              <img v-if="c.meta?.sender?.thumbnail" :src="c.meta.sender.thumbnail" />
+              <template v-else>{{ initials(c.meta?.sender?.name) }}</template>
+            </div>
+            <span
+              v-if="fepOf(c)"
+              class="cs-fep"
+              :class="{ dead: !fepOf(c).live }"
+              :title="fepOf(c).left"
+            />
+          </div>
+          <div class="cs-rb">
+            <div class="cs-r1">
+              <span class="cs-n">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+              <span v-if="inboxName(c.inbox_id)" class="cs-ib">
+                {{ inboxName(c.inbox_id) }}
+              </span>
+              <span class="cs-t">{{ listTime(c.timestamp) }}</span>
+            </div>
+            <div v-if="phoneOf(c)" class="cs-rph">{{ phoneOf(c) }}</div>
+            <div class="cs-meta">
+              <span
+                v-if="c.priority && c.priority !== 'none'"
+                class="cs-pr"
+                :class="'p-' + c.priority"
+              >
+                {{ c.priority }}
+              </span>
+              <span v-if="c.meta?.assignee?.name" class="cs-asn">
+                <span class="i-lucide-user" />{{ c.meta.assignee.name }}
+              </span>
+              <span v-else class="cs-asn none">Unassigned</span>
+              <span v-if="c.meta?.team?.name" class="cs-asn tm">
+                <span class="i-lucide-users" />{{ c.meta.team.name }}
+              </span>
+            </div>
+
+            <div v-if="(c.labels || []).length" class="cs-lbs">
+              <span v-for="l in c.labels" :key="l" class="cs-lb">
+                {{ l }}
+                <span
+                  class="cs-lbx i-lucide-x"
+                  title="Remove label"
+                  @click.stop="dropLabel(c, l)"
+                />
+              </span>
+            </div>
+
+            <div class="cs-r2">
+              <span
+                v-if="lastOf(c) && tickOf(lastOf(c))"
+                class="cs-tick"
+                :class="[tickOf(lastOf(c)).i, tickOf(lastOf(c)).c]"
+              />
+              <span
+                v-else-if="chipFor(c.inbox_id)"
+                class="cs-chip"
+                :class="'cs-chip--' + chipFor(c.inbox_id).c"
+              >
+                {{ chipFor(c.inbox_id).t }}
+              </span>
+              <span class="cs-m">{{ previewOf(c) }}</span>
+              <span v-if="isMuted(c)" class="cs-mk i-lucide-bell-off" />
+              <span v-if="isPinned(c)" class="cs-mk i-lucide-pin" />
+              <span v-if="isUnread(c)" class="cs-un">
+                {{ c.unread_count }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <template v-if="listLoading && !rows.length">
+          <div v-for="i in 7" :key="i" class="cs-sk">
+            <div class="cs-ska" />
+            <div class="cs-skb">
+              <div class="cs-skl w60" />
+              <div class="cs-skl w85" />
+            </div>
+          </div>
+        </template>
+
+        <div v-if="!rows.length && !listLoading" class="cs-empty-list">
+          No chats, contacts or messages found
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT: THREAD ============ -->
+    <div v-if="currentChat && currentChat.id" class="cs-main">
+      <div class="cs-th">
+        <span v-if="isMobile" class="cs-ic i-lucide-arrow-left" @click="goBack" />
+        <div
+          class="cs-tav"
+          :style="{ background: colorFor(currentChat.id) }"
+          @click="showProfile = true"
+        >
+          <img v-if="contact.thumbnail" :src="contact.thumbnail" />
+          <template v-else>{{ initials(contact.name) }}</template>
+        </div>
+        <div class="cs-tnm" @click="showProfile = true">
+          <div class="cs-tn">{{ contact.name || 'Unknown' }}</div>
+          <div v-if="typingNames.length" class="cs-ts cs-typ">
+            {{ typingNames.join(', ') }} typing…
+          </div>
+          <div v-else class="cs-ts">
+            <span v-if="phoneOf(contact)" class="cs-tph">
+              {{ phoneOf(contact) }}
+            </span>
+            <span v-if="phoneOf(contact) && inboxName(currentChat.inbox_id)">
+              ·
+            </span>
+            <span>{{ inboxName(currentChat.inbox_id) }}</span>
+          </div>
+        </div>
+
+        <span
+          class="cs-asg"
+          :class="{ none: !currentChat.meta?.assignee?.name }"
+          @click.stop="toggleAgm"
+        >
+          <span v-if="currentChat.meta?.assignee?.name" class="cs-asgd" />
+          {{ currentChat.meta?.assignee?.name || 'Unassigned' }}
+          <span class="cs-asgc i-lucide-chevron-down" />
+        </span>
+
+        <div v-if="agm" class="cs-agm" @click.stop>
+          <div class="cs-search cs-agsr">
+            <span class="cs-search__ic i-lucide-search" />
+            <input v-model="agQ" placeholder="Search agents" />
+          </div>
+          <div class="cs-agl">
+            <div
+              class="cs-agr"
+              :class="{ on: !currentChat.meta?.assignee?.id }"
+              @click="pickAgent(null)"
+            >
+              <span class="cs-agav none i-lucide-user-x" />
+              <span class="cs-agn">Unassigned</span>
+              <span
+                v-if="!currentChat.meta?.assignee?.id"
+                class="cs-agck i-lucide-check"
+              />
+            </div>
+            <div
+              v-for="a in agentHits"
+              :key="a.id"
+              class="cs-agr"
+              :class="{ on: currentChat.meta?.assignee?.id === a.id }"
+              @click="pickAgent(a)"
+            >
+              <span class="cs-agav" :style="{ background: colorFor(a.id) }">
+                {{ initials(a.name) }}
+              </span>
+              <span class="cs-agnb">
+                <span class="cs-agn">{{ a.name }}</span>
+                <span class="cs-age">{{ a.email }}</span>
+              </span>
+              <span
+                v-if="currentChat.meta?.assignee?.id === a.id"
+                class="cs-agck i-lucide-check"
+              />
+            </div>
+            <div v-if="!agentHits.length" class="cs-agempty">
+              No agents found
+            </div>
+          </div>
+        </div>
+
+        <span class="cs-ic" title="Search in chat" @click.stop="showTq = !showTq">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </span>
+        <span class="cs-ic" title="More" @click.stop="toggleTm">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <circle cx="12" cy="5" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="12" cy="19" r="1.9" />
+          </svg>
+        </span>
+
+        <div v-if="tmenu" class="cs-tm" @click.stop>
+          <div class="cs-mi" @click="tmenu = false; showProfile = true">
+            <span class="i-lucide-info" /><span>Contact info</span>
+          </div>
+          <div
+            class="cs-mi"
+            @click="
+              tmenu = false;
+              msgSelect = true;
+              msgPicked = [];
+            "
+          >
+            <span class="i-lucide-check-square" /><span>Select messages</span>
+          </div>
+          <hr />
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="tsub = tsub === 'ag' ? '' : 'ag'"
+          >
+            <span class="i-lucide-user" /><span>Assign agent</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="tsub === 'ag'" class="cs-sub cs-sub--tall left" @click.stop>
+              <div class="cs-mi" @click.stop="tAct('agent', { id: null })">
+                <span>Unassign</span>
+              </div>
+              <div
+                v-for="a in agentsList"
+                :key="a.id"
+                class="cs-mi"
+                @click.stop="tAct('agent', a)"
+              >
+                <span>{{ a.name }}</span>
+              </div>
+            </div>
+          </div>
+          <div
+            class="cs-mi cs-has-sub"
+            @click.stop="tsub = tsub === 'tm' ? '' : 'tm'"
+          >
+            <span class="i-lucide-users" /><span>Assign team</span>
+            <span class="cs-arw i-lucide-chevron-right" />
+            <div v-if="tsub === 'tm'" class="cs-sub cs-sub--tall left" @click.stop>
+              <div
+                v-for="t in teamsList"
+                :key="t.id"
+                class="cs-mi"
+                @click.stop="tAct('team', t)"
+              >
+                <span>{{ t.name }}</span>
+              </div>
+              <div v-if="!teamsList.length" class="cs-mi"><span>No teams</span></div>
+            </div>
+          </div>
+          <div class="cs-mi" @click="lpOpen('single', currentChat)">
+            <span class="i-lucide-tag" /><span>Labels</span>
+          </div>
+          <hr />
+          <div class="cs-mi" @click="tAct('mute')">
+            <span class="i-lucide-bell-off" />
+            <span>
+              {{ isMuted(currentChat) ? 'Unmute notifications' : 'Mute notifications' }}
+            </span>
+          </div>
+          <div class="cs-mi" @click="exportChat">
+            <span class="i-lucide-download" /><span>Export chat</span>
+          </div>
+          <div class="cs-mi" @click="tAct('resolved')">
+            <span class="i-lucide-check" /><span>Mark as resolved</span>
+          </div>
+          <hr />
+          <div class="cs-mi danger" @click="clearChat">
+            <span class="i-lucide-eraser" /><span>Clear chat</span>
+          </div>
+          <div class="cs-mi danger" @click="tAct('delete')">
+            <span class="i-lucide-trash-2" /><span>Delete conversation</span>
+          </div>
+        </div>
+      </div>
+
+      <span
+        v-if="showDown"
+        class="cs-down i-lucide-chevron-down"
+        @click="scrollDown"
+      />
+
+      <div v-if="msgSelect" class="cs-msel">
+        <span
+          class="cs-ic i-lucide-x"
+          @click="
+            msgSelect = false;
+            msgPicked = [];
+          "
+        />
+        <span class="cs-mselc">{{ msgPicked.length }} selected</span>
+        <button
+          class="cs-sb"
+          :disabled="!msgPicked.length"
+          @click="
+            copyText(
+              messages
+                .filter(m => msgPicked.includes(m.id))
+                .map(m => plain(m.content || ''))
+                .join('\n')
+            );
+            msgSelect = false;
+            msgPicked = [];
+          "
+        >
+          <span class="i-lucide-copy" /><span>Copy</span>
+        </button>
+        <button
+          class="cs-sb dgr"
+          :disabled="!msgPicked.length"
+          @click="
+            removeMessages(msgPicked);
+            msgSelect = false;
+            msgPicked = [];
+          "
+        >
+          <span class="i-lucide-trash-2" /><span>Delete</span>
+        </button>
+      </div>
+
+      <div v-if="showTq" class="cs-tqbar">
+        <span class="i-lucide-search" />
+        <input v-model="tq" placeholder="Search in this chat" autofocus />
+        <span class="cs-tqc">{{ tqHits.length }}</span>
+        <span
+          class="i-lucide-x"
+          @click="
+            showTq = false;
+            tq = '';
+          "
+        />
+      </div>
+      <div v-if="showTq && tq" class="cs-tqlist">
+        <div
+          v-for="m in tqHits"
+          :key="m.id"
+          class="cs-tqr"
+          @click="jumpTo(m.id)"
+        >
+          <span class="cs-tqt">{{ clock(m.created_at) }}</span>
+          <span class="cs-tqx">{{ plain(m.content || '') }}</span>
+        </div>
+      </div>
+
+      <div ref="threadRef" class="cs-thread" @scroll="onThreadScroll">
+        <div v-if="loadingOlder" class="cs-older">Loading older…</div>
+        <!-- kam messages hon to unhe neeche dhakel do, WhatsApp jaisa -->
+        <div class="cs-push" />
+        <template v-for="b in blocks" :key="b.id">
+          <div v-if="b.kind === 'day'" class="cs-day">{{ b.text }}</div>
+          <div v-else-if="b.kind === 'sys'" class="cs-sysm">{{ b.text }}</div>
+          <div
+            v-if="b.kind === 'msg' && b.m.id === firstUnreadId"
+            class="cs-unrdiv"
+          >
+            <span>Unread messages</span>
+          </div>
+          <div
+            v-if="b.kind === 'msg'"
+            :id="'csm' + b.m.id"
+            @click="
+              msgSelect
+                ? msgPicked.includes(b.m.id)
+                  ? msgPicked.splice(msgPicked.indexOf(b.m.id), 1)
+                  : msgPicked.push(b.m.id)
+                : null
+            "
+            class="cs-msg"
+            :class="[
+              b.m.message_type === 1 ? 'out' : 'in',
+              {
+                pv: b.m.private,
+                f1: b.first,
+                grp: !b.first,
+                msel: msgSelect && msgPicked.includes(b.m.id),
+              },
+            ]"
+            @touchstart="lpStart($event, openMsgMenu, b.m)"
+            @touchmove="lpMove"
+            @touchend="lpEnd"
+          >
+            <div class="cs-bub" @contextmenu="openMsgMenu($event, b.m)">
+              <div v-if="b.showName" class="cs-snd">
+                {{ b.m.sender?.name || 'You' }}
+              </div>
+
+              <div
+                v-if="quotedOf(b.m)"
+                class="cs-q"
+                @click.stop="jumpTo(quotedOf(b.m).id)"
+              >
+                <div class="cs-qbar" />
+                <div class="cs-qb">
+                  <div class="cs-qn">
+                    {{
+                      quotedOf(b.m).message_type === 1
+                        ? quotedOf(b.m).sender?.name || 'You'
+                        : contact.name || 'Customer'
+                    }}
+                  </div>
+                  <div class="cs-qt">
+                    {{ plain(quotedOf(b.m).content || '') || 'Attachment' }}
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="b.m.attachments && b.m.attachments.length">
+                <template v-for="a in b.m.attachments" :key="a.id">
+                  <img
+                    v-if="aType(a) === 'image' && aUrl(a)"
+                    :src="aUrl(a)"
+                    class="cs-img"
+                    @click.stop="lightbox = aUrl(a)"
+                  />
+                  <div
+                    v-else-if="aType(a) === 'audio' && aUrl(a)"
+                    class="cs-audwrap"
+                  >
+                    <AudioChip
+                      :attachment="attach(a)"
+                      :show-transcribed-text="false"
+                      class="cs-aud"
+                    />
+                    <a
+                      class="cs-auddl i-lucide-download"
+                      :href="aUrl(a)"
+                      :download="a.file_name || a.fileName || 'voice.ogg'"
+                      target="_blank"
+                      title="Download"
+                      @click.stop
+                    />
+                  </div>
+                  <video
+                    v-else-if="aType(a) === 'video' && aUrl(a)"
+                    :src="aUrl(a)"
+                    controls
+                    class="cs-img"
+                  />
+                  <a
+                    v-else-if="aUrl(a)"
+                    :href="aUrl(a)"
+                    target="_blank"
+                    class="cs-file"
+                  >
+                    <span class="i-lucide-file" />
+                    {{ a.file_name || a.fileName || 'Document' }}
+                  </a>
+                </template>
+              </template>
+
+              <div
+                v-if="b.m.content"
+                class="cs-tx"
+                v-html="clippedHtml(b.m)"
+              />
+              <span
+                v-if="b.m.content && isLong(b.m) && moreLeft(b.m) > 0"
+                class="cs-more"
+                @click.stop="readMore(b.m)"
+              >
+                Read more
+              </span>
+              <span
+                v-else-if="b.m.content && isLong(b.m) && expanded[b.m.id]"
+                class="cs-more"
+                @click.stop="readLess(b.m)"
+              >
+                Read less
+              </span>
+              <a
+                v-if="firstLink(b.m)"
+                class="cs-lp"
+                :href="firstLink(b.m)"
+                target="_blank"
+                @click.stop
+              >
+                <span class="i-lucide-link-2" />
+                <span class="cs-lph">{{ hostOf(firstLink(b.m)) }}</span>
+              </a>
+
+              <div v-if="reactionsOf(b.m).length" class="cs-rx">
+                <span v-for="(r, i) in reactionsOf(b.m)" :key="i" class="cs-rxi">
+                  {{ r.emoji || r }}
+                  <b v-if="r.count > 1">{{ r.count }}</b>
+                </span>
+              </div>
+
+              <div class="cs-mt">
+                <span>{{ clock(b.m.created_at) }}</span>
+                <span
+                  v-if="tickOf(b.m)"
+                  class="cs-tick"
+                  :class="[tickOf(b.m).i, tickOf(b.m).c]"
+                />
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div v-if="failed.length" class="cs-failbar">
+        <span class="i-lucide-alert-circle" />
+        <span class="cs-failt">{{ failed.length }} message(s) failed to send</span>
+        <button class="cs-sb" @click="failed.forEach(retryFail)">
+          <span class="i-lucide-rotate-cw" /><span>Retry</span>
+        </button>
+        <button class="cs-sb dgr" @click="failed = []">
+          <span class="i-lucide-x" /><span>Discard</span>
+        </button>
+      </div>
+
+      <div
+        class="cs-comp"
+        :class="{ drag: dragOver }"
+        @dragover.prevent="dragOver = true"
+        @dragleave="dragOver = false"
+        @drop.prevent="onDrop"
+        @paste="onPaste"
+      >
+        <template v-if="isRecording">
+          <!-- waveform poori chaudai ki apni patti mein — yahi shakl
+               pehle chal rahi thi. Bar ke andar dalne se WaveSurfer
+               ko container ki chaudai/height nahi milti thi. -->
+          <div class="cs-recstrip">
+            <AudioRecorder
+              ref="recorderRef"
+              :audio-record-format="audioFormat"
+              @recorder-progress-changed="onRecProgress"
+              @finish-record="onRecDone"
+              @record-pause="recState = 'recording-paused'"
+              @record-resume="recState = ''"
+              @record-cancel="onRecError"
+              @record-error="onRecError"
+            />
+          </div>
+          <div class="cs-cbar">
+            <span class="cs-ci i-lucide-trash-2" @click="cancelRec" />
+            <span
+              class="cs-dot"
+              :class="{ pz: recState === 'recording-paused' }"
+            />
+            <span class="cs-rt">{{ recTime }}</span>
+            <span class="cs-sp" />
+            <span
+              class="cs-ci"
+              :class="
+                recState === 'recording-paused'
+                  ? 'i-lucide-mic'
+                  : 'i-lucide-pause'
+              "
+              @click="pauseRec"
+            />
+            <span class="cs-snd2 i-lucide-send" @click="finishRec" />
+          </div>
+        </template>
+
+        <!-- 24 ghante guzar gaye: sirf template -->
+        <div v-if="!windowOpen && !isRecording && !isNote" class="cs-winbar">
+          <span class="i-lucide-clock-alert" />
+          <div class="cs-winb">
+            <b>24-hour window closed</b>
+            <span>
+              Only approved templates can be sent now. A new window opens when
+              the customer replies.
+            </span>
+          </div>
+          <button class="cs-winbtn" @click.stop="showTpl = true; showEmoji = false">
+            Templates
+          </button>
+        </div>
+
+        <div v-if="!isRecording" class="cs-tabs">
+          <button
+            class="cs-tab"
+            :class="{ on: !isNote }"
+            @click="isNote = false"
+          >
+            Reply
+          </button>
+          <button class="cs-tab" :class="{ on: isNote }" @click="isNote = true">
+            Private note
+          </button>
+        </div>
+
+        <div v-if="showEmoji && !isRecording" class="cs-emojiw" @click.stop>
+          <div class="cs-search cs-emsr">
+            <span class="cs-search__ic i-lucide-search" />
+            <input v-model="emojiQ" placeholder="Search emoji" />
+          </div>
+          <div class="cs-emoji">
+            <span
+              v-for="(e, i) in emojiHits"
+              :key="i"
+              class="cs-em"
+              @click="addEmoji(e)"
+            >
+              {{ e }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="showCanned && !isRecording" class="cs-tplbox" @click.stop>
+          <div class="cs-tplnew" @click="openNewCanned">
+            <span class="i-lucide-plus" />
+            <span>New canned response</span>
+          </div>
+          <div v-if="!cannedHits.length" class="cs-tplempty">
+            No canned responses found
+          </div>
+          <div
+            v-for="c in cannedHits"
+            :key="c.id"
+            class="cs-tpl"
+            @click="useCanned(c)"
+          >
+            <div class="cs-tpln">/{{ c.short_code }}</div>
+            <div class="cs-tplt">{{ plain(c.content || '') }}</div>
+          </div>
+        </div>
+
+        <div v-if="showTpl && !isRecording" class="cs-tplbox" @click.stop>
+          <div v-if="!templates.length" class="cs-tplempty">
+            No templates in this inbox
+          </div>
+          <div
+            v-for="t in templates"
+            :key="t.id || t.name"
+            class="cs-tpl"
+            @click="useTemplate(t)"
+          >
+            <div class="cs-tpln">{{ t.name }}</div>
+            <div class="cs-tplt">
+              {{
+                (t.components || []).find(c => c.type === 'BODY')?.text || ''
+              }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="replyTo && !isRecording" class="cs-rp">
+          <div class="cs-rpbar" />
+          <div class="cs-rpb">
+            <div class="cs-rpn">
+              {{
+                replyTo.message_type === 1
+                  ? replyTo.sender?.name || 'You'
+                  : contact.name || 'Customer'
+              }}
+            </div>
+            <div class="cs-rpt">
+              {{ plain(replyTo.content || '') || 'Attachment' }}
+            </div>
+          </div>
+          <span class="cs-ci i-lucide-x" @click="replyTo = null" />
+        </div>
+
+        <div
+          v-if="!isRecording"
+          class="cs-cbar"
+          :class="{ note: isNote }"
+        >
+          <span class="cs-ci i-lucide-paperclip" @click="pickFile" />
+          <span
+            class="cs-ci i-lucide-smile"
+            :class="{ act: showEmoji }"
+            @click.stop="
+              showEmoji = !showEmoji;
+              showTpl = false;
+              showCanned = false;
+            "
+          />
+          <span
+            class="cs-ci i-lucide-layout-template"
+            :class="{ act: showTpl }"
+            @click.stop="
+              showTpl = !showTpl;
+              showEmoji = false;
+              showCanned = false;
+            "
+          />
+          <input
+            ref="fileInput"
+            type="file"
+            multiple
+            hidden
+            @change="onFiles"
+          />
+          <textarea
+            v-model="draft"
+            class="cs-cin"
+            rows="1"
+            :disabled="!windowOpen && !isNote"
+            :placeholder="
+              isNote
+                ? 'Private note...'
+                : windowOpen
+                  ? 'Type a message'
+                  : 'Window closed — send a template instead'
+            "
+            @keydown="onKey"
+            @input="growBox"
+          />
+          <span
+            v-if="!draft.trim() && !pendingFiles.length"
+            class="cs-ci i-lucide-mic"
+            @click="startRec"
+          />
+          <span v-else class="cs-snd2 i-lucide-send" @click="doSend" />
+        </div>
+
+        <div v-if="pendingFiles.length" class="cs-files">
+          <div v-for="(f, i) in pendingFiles" :key="i" class="cs-fp">
+            <img v-if="thumbOf(f)" :src="thumbOf(f)" class="cs-fpi" />
+            <span v-else class="cs-fpf i-lucide-file" />
+            <span class="cs-fpn">{{ f.name }}</span>
+            <span class="cs-fpx i-lucide-x" @click="dropFile(i)" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="cs-none">
+      <div>
+        <div class="cs-none-t">ChatsSync</div>
+        <div class="cs-none-s">Select a chat to start messaging</div>
+      </div>
+    </div>
+
+    <!-- ============ FILTERS ============ -->
+    <div v-if="showFilter" class="cs-fw" @click.self="showFilter = false">
+      <div class="cs-fwb cs-flt">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="showFilter = false" />
+          <span>Filter conversations</span>
+        </div>
+        <div class="cs-fltb">
+          <div class="cs-fg">
+            <div class="cs-fgl">Status</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in ['all', 'open', 'pending', 'resolved', 'snoozed']"
+                :key="o"
+                class="cs-pl"
+                :class="{ on: fStatus === o }"
+                @click="fStatus = o"
+              >
+                {{ o }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Assigned</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in [
+                  { k: 'all', n: 'Anyone' },
+                  { k: 'me', n: 'Me' },
+                  { k: 'none', n: 'Unassigned' },
+                ]"
+                :key="o.k"
+                class="cs-pl"
+                :class="{ on: fAssignee === o.k }"
+                @click="fAssignee = o.k"
+              >
+                {{ o.n }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Priority</div>
+            <div class="cs-fgo">
+              <span
+                v-for="o in ['all', 'urgent', 'high', 'medium', 'low', 'none']"
+                :key="o"
+                class="cs-pl"
+                :class="{ on: fPriority === o }"
+                @click="fPriority = o"
+              >
+                {{ o }}
+              </span>
+            </div>
+          </div>
+          <div class="cs-fg">
+            <div class="cs-fgl">Quick</div>
+            <div class="cs-fgo">
+              <span
+                class="cs-pl"
+                :class="{ on: fUnreplied }"
+                @click="fUnreplied = !fUnreplied"
+              >
+                Needs reply
+              </span>
+              <span
+                class="cs-pl"
+                :class="{ on: fHasAttach }"
+                @click="fHasAttach = !fHasAttach"
+              >
+                Has attachment
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">{{ rows.length }} chats match</span>
+          <button class="cs-fwbtn ghost" @click="clearFilters">Clear</button>
+          <button class="cs-fwbtn" @click="showFilter = false">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="railOpen" class="cs-railbg" @click="closeRail" />
+
+    <!-- ============ LABEL PICKER ============ -->
+    <div v-if="lp.open" class="cs-fw" @click.self="lp.open = false">
+      <div class="cs-lpb">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="lp.open = false" />
+          <span>
+            {{
+              lp.mode === 'remove'
+                ? `Remove labels — ${lp.chats.length} chats`
+                : lp.mode === 'bulk'
+                  ? `Add labels — ${lp.chats.length} chats`
+                  : 'Labels'
+            }}
+          </span>
+        </div>
+
+        <div class="cs-search cs-lpsr">
+          <span class="cs-search__ic i-lucide-search" />
+          <input
+            v-model="lp.q"
+            :placeholder="
+              lp.mode === 'remove' ? 'Search labels' : 'Search or create label'
+            "
+          />
+        </div>
+
+        <div class="cs-lpl">
+          <div
+            v-for="l in lpHits"
+            :key="l.id || l.title"
+            class="cs-lpr"
+            :class="{ on: lp.sel.includes(l.title) }"
+            @click="lpToggle(l.title)"
+          >
+            <span class="cs-pld" :style="{ background: l.color || '#00A884' }" />
+            <span class="cs-lpn">{{ l.title }}</span>
+            <span v-if="lp.mode !== 'single'" class="cs-lpcnt">
+              {{ lpCount(l.title) }}/{{ lp.chats.length }}
+            </span>
+            <span
+              v-if="lp.sel.includes(l.title)"
+              class="cs-lpck i-lucide-check"
+            />
+          </div>
+
+          <div
+            v-if="
+              lp.mode !== 'remove' &&
+              lp.q.trim() &&
+              !lpHits.some(
+                l => l.title === lp.q.trim().replace(/\s+/g, '-').toLowerCase()
+              )
+            "
+            class="cs-lpr new"
+            @click="
+              newLabel = lp.q;
+              lp.q = '';
+              lpNew();
+            "
+          >
+            <span class="i-lucide-plus" />
+            <span class="cs-lpn">
+              Create "{{ lp.q.trim().replace(/\s+/g, '-').toLowerCase() }}"
+            </span>
+          </div>
+
+          <div v-if="!lpHits.length && !lp.q" class="cs-agempty">
+            {{
+              lp.mode === 'remove'
+                ? 'These chats have no labels'
+                : 'No labels yet — type above to create one'
+            }}
+          </div>
+        </div>
+
+        <div class="cs-lpf">
+          <span class="cs-lpc">{{ lp.sel.length }} selected</span>
+          <button
+            v-if="lp.mode === 'single' && lp.sel.length"
+            class="cs-fwbtn ghost"
+            @click="lpClearAll"
+          >
+            Remove all
+          </button>
+          <button
+            v-if="lp.mode === 'remove'"
+            class="cs-fwbtn dgr"
+            :disabled="!lp.sel.length"
+            @click="lpRemove"
+          >
+            Remove from {{ lp.chats.length }} chat(s)
+          </button>
+          <button
+            v-else-if="lp.mode === 'bulk'"
+            class="cs-fwbtn"
+            :disabled="!lp.sel.length"
+            @click="lpApply"
+          >
+            Add to {{ lp.chats.length }} chat(s)
+          </button>
+          <button v-else class="cs-fwbtn" @click="lp.open = false">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CONFIRM ============ -->
+    <div v-if="ask" class="cs-fw" @click.self="ask.cancel()">
+      <div class="cs-ask">
+        <div class="cs-askt">{{ ask.title }}</div>
+        <div class="cs-askb">{{ ask.body }}</div>
+        <div class="cs-askf">
+          <button class="cs-fwbtn ghost" @click="ask.cancel()">Cancel</button>
+          <button class="cs-fwbtn" :class="{ dgr: ask.danger }" @click="ask.ok()">
+            {{ ask.okText }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ NEW CANNED ============ -->
+    <div v-if="newCanned" class="cs-fw" @click.self="newCanned = null">
+      <div class="cs-ask cs-cnew">
+        <div class="cs-askt">New canned response</div>
+        <label class="cs-fl">Shortcode</label>
+        <input v-model="newCanned.short_code" class="cs-fi" placeholder="greeting" />
+        <label class="cs-fl">Message</label>
+        <textarea
+          v-model="newCanned.content"
+          class="cs-fi cs-fta"
+          rows="6"
+          placeholder="Hello! How can I help you today?"
+        />
+        <div class="cs-hint">Line breaks are kept exactly as typed.</div>
+        <div class="cs-askf">
+          <button class="cs-fwbtn ghost" @click="newCanned = null">Cancel</button>
+          <button class="cs-fwbtn" @click="saveCanned">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
+
+    <!-- ============ TOASTS ============ -->
+    <div class="cs-toasts">
+      <div v-for="t in toasts" :key="t.id" class="cs-toast" :class="t.kind">
+        {{ t.text }}
+      </div>
+    </div>
+
+    <!-- ============ IMAGE LIGHTBOX ============ -->
+    <div v-if="lightbox" class="cs-lbox" @click="lightbox = null">
+      <span class="cs-lboxx i-lucide-x" />
+      <img :src="lightbox" @click.stop />
+      <a class="cs-lbd" :href="lightbox" target="_blank" @click.stop>
+        <span class="i-lucide-download" />
+      </a>
+    </div>
+
+    <!-- ============ MESSAGE INFO ============ -->
+    <div v-if="infoMsg" class="cs-fw" @click.self="infoMsg = null">
+      <div class="cs-fwb cs-inf">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="infoMsg = null" />
+          <span>Message info</span>
+        </div>
+        <div class="cs-infp">
+          {{ plain(infoMsg.content || '') || 'Attachment' }}
+        </div>
+        <div class="cs-infl">
+          <div class="cs-pfr">
+            <span class="cs-pfk">Sent</span>
+            <span class="cs-pfv">
+              {{ dayLabel(infoMsg.created_at) }} · {{ clock(infoMsg.created_at) }}
+            </span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Status</span>
+            <span class="cs-pfv cap">{{ infoMsg.status || 'sent' }}</span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Direction</span>
+            <span class="cs-pfv">
+              {{ infoMsg.message_type === 1 ? 'Outgoing' : 'Incoming' }}
+            </span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.sender?.name">
+            <span class="cs-pfk">Sent by</span>
+            <span class="cs-pfv">{{ infoMsg.sender.name }}</span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Channel</span>
+            <span class="cs-pfv">
+              {{ inboxName(currentChat.inbox_id) || '—' }}
+            </span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.private">
+            <span class="cs-pfk">Type</span>
+            <span class="cs-pfv">Private note</span>
+          </div>
+          <div class="cs-pfr" v-if="(infoMsg.attachments || []).length">
+            <span class="cs-pfk">Attachment</span>
+            <span class="cs-pfv cap">
+              {{ aType(infoMsg.attachments[0]) }}
+            </span>
+          </div>
+          <div class="cs-pfr">
+            <span class="cs-pfk">Message ID</span>
+            <span class="cs-pfv">{{ infoMsg.id }}</span>
+          </div>
+          <div class="cs-pfr" v-if="infoMsg.source_id">
+            <span class="cs-pfk">WhatsApp ID</span>
+            <span class="cs-pfv">{{ infoMsg.source_id }}</span>
+          </div>
+          <div
+            class="cs-pfr"
+            v-if="infoMsg.content_attributes?.external_error"
+          >
+            <span class="cs-pfk err">Error</span>
+            <span class="cs-pfv err">
+              {{ infoMsg.content_attributes.external_error }}
+            </span>
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">Delete only removes it from your dashboard</span>
+          <button class="cs-fwbtn" @click="copyText(plain(infoMsg.content || ''))">
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ FORWARD ============ -->
+    <div v-if="fwdMsg" class="cs-fw" @click.self="fwdMsg = null">
+      <div class="cs-fwb">
+        <div class="cs-fwh">
+          <span class="cs-ic i-lucide-x" @click="fwdMsg = null" />
+          <span>Forward message to</span>
+        </div>
+        <div class="cs-fwp">{{ plain(fwdMsg.content || '') || 'Attachment' }}</div>
+        <div class="cs-search cs-fwsr">
+          <span class="cs-search__ic i-lucide-search" />
+          <input v-model="fwdQ" placeholder="Search name or number" />
+          <span v-if="fwdQ" class="cs-search__x i-lucide-x" @click="fwdQ = ''" />
+        </div>
+        <div class="cs-fwl">
+          <div
+            v-for="c in fwdRows"
+            :key="c.id"
+            class="cs-fwr"
+            :class="{ on: fwdPick.includes(c.id) }"
+            @click="toggleFwd(c.id)"
+          >
+            <div class="cs-fwav" :style="{ background: colorFor(c.id) }">
+              {{ initials(c.meta?.sender?.name) }}
+            </div>
+            <div class="cs-fwnb">
+              <span class="cs-fwn">{{ c.meta?.sender?.name || 'Unknown' }}</span>
+              <span v-if="phoneOf(c)" class="cs-fwph">{{ phoneOf(c) }}</span>
+            </div>
+            <span
+              class="cs-fwck"
+              :class="
+                fwdPick.includes(c.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'
+              "
+            />
+          </div>
+        </div>
+        <div class="cs-fwf">
+          <span class="cs-fwc">{{ fwdPick.length }} selected</span>
+          <button class="cs-fwbtn" :disabled="!fwdPick.length" @click="doForward">
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CONTACT PROFILE ============ -->
+    <div v-if="showProfile" class="cs-pf" @click.self="showProfile = false">
+      <div class="cs-pfp">
+        <div class="cs-pfh">
+          <span class="cs-ic i-lucide-x" @click="showProfile = false" />
+          <span>Contact info</span>
+        </div>
+        <div class="cs-pfb">
+          <div
+            class="cs-pfav"
+            :style="{ background: colorFor(currentChat.id) }"
+          >
+            <img v-if="contact.thumbnail" :src="contact.thumbnail" />
+            <template v-else>{{ initials(contact.name) }}</template>
+          </div>
+          <div class="cs-pfn">{{ contact.name || 'Unknown' }}</div>
+          <div class="cs-pfs">{{ contact.phone_number || '' }}</div>
+        </div>
+        <div class="cs-pfr" v-if="contact.email">
+          <span class="cs-pfk">Email</span>
+          <span class="cs-pfv">{{ contact.email }}</span>
+        </div>
+        <div class="cs-pfr" v-if="contact.identifier">
+          <span class="cs-pfk">Identifier</span>
+          <span class="cs-pfv">{{ contact.identifier }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Channel</span>
+          <span class="cs-pfv">
+            {{
+              (inboxesList || []).find(i => i.id === currentChat.inbox_id)
+                ?.name || '—'
+            }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="contact.company_name">
+          <span class="cs-pfk">Company</span>
+          <span class="cs-pfv">{{ contact.company_name }}</span>
+        </div>
+        <div class="cs-pfr" v-if="contact.location">
+          <span class="cs-pfk">Location</span>
+          <span class="cs-pfv">{{ contact.location }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Conversation</span>
+          <span class="cs-pfv">#{{ currentChat.id }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Status</span>
+          <span class="cs-pfv cap">{{ currentChat.status || '—' }}</span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.priority">
+          <span class="cs-pfk">Priority</span>
+          <span class="cs-pfv cap">{{ currentChat.priority }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Assigned to</span>
+          <span class="cs-pfv">
+            {{ currentChat.meta?.assignee?.name || 'Unassigned' }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.meta?.team?.name">
+          <span class="cs-pfk">Team</span>
+          <span class="cs-pfv">{{ currentChat.meta.team.name }}</span>
+        </div>
+        <div class="cs-pfr" v-if="(currentChat.labels || []).length">
+          <span class="cs-pfk">Labels</span>
+          <span class="cs-pfv">{{ (currentChat.labels || []).join(', ') }}</span>
+        </div>
+        <div class="cs-pfr">
+          <span class="cs-pfk">Messages</span>
+          <span class="cs-pfv">{{ messages.length }}</span>
+        </div>
+        <div class="cs-pfr" v-if="currentChat.created_at">
+          <span class="cs-pfk">First contact</span>
+          <span class="cs-pfv">
+            {{ dayLabel(currentChat.created_at) }} · {{ clock(currentChat.created_at) }}
+          </span>
+        </div>
+        <div class="cs-pfr" v-if="contact.created_at">
+          <span class="cs-pfk">Contact since</span>
+          <span class="cs-pfv">{{ dayLabel(contact.created_at) }}</span>
+        </div>
+        <div
+          class="cs-pfr"
+          v-for="(v, k) in contact.custom_attributes || {}"
+          :key="k"
+        >
+          <span class="cs-pfk">{{ k }}</span>
+          <span class="cs-pfv">{{ v }}</span>
+        </div>
+        <div class="cs-pfacts">
+          <div class="cs-pfab" @click="act2('mute')">
+            <span :class="isMuted(currentChat) ? 'i-lucide-bell' : 'i-lucide-bell-off'" />
+            <span>{{ isMuted(currentChat) ? 'Unmute' : 'Mute' }}</span>
+          </div>
+          <div class="cs-pfab" @click="act2('pin')">
+            <span class="i-lucide-pin" />
+            <span>{{ isPinned(currentChat) ? 'Unpin' : 'Pin' }}</span>
+          </div>
+          <div class="cs-pfab" @click="act2('archive')">
+            <span class="i-lucide-archive" />
+            <span>{{ isArchived(currentChat) ? 'Unarchive' : 'Archive' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ MESSAGE MENU ============ -->
+    <div
+      v-if="mmenu.open"
+      :ref="fitMenu"
+      class="cs-cmenu"
+      :style="{ left: mmenu.x + 'px', top: mmenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="cs-rxrow">
+        <span
+          v-for="e in REACTS"
+          :key="e"
+          class="cs-rxb"
+          @click="msgAct('react', e)"
+        >
+          {{ e }}
+        </span>
+      </div>
+      <hr />
+      <div class="cs-mi" @click="msgAct('reply')">
+        <span class="i-lucide-reply" /><span>Reply</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('copy')">
+        <span class="i-lucide-copy" /><span>Copy</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('forward')">
+        <span class="i-lucide-forward" /><span>Forward</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('note')">
+        <span class="i-lucide-sticky-note" /><span>Add to private note</span>
+      </div>
+      <div class="cs-mi" @click="msgAct('info')">
+        <span class="i-lucide-info" /><span>Message info</span>
+      </div>
+      <hr />
+      <div class="cs-mi danger" @click="msgAct('delete')">
+        <span class="i-lucide-trash-2" /><span>Delete for me</span>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT-CLICK MENU ============ -->
+    <div
+      v-if="menu.open"
+      :ref="fitMenu"
+      class="cs-cmenu"
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @click.stop
+    >
+      <div class="cs-mi" @click="act('pin')">
+        <span class="i-lucide-pin" />
+        <span>{{ isPinned(menu.chat) ? 'Unpin chat' : 'Pin chat' }}</span>
+      </div>
+      <div class="cs-mi" @click="act('mute')">
+        <span class="i-lucide-bell-off" />
+        <span>
+          {{ isMuted(menu.chat) ? 'Unmute notifications' : 'Mute notifications' }}
+        </span>
+      </div>
+      <div class="cs-mi" @click="act('archive')">
+        <span class="i-lucide-archive" />
+        <span>
+          {{ isArchived(menu.chat) ? 'Unarchive chat' : 'Archive chat' }}
+        </span>
+      </div>
+      <div class="cs-mi" @click="act('unread')">
+        <span class="i-lucide-mail" /><span>Mark as unread</span>
+      </div>
+      <hr />
+      <div class="cs-mi" @click="act('resolved')">
+        <span class="i-lucide-check" /><span>Mark as resolved</span>
+      </div>
+      <div class="cs-mi" @click="act('pending')">
+        <span class="i-lucide-clock" /><span>Mark as pending</span>
+      </div>
+      <div class="cs-mi" @click="act('open')">
+        <span class="i-lucide-rotate-ccw" /><span>Reopen</span>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'sn' ? '' : 'sn'"
+      >
+        <span class="i-lucide-alarm-clock" /><span>Snooze</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'sn'" class="cs-sub" @click.stop>
+          <div class="cs-mi" @click.stop="snooze(1)"><span>1 hour</span></div>
+          <div class="cs-mi" @click.stop="snooze(3)"><span>3 hours</span></div>
+          <div class="cs-mi" @click.stop="snooze(12)"><span>Tomorrow</span></div>
+          <div class="cs-mi" @click.stop="snooze(168)"><span>Next week</span></div>
+        </div>
+      </div>
+      <hr />
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'pri' ? '' : 'pri'"
+      >
+        <span class="i-lucide-flag" /><span>Priority</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'pri'" class="cs-sub">
+          <div
+            v-for="p in ['urgent', 'high', 'medium', 'low', 'none']"
+            :key="p"
+            class="cs-mi"
+            @click.stop="act('priority', p === 'none' ? null : p)"
+          >
+            <span>{{ p }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="cs-mi" @click="lpOpen('single', menu.chat)">
+        <span class="i-lucide-tag" /><span>Labels</span>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'ag' ? '' : 'ag'"
+      >
+        <span class="i-lucide-user-plus" /><span>Assign agent</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'ag'" class="cs-sub cs-sub--tall">
+          <div class="cs-mi" @click.stop="act('agent', { id: null })">
+            <span>Unassign</span>
+          </div>
+          <div
+            v-for="a in agentsList"
+            :key="a.id"
+            class="cs-mi"
+            @click.stop="act('agent', a)"
+          >
+            <span>{{ a.name }}</span>
+          </div>
+        </div>
+      </div>
+      <div
+        class="cs-mi cs-has-sub"
+        @click.stop="sub = sub === 'tm' ? '' : 'tm'"
+      >
+        <span class="i-lucide-users" /><span>Assign team</span>
+        <span class="cs-arw i-lucide-chevron-right" />
+        <div v-if="sub === 'tm'" class="cs-sub cs-sub--tall">
+          <div
+            v-for="t in teamsList"
+            :key="t.id"
+            class="cs-mi"
+            @click.stop="act('team', t)"
+          >
+            <span>{{ t.name }}</span>
+          </div>
+          <div v-if="!teamsList.length" class="cs-mi"><span>No teams</span></div>
+        </div>
+      </div>
+      <hr />
+      <div class="cs-mi" @click="act('copy')">
+        <span class="i-lucide-link" /><span>Copy conversation link</span>
+      </div>
+      <div class="cs-mi danger" @click="act('block')">
+        <span class="i-lucide-ban" /><span>Block contact</span>
+      </div>
+      <div class="cs-mi danger" @click="act('delete')">
+        <span class="i-lucide-trash-2" /><span>Delete conversation</span>
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+/* ===== tokens (index.html se) ===== */
+.cs-app {
+  --rail: #202c33;
+  --panel: #111b21;
+  --head: #202c33;
+  --fld: #202c33;
+  --tx: #e9edef;
+  --tx2: #aebac1;
+  --tx3: #8696a0;
+  --ln: #222e35;
+  --ln2: #1d282f;
+  --hov: #202c33;
+  --sel: #2a3942;
+  --g: #00a884;
+  --g-tint: #103529;
+  --b: #53bdeb;
+  --menu: #233138;
+  --menu-hov: #182229;
+  --sent: #005c4b;
+  --recv: #202c33;
+  --note: #3b3117;
+  --note-b: #5a4a20;
+  --chat: #0b141a;
+  --badge: #00a884;
+  --badge-tx: #0b141a;
+  --inp: #2a3942;
+  --sh: 0 1px 0.5px rgba(0, 0, 0, 0.35);
+  --red: #f15c6d;
+
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--tx);
+}
+
+/* ===== LIGHT THEME ===== */
+.cs-app.lite {
+  --panel: #ffffff;
+  --head: #f0f2f5;
+  --fld: #eaeef0;
+  --tx: #111b21;
+  --tx2: #54656f;
+  --tx3: #667781;
+  --ln: #d9dfe2;
+  --ln2: #e9edef;
+  --hov: #f0f2f5;
+  --sel: #dee7e4;
+  --g: #008069;
+  --g-tint: #d6f0e6;
+  --b: #027eb5;
+  --menu: #ffffff;
+  --menu-hov: #eef3f1;
+  --sent: #d9fdd3;
+  --recv: #ffffff;
+  --note: #fff6d6;
+  --note-b: #e6d79a;
+  --chat: #e3ded7;
+  --badge: #25d366;
+  --badge-tx: #053e20;
+  --inp: #ffffff;
+  --sh: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  --red: #d63c4b;
+}
+.cs-app.lite .cs-thread {
+  background-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27352%27%20height%3D%27232%27%20viewBox%3D%270%200%20352%20232%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%230b141a%27%20stroke-opacity%3D%27.07%27%20stroke-width%3D%271.25%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cg%20transform%3D%27translate%2818%2C20%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%200%201%2012%200%206%206%200%200%201-6%206H2l2-3a6%206%200%200%201-4-3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C14%29%27%3E%3Cpath%20d%3D%27M0%200h14v10H4L0%2013z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28108%2C22%29%27%3E%3Cpath%20d%3D%27M6%200l1.8%203.7%204%20.6-2.9%202.8.7%204L6%209.2%202.4%2011l.7-4L.2%204.3l4-.6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28150%2C16%29%27%3E%3Cpath%20d%3D%27M2%202h12v12H2z%20M2%206h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28192%2C20%29%27%3E%3Cpath%20d%3D%27M7%200C3%200%200%203%200%206.5%200%2011%207%2016%207%2016s7-5%207-9.5C14%203%2011%200%207%200z%20M7%204a2.5%202.5%200%201%201%200%205%202.5%202.5%200%200%201%200-5z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28234%2C14%29%27%3E%3Cpath%20d%3D%27M0%208c0-4%203-7%207-7s7%203%207%207-3%207-7%207-7-3-7-7z%20M4%208h6%20M7%205v6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28276%2C20%29%27%3E%3Cpath%20d%3D%27M0%203h16v10H0z%20M0%203l8%206%208-6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28318%2C16%29%27%3E%3Cpath%20d%3D%27M3%200h10v4H3z%20M1%204h14v11H1z%20M6%208h4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2814%2C64%29%27%3E%3Cpath%20d%3D%27M0%2010c3-5%209-5%2012%200%20M6%204a2.5%202.5%200%201%201%200%20.01%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2856%2C58%29%27%3E%3Cpath%20d%3D%27M0%200h13M0%205h9M0%2010h11%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2898%2C62%29%27%3E%3Cpath%20d%3D%27M8%200a8%208%200%201%201%200%2016A8%208%200%200%201%208%200z%20M8%204v4.5l3%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28140%2C60%29%27%3E%3Cpath%20d%3D%27M0%200l11%206-11%206z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28182%2C58%29%27%3E%3Cpath%20d%3D%27M2%200h11l3%204v11H2z%20M13%200v4h3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28224%2C62%29%27%3E%3Cpath%20d%3D%27M0%206h4l4-5v14l-4-5H0z%20M11%204a4%204%200%200%201%200%208%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28266%2C58%29%27%3E%3Cpath%20d%3D%27M1%201h14v10H1z%20M1%2011l5-4%203%202%203-3%203%203%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28308%2C64%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%200%201%206%206c0%204-6%2010-6%2010S0%2010%200%206a6%206%200%200%201%206-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2820%2C106%29%27%3E%3Cpath%20d%3D%27M0%204h5l3-4h4l3%204h1v10H0z%20M8%206a3%203%200%201%201%200%206%203%203%200%200%201%200-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C110%29%27%3E%3Cpath%20d%3D%27M6%200l6%2012H0z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%2C104%29%27%3E%3Cpath%20d%3D%27M0%200h12v12H0z%20M3%203h6v6H3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28146%2C108%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%201%200%2012%200%206%206%200%200%200-12%200z%20M3%206l2%202%204-4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28188%2C104%29%27%3E%3Cpath%20d%3D%27M1%203h14v9H1z%20M4%203V1h8v2%20M4%2012v2h8v-2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28230%2C110%29%27%3E%3Cpath%20d%3D%27M0%2012L6%200l6%2012z%20M4%2012v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28272%2C106%29%27%3E%3Cpath%20d%3D%27M2%202l10%2010M12%202L2%2012%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28314%2C110%29%27%3E%3Cpath%20d%3D%27M0%208h16%20M4%204l-4%204%204%204%20M12%204l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2816%2C150%29%27%3E%3Cpath%20d%3D%27M0%202h14v12H0z%20M3%200v4M11%200v4M0%206h14%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2858%2C154%29%27%3E%3Cpath%20d%3D%27M7%200a7%207%200%201%201%200%2014A7%207%200%200%201%207%200z%20M4%207h6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28100%2C148%29%27%3E%3Cpath%20d%3D%27M0%2010c0-6%205-10%208-10s8%204%208%2010%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28142%2C152%29%27%3E%3Cpath%20d%3D%27M2%200h10v14l-5-4-5%204z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28184%2C150%29%27%3E%3Cpath%20d%3D%27M0%200h14v3H0z%20M2%203v10h10V3%20M6%206v4M8%206v4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28226%2C154%29%27%3E%3Cpath%20d%3D%27M8%200l2%205%205%20.5-4%203.5%201%205-4-2.6L4%2014l1-5L1%205.5%206%205z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28268%2C148%29%27%3E%3Cpath%20d%3D%27M1%201h13v13H1z%20M4%207h7M7%204v7%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28310%2C152%29%27%3E%3Cpath%20d%3D%27M0%205a5%205%200%200%201%2010%200v6H0z%20M3%2011v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2822%2C196%29%27%3E%3Cpath%20d%3D%27M0%203h16v9H0z%20M5%2012v2h6v-2%20M2%2016h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2864%2C198%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%201%201%200%2012A6%206%200%200%201%206%200z%20M6%203v3l2%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28106%2C194%29%27%3E%3Cpath%20d%3D%27M0%206h12%20M8%202l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28148%2C198%29%27%3E%3Cpath%20d%3D%27M2%200h8a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H2a2%202%200%200%201-2-2V2a2%202%200%200%201%202-2z%20M4%203h4M4%206h4M4%209h2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28190%2C194%29%27%3E%3Cpath%20d%3D%27M0%200h14M0%205h14M0%2010h8%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28232%2C198%29%27%3E%3Cpath%20d%3D%27M7%200l7%207-7%207-7-7z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28274%2C194%29%27%3E%3Cpath%20d%3D%27M1%204h12v9H1z%20M4%204V2a3%203%200%200%201%206%200v2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28316%2C198%29%27%3E%3Cpath%20d%3D%27M0%200l14%207-14%207%203-7z%27%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E');
+}
+
+/* ===== PANEL ===== */
+.cs-panel {
+  width: 400px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ln);
+}
+.cs-ph {
+  padding: 17px 20px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.cs-ph h1 {
+  font-size: 22px;
+  font-weight: 600;
+  flex: 1;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--tx);
+}
+.cs-psr {
+  margin: 0 12px 11px;
+  background: var(--fld);
+  border-radius: 9px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  transition: background 0.14s;
+}
+.cs-psr > span {
+  width: 19px;
+  height: 19px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-psr .cs-clr {
+  cursor: pointer;
+}
+.cs-psr input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 10px 0;
+}
+.cs-psr input::placeholder {
+  color: var(--tx3);
+}
+.cs-pills {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 12px;
+  align-items: center;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.cs-pills::-webkit-scrollbar {
+  display: none;
+}
+.cs-pl {
+  font-size: 13.5px;
+  padding: 5px 14px;
+  border-radius: 16px;
+  background: var(--fld);
+  color: var(--tx2);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.cs-pl.on {
+  background: var(--g-tint);
+  color: var(--g);
+}
+.cs-plc {
+  font-weight: 600;
+}
+
+.cs-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cs-row {
+  display: flex;
+  gap: 14px;
+  padding: 11px 20px 11px 16px;
+  cursor: pointer;
+  align-items: center;
+  position: relative;
+  transition: background 0.09s ease;
+}
+.cs-row:hover {
+  background: var(--hov);
+}
+.cs-row.on {
+  background: var(--sel);
+}
+/* FEP dot — avatar ke kone par, bilkul chhota.
+   hara = muft window chal rahi, laal = khatam */
+.cs-avw {
+  position: relative;
+  flex-shrink: 0;
+}
+.cs-fep {
+  position: absolute;
+  top: 1px;
+  inset-inline-end: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 2px solid var(--panel);
+  pointer-events: auto;
+}
+.cs-fep.dead {
+  background: #ef4444;
+}
+.cs-row:hover .cs-fep,
+.cs-row.on .cs-fep {
+  border-color: var(--hov);
+}
+.cs-row.on .cs-fep {
+  border-color: var(--sel);
+}
+.cs-av {
+  width: 49px;
+  height: 49px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+  letter-spacing: -0.01em;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+.cs-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cs-rb {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 1px solid var(--ln2);
+  padding-bottom: 11px;
+  margin-bottom: -11px;
+}
+.cs-row:last-child .cs-rb {
+  border-bottom: none;
+}
+.cs-r1 {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 3px;
+}
+.cs-n {
+  font-size: 15.5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.005em;
+}
+.cs-row.unrd .cs-n {
+  font-weight: 500;
+}
+.cs-t {
+  font-size: 11.5px;
+  color: var(--tx3);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.cs-row.unrd .cs-t {
+  color: var(--g);
+}
+.cs-r2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.cs-m {
+  font-size: 13.5px;
+  color: var(--tx3);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-tick {
+  color: var(--b);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-chip {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+.cs-chip--wa {
+  background: #123a22;
+  color: #7dd99b;
+}
+.cs-chip--fb {
+  background: #12283f;
+  color: #8cbef2;
+}
+.cs-chip--ig {
+  background: #3a1526;
+  color: #f09bc0;
+}
+.cs-un {
+  background: var(--badge);
+  color: var(--badge-tx);
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+.cs-arch {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 13px 20px;
+  cursor: pointer;
+  color: var(--tx2);
+}
+.cs-arch:hover {
+  background: var(--hov);
+}
+.cs-arch > span:first-child {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.cs-arch-t {
+  flex: 1;
+  font-size: 15px;
+  color: var(--tx);
+}
+.cs-arch-c {
+  font-size: 12.5px;
+  color: var(--g);
+  font-weight: 500;
+}
+.cs-has-sub {
+  position: relative;
+}
+.cs-arw {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--tx3);
+}
+.cs-sub {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: -7px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.5);
+  padding: 7px 0;
+  min-width: 186px;
+  max-width: 260px;
+  z-index: 10000;
+  white-space: nowrap;
+}
+.cs-sub .cs-mi {
+  white-space: nowrap;
+  padding: 9px 16px !important;
+  gap: 10px !important;
+}
+.cs-hm .cs-sub {
+  left: calc(100% + 4px);
+  right: auto;
+}
+.cs-hm.flipL .cs-sub {
+  left: auto;
+  right: calc(100% + 4px);
+}
+.cs-app.lite .cs-sub {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+.cs-sub .cs-mi {
+  text-transform: capitalize;
+}
+.cs-empty-list {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--tx3);
+  font-size: 14px;
+}
+
+/* ===== MAIN ===== */
+.cs-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--chat);
+}
+.cs-th {
+  height: 60px;
+  background: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ln);
+}
+.cs-tav {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.cs-tav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cs-tnm {
+  flex: 1;
+  min-width: 0;
+}
+.cs-tn {
+  font-size: 16px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ts {
+  font-size: 12.5px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ic {
+  width: 20px;
+  height: 20px;
+  padding: 7px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--tx2);
+  flex-shrink: 0;
+}
+.cs-ic:hover {
+  background: var(--hov);
+  color: var(--tx);
+}
+
+.cs-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 6.5%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background-color: var(--chat);
+  background-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27352%27%20height%3D%27232%27%20viewBox%3D%270%200%20352%20232%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-opacity%3D%27.05%27%20stroke-width%3D%271.25%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cg%20transform%3D%27translate%2818%2C20%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%200%201%2012%200%206%206%200%200%201-6%206H2l2-3a6%206%200%200%201-4-3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C14%29%27%3E%3Cpath%20d%3D%27M0%200h14v10H4L0%2013z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28108%2C22%29%27%3E%3Cpath%20d%3D%27M6%200l1.8%203.7%204%20.6-2.9%202.8.7%204L6%209.2%202.4%2011l.7-4L.2%204.3l4-.6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28150%2C16%29%27%3E%3Cpath%20d%3D%27M2%202h12v12H2z%20M2%206h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28192%2C20%29%27%3E%3Cpath%20d%3D%27M7%200C3%200%200%203%200%206.5%200%2011%207%2016%207%2016s7-5%207-9.5C14%203%2011%200%207%200z%20M7%204a2.5%202.5%200%201%201%200%205%202.5%202.5%200%200%201%200-5z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28234%2C14%29%27%3E%3Cpath%20d%3D%27M0%208c0-4%203-7%207-7s7%203%207%207-3%207-7%207-7-3-7-7z%20M4%208h6%20M7%205v6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28276%2C20%29%27%3E%3Cpath%20d%3D%27M0%203h16v10H0z%20M0%203l8%206%208-6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28318%2C16%29%27%3E%3Cpath%20d%3D%27M3%200h10v4H3z%20M1%204h14v11H1z%20M6%208h4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2814%2C64%29%27%3E%3Cpath%20d%3D%27M0%2010c3-5%209-5%2012%200%20M6%204a2.5%202.5%200%201%201%200%20.01%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2856%2C58%29%27%3E%3Cpath%20d%3D%27M0%200h13M0%205h9M0%2010h11%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2898%2C62%29%27%3E%3Cpath%20d%3D%27M8%200a8%208%200%201%201%200%2016A8%208%200%200%201%208%200z%20M8%204v4.5l3%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28140%2C60%29%27%3E%3Cpath%20d%3D%27M0%200l11%206-11%206z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28182%2C58%29%27%3E%3Cpath%20d%3D%27M2%200h11l3%204v11H2z%20M13%200v4h3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28224%2C62%29%27%3E%3Cpath%20d%3D%27M0%206h4l4-5v14l-4-5H0z%20M11%204a4%204%200%200%201%200%208%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28266%2C58%29%27%3E%3Cpath%20d%3D%27M1%201h14v10H1z%20M1%2011l5-4%203%202%203-3%203%203%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28308%2C64%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%200%201%206%206c0%204-6%2010-6%2010S0%2010%200%206a6%206%200%200%201%206-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2820%2C106%29%27%3E%3Cpath%20d%3D%27M0%204h5l3-4h4l3%204h1v10H0z%20M8%206a3%203%200%201%201%200%206%203%203%200%200%201%200-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C110%29%27%3E%3Cpath%20d%3D%27M6%200l6%2012H0z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%2C104%29%27%3E%3Cpath%20d%3D%27M0%200h12v12H0z%20M3%203h6v6H3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28146%2C108%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%201%200%2012%200%206%206%200%200%200-12%200z%20M3%206l2%202%204-4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28188%2C104%29%27%3E%3Cpath%20d%3D%27M1%203h14v9H1z%20M4%203V1h8v2%20M4%2012v2h8v-2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28230%2C110%29%27%3E%3Cpath%20d%3D%27M0%2012L6%200l6%2012z%20M4%2012v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28272%2C106%29%27%3E%3Cpath%20d%3D%27M2%202l10%2010M12%202L2%2012%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28314%2C110%29%27%3E%3Cpath%20d%3D%27M0%208h16%20M4%204l-4%204%204%204%20M12%204l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2816%2C150%29%27%3E%3Cpath%20d%3D%27M0%202h14v12H0z%20M3%200v4M11%200v4M0%206h14%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2858%2C154%29%27%3E%3Cpath%20d%3D%27M7%200a7%207%200%201%201%200%2014A7%207%200%200%201%207%200z%20M4%207h6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28100%2C148%29%27%3E%3Cpath%20d%3D%27M0%2010c0-6%205-10%208-10s8%204%208%2010%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28142%2C152%29%27%3E%3Cpath%20d%3D%27M2%200h10v14l-5-4-5%204z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28184%2C150%29%27%3E%3Cpath%20d%3D%27M0%200h14v3H0z%20M2%203v10h10V3%20M6%206v4M8%206v4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28226%2C154%29%27%3E%3Cpath%20d%3D%27M8%200l2%205%205%20.5-4%203.5%201%205-4-2.6L4%2014l1-5L1%205.5%206%205z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28268%2C148%29%27%3E%3Cpath%20d%3D%27M1%201h13v13H1z%20M4%207h7M7%204v7%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28310%2C152%29%27%3E%3Cpath%20d%3D%27M0%205a5%205%200%200%201%2010%200v6H0z%20M3%2011v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2822%2C196%29%27%3E%3Cpath%20d%3D%27M0%203h16v9H0z%20M5%2012v2h6v-2%20M2%2016h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2864%2C198%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%201%201%200%2012A6%206%200%200%201%206%200z%20M6%203v3l2%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28106%2C194%29%27%3E%3Cpath%20d%3D%27M0%206h12%20M8%202l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28148%2C198%29%27%3E%3Cpath%20d%3D%27M2%200h8a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H2a2%202%200%200%201-2-2V2a2%202%200%200%201%202-2z%20M4%203h4M4%206h4M4%209h2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28190%2C194%29%27%3E%3Cpath%20d%3D%27M0%200h14M0%205h14M0%2010h8%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28232%2C198%29%27%3E%3Cpath%20d%3D%27M7%200l7%207-7%207-7-7z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28274%2C194%29%27%3E%3Cpath%20d%3D%27M1%204h12v9H1z%20M4%204V2a3%203%200%200%201%206%200v2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28316%2C198%29%27%3E%3Cpath%20d%3D%27M0%200l14%207-14%207%203-7z%27%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E');
+  background-repeat: repeat;
+  background-size: 352px 232px;
+  position: relative;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+/* Content neeche se chipke — kam messages par upar khali jagah rehti thi.
+   NOTE: yahan "justify-content: flex-end" NAHI lagana. Scroll container
+   par woh Chrome mein scroll toR deta hai (content upar ki taraf overflow
+   ho kar pahunch se bahar chala jaata hai). Ye spacer akela kaafi hai:
+   khali jagah ho to phail jaata hai, messages zyada hon to 0 reh jaata
+   hai — aur scroll bilkul theek rehta hai. */
+.cs-push {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+.cs-day,
+.cs-sysm {
+  align-self: center;
+  background: var(--head);
+  color: var(--tx2);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 13px;
+  border-radius: 8px;
+  margin: 10px 0;
+  box-shadow: var(--sh);
+}
+.cs-sysm {
+  padding: 6px 14px;
+  max-width: 70%;
+  text-align: center;
+  margin: 8px 0;
+  font-weight: 400;
+}
+
+.cs-msg {
+  max-width: 65%;
+  position: relative;
+  margin-top: 4px;
+}
+.cs-msg.grp {
+  margin-top: 1px;
+}
+.cs-bub {
+  position: relative;
+  padding: 6px 9px 7px 10px;
+  border-radius: 7.5px;
+  box-shadow: var(--sh);
+  min-width: 0;
+  cursor: default;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  column-gap: 10px;
+}
+.cs-msg.in {
+  align-self: flex-start;
+}
+.cs-msg.in .cs-bub {
+  background: var(--recv);
+}
+.cs-msg.in.f1 .cs-bub {
+  border-radius: 0 7.5px 7.5px 7.5px;
+}
+.cs-msg.in.f1::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  border-top: 9px solid var(--recv);
+  border-left: 9px solid transparent;
+}
+.cs-msg.out {
+  align-self: flex-end;
+}
+.cs-msg.out .cs-bub {
+  background: var(--sent);
+}
+.cs-msg.out.f1 .cs-bub {
+  border-radius: 7.5px 0 7.5px 7.5px;
+}
+.cs-msg.out.f1::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  border-top: 9px solid var(--sent);
+  border-right: 9px solid transparent;
+}
+.cs-msg.pv .cs-bub {
+  background: var(--note);
+  border: 1px solid var(--note-b);
+}
+.cs-msg.pv.f1::before {
+  border-top-color: var(--note);
+}
+.cs-snd,
+.cs-q,
+.cs-lp,
+.cs-more,
+.cs-rx {
+  flex: 1 0 100%;
+}
+.cs-snd {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g);
+  margin-bottom: 2px;
+}
+.cs-tx {
+  font-size: 14.4px;
+  line-height: 1.42;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  letter-spacing: 0.002em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cs-tx :deep(a) {
+  color: var(--b);
+  text-decoration: underline;
+}
+.cs-tx :deep(p) {
+  margin: 0;
+}
+.cs-tx :deep(p + p) {
+  margin-top: 6px;
+}
+/* waqt: chhote message ke saath usi line par, lambe ke neeche-daayen.
+   float se overlap ho raha tha, isliye flex use kiya. */
+.cs-mt {
+  font-size: 11px;
+  color: var(--tx3);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  margin-bottom: 1px;
+}
+.cs-msg {
+  width: fit-content;
+  max-width: 65%;
+}
+.cs-msg.out.f1::before,
+.cs-msg.in.f1::before {
+  z-index: 1;
+}
+/* attachment bubbles: text nahi hota, isliye waqt absolute */
+.cs-msg:has(.cs-aud) .cs-mt,
+.cs-msg:has(.cs-img) .cs-mt,
+.cs-msg:has(.cs-file) .cs-mt {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  margin: 0;
+}
+.cs-msg.in { margin-right: auto; }
+.cs-msg.out { margin-left: auto; }
+.cs-mt .cs-tick {
+  width: 14px;
+  height: 14px;
+}
+.cs-img {
+  max-width: 330px;
+  max-height: 340px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.12);
+}
+.cs-msg:has(.cs-img) .cs-bub {
+  padding: 3px;
+  min-width: 0;
+}
+.cs-msg:has(.cs-img) .cs-mt {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  margin: 0;
+  background: rgba(11, 20, 26, 0.45);
+  color: #e9edef;
+  padding: 2px 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
+}
+.cs-err {
+  background: #4a1d24;
+  color: #ffb4bd;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+/* ===== VOICE bubble — WhatsApp jaisa ===== */
+.cs-audwrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+.cs-auddl {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.5;
+  cursor: pointer;
+  align-self: center;
+  transition: opacity 0.12s;
+}
+.cs-auddl:hover {
+  opacity: 0.95;
+}
+.cs-aud {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  margin: 2px 0 0;
+}
+/* :has() ke bagair bhi chale — bubble khud chaudai le */
+.cs-msg:has(.cs-aud) {
+  width: min(330px, 100%);
+}
+.cs-msg:has(.cs-aud) .cs-bub {
+  padding: 8px 10px 20px;
+  min-width: 0;
+  width: 100%;
+}
+.cs-aud :deep(.cs-voice) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.cs-aud :deep(.cs-voice__wave) {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+.cs-aud :deep(.cs-voice__row) {
+  gap: 10px;
+}
+.cs-msg .cs-aud :deep(.cs-voice__play),
+.cs-aud :deep(button.cs-voice__play) {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  flex: 0 0 38px !important;
+  opacity: 1 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  display: grid !important;
+  place-items: center !important;
+}
+.cs-msg .cs-aud :deep(.cs-voice__play *),
+.cs-aud :deep(.cs-voice__play svg),
+.cs-aud :deep(.cs-voice__play .size-5) {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  font-size: 24px !important;
+}
+.cs-app.lite .cs-aud :deep(.cs-voice__play) {
+  background: rgba(0, 0, 0, 0.07) !important;
+}
+.cs-aud :deep(.cs-voice__wave) {
+  height: 26px;
+  gap: 2px;
+}
+.cs-aud :deep(.cs-voice__bar) {
+  min-width: 2px;
+  opacity: 0.42;
+}
+.cs-aud :deep(.cs-voice__bar--on) {
+  opacity: 1;
+  background: #53bdeb;
+}
+.cs-aud :deep(.cs-voice__meta) {
+  padding-left: 48px !important;
+  margin-top: 2px !important;
+}
+.cs-aud :deep(.cs-voice__time) {
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+.cs-aud :deep(.cs-voice__speed) {
+  opacity: 0.6;
+}
+
+/* ===== CONTACT PROFILE ===== */
+.cs-pf {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: flex-end;
+}
+.cs-pfp {
+  width: 380px;
+  max-width: 90vw;
+  background: var(--panel);
+  height: 100%;
+  overflow-y: auto;
+}
+.cs-pfh {
+  height: 60px;
+  background: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 18px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.cs-pfb {
+  padding: 26px 20px 22px;
+  text-align: center;
+  border-bottom: 8px solid var(--chat);
+}
+.cs-pfav {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 52px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.cs-pfav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cs-pfn {
+  font-size: 21px;
+  color: var(--tx);
+}
+.cs-pfs {
+  font-size: 15px;
+  color: var(--tx3);
+  margin-top: 4px;
+}
+.cs-pfr {
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--ln2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cs-pfk {
+  font-size: 12.5px;
+  color: var(--g);
+}
+.cs-pfv {
+  font-size: 14.5px;
+  color: var(--tx);
+  word-break: break-all;
+}
+.cs-tnm {
+  cursor: pointer;
+}
+.cs-tav {
+  cursor: pointer;
+}
+
+.cs-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  color: var(--tx);
+  text-decoration: none;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+}
+
+/* ===== COMPOSER ===== */
+.cs-comp {
+  padding: 8px 18px 12px;
+  background: var(--head);
+  flex-shrink: 0;
+  position: relative;
+}
+.cs-cbar {
+  background: var(--inp);
+  border-radius: 24px;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 11px 17px;
+  min-height: 48px;
+  width: 100%;
+}
+.cs-cbar .cs-ci,
+.cs-cbar .cs-snd2 {
+  margin-bottom: 1px;
+}
+.cs-ci {
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
+  color: var(--tx2);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+  align-self: center;
+}
+.cs-ci:hover {
+  color: var(--tx);
+}
+.cs-cin {
+  flex: 1 1 0 !important;
+  width: auto !important;
+  min-width: 0;
+  overflow-y: auto;
+  background: none !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  resize: none;
+  color: var(--tx);
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 21px;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 21px;
+  min-height: 21px;
+  max-height: 132px;
+  display: block;
+  align-self: center;
+  transition: height 0.08s ease;
+}
+.cs-cin::placeholder {
+  color: var(--tx3);
+}
+.cs-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--g);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 6px 0;
+  padding: 8px;
+}
+.cs-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  animation: csblink 1.4s ease-in-out infinite;
+}
+.cs-dot.pz {
+  animation: none;
+  opacity: 0.45;
+}
+@keyframes csblink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.cs-rt {
+  font-size: 13px;
+  color: var(--tx2);
+  font-variant-numeric: tabular-nums;
+}
+.cs-sp {
+  flex: 1;
+}
+.cs-recstrip {
+  width: 100%;
+  min-height: 42px;
+  padding: 4px 16px 6px;
+  margin-bottom: 6px;
+  background: var(--fld);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cs-recstrip :deep(.cs-wave),
+.cs-recstrip :deep(> div) {
+  width: 100% !important;
+  min-height: 34px;
+}
+.cs-files {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.cs-fchip {
+  background: var(--fld);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 12.5px;
+  color: var(--tx2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cs-fchip span {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* ===== COMPOSER extras ===== */
+/* 24-ghante wali patti */
+.cs-winbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 10px 13px;
+  border-radius: 11px;
+  background: var(--red-tint);
+  border: 1px solid var(--red);
+}
+.cs-winbar > span[class*='i-'] {
+  width: 19px;
+  height: 19px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-winb {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+.cs-winb b {
+  display: block;
+  font-size: 13px;
+  color: var(--red);
+}
+.cs-winb span {
+  font-size: 11.5px;
+  color: var(--tx2);
+}
+.cs-winbtn {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 18px;
+  background: var(--g);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 7px 15px;
+  cursor: pointer;
+}
+.cs-winbtn:hover {
+  filter: brightness(1.08);
+}
+.cs-cin:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 768px) {
+  .cs-winbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cs-winbtn {
+    width: 100%;
+  }
+}
+
+.cs-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.cs-tab {
+  font-size: 13px;
+  padding: 5px 13px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--tx3);
+  cursor: pointer;
+}
+.cs-tab.on {
+  background: var(--fld);
+  color: var(--tx);
+  font-weight: 500;
+}
+.cs-cbar.note {
+  background: var(--note);
+  border: 1px solid var(--note-b);
+}
+.cs-ci.act {
+  color: var(--g);
+}
+.cs-emoji {
+  background: var(--fld);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 7px;
+  max-height: 190px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+}
+.cs-em {
+  font-size: 21px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  height: 34px;
+  border-radius: 6px;
+}
+.cs-em:hover {
+  background: var(--hov);
+}
+.cs-tplbox {
+  background: var(--fld);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.cs-tpl {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tpl:hover {
+  background: var(--hov);
+}
+.cs-tpln {
+  font-size: 13.5px;
+  color: var(--g);
+  font-weight: 500;
+}
+.cs-tplt {
+  font-size: 13px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.cs-tplempty {
+  padding: 16px;
+  text-align: center;
+  color: var(--tx3);
+  font-size: 13px;
+}
+
+/* row ke chhote nishan */
+.cs-mk {
+  width: 14px;
+  height: 14px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-ib {
+  font-size: 10.5px;
+  color: var(--tx3);
+  background: var(--fld);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* submenu ab menu ke upar — chhupta nahi tha */
+
+.cs-sub {
+  z-index: 10000 !important;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.55) !important;
+}
+.cs-has-sub:hover {
+  background: var(--menu-hov);
+}
+
+/* profile: aur tafseel */
+.cs-pfacts {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 16px 0 24px;
+}
+.cs-pfv.cap {
+  text-transform: capitalize;
+}
+.cs-pfa {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+.cs-pfab {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: var(--g);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+.cs-pfab:hover {
+  background: var(--hov);
+}
+.cs-pfab span:first-child {
+  width: 20px;
+  height: 20px;
+}
+
+/* ===== EMPTY ===== */
+.cs-none {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background: var(--chat);
+  text-align: center;
+}
+.cs-none-t {
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--tx2);
+}
+.cs-none-s {
+  font-size: 14px;
+  color: var(--tx3);
+  margin-top: 8px;
+}
+
+/* send: WhatsApp jaisa plain, gol background nahi */
+.cs-snd2 {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  color: var(--g);
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ===== REPLY PREVIEW ===== */
+.cs-rp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--fld);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 7px;
+}
+.cs-rpbar {
+  width: 4px;
+  align-self: stretch;
+  border-radius: 3px;
+  background: var(--g);
+  flex-shrink: 0;
+}
+.cs-rpb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-rpn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g);
+}
+.cs-rpt {
+  font-size: 13px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* number: naam ke neeche */
+.cs-rph {
+  font-size: 12px;
+  color: var(--tx3);
+  margin: -1px 0 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cs-tph {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== MESSAGE INFO ===== */
+.cs-inf {
+  width: 400px;
+}
+.cs-infp {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--tx);
+  background: var(--sent);
+  margin: 12px 16px;
+  border-radius: 7.5px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+.cs-infl {
+  flex: 1;
+  overflow-y: auto;
+}
+.cs-pfk.err,
+.cs-pfv.err {
+  color: var(--red);
+}
+
+/* ===== FORWARD ===== */
+.cs-fw {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.cs-fwb {
+  width: 420px;
+  max-width: 92vw;
+  max-height: 78vh;
+  background: var(--panel);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cs-fwh .cs-ic,
+.cs-pfh .cs-ic {
+  width: 19px;
+  height: 19px;
+  padding: 7px;
+  box-sizing: content-box;
+}
+.cs-fwh {
+  height: 58px;
+  background: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.cs-fwp {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--tx3);
+  border-bottom: 1px solid var(--ln2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fwl {
+  flex: 1;
+  overflow-y: auto;
+}
+.cs-fwr {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.cs-fwr:hover {
+  background: var(--hov);
+}
+.cs-fwr.on {
+  background: var(--g-tint);
+}
+.cs-fwav {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.cs-fwn {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fwck {
+  width: 20px;
+  height: 20px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-fwf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ln2);
+  flex-shrink: 0;
+}
+.cs-fwc {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx3);
+}
+.cs-fwbtn {
+  background: var(--g);
+  color: #fff;
+  border: 0;
+  border-radius: 20px;
+  padding: 8px 22px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cs-fwbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* quoted reply bubble ke andar */
+.cs-q {
+  display: flex;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 5px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  max-height: 58px;
+  overflow: hidden;
+}
+.cs-app.lite .cs-q {
+  background: rgba(0, 0, 0, 0.06);
+}
+.cs-qbar {
+  width: 4px;
+  border-radius: 3px;
+  background: var(--g);
+  flex-shrink: 0;
+}
+.cs-qb {
+  min-width: 0;
+}
+.cs-qn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g);
+}
+.cs-qt {
+  font-size: 12.5px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* reactions */
+.cs-rx {
+  display: flex;
+  gap: 3px;
+  margin: 3px 0 -2px;
+}
+.cs-rxi {
+  background: var(--head);
+  border-radius: 11px;
+  padding: 2px 7px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  box-shadow: var(--sh);
+}
+.cs-rxi b {
+  font-size: 11px;
+  color: var(--tx3);
+  font-weight: 500;
+}
+
+/* labels chip */
+.cs-lbs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 3px;
+  overflow: hidden;
+}
+.cs-lb {
+  font-size: 10.5px;
+  background: var(--g-tint);
+  color: var(--g);
+  padding: 1px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* typing */
+.cs-typ {
+  color: var(--g) !important;
+  font-style: italic;
+}
+
+/* lightbox — naam .cs-lbox hai, .cs-lb NAHI.
+   .cs-lb list ke label chip ka naam hai; dono ek hi naam par thay
+   aur chip ko position:fixed; inset:0 mil rahi thi -> poori screen kaali. */
+.cs-lbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.92);
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+.cs-lbox img {
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.cs-lboxx,
+.cs-lbd {
+  position: absolute;
+  top: 18px;
+  width: 26px;
+  height: 26px;
+  color: #e9edef;
+  cursor: pointer;
+}
+.cs-lboxx {
+  left: 20px;
+}
+.cs-lbd {
+  right: 20px;
+}
+
+/* forward: search + number */
+.cs-fwsr {
+  margin: 0 14px 8px !important;
+}
+.cs-fwnb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-fwph {
+  display: block;
+  font-size: 12px;
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
+}
+.cs-sub--tall {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* pills: label dot + more arrow */
+.cs-pld {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.cs-plmore {
+  padding: 5px 10px !important;
+  gap: 4px;
+}
+.cs-plmore span:first-child {
+  width: 15px;
+  height: 15px;
+}
+
+/* reactions row menu mein */
+.cs-rxrow {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 8px;
+  justify-content: space-between;
+}
+.cs-rxb {
+  font-size: 21px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition: transform 0.1s, background 0.1s;
+}
+.cs-rxb:hover {
+  background: var(--menu-hov);
+  transform: scale(1.18);
+}
+
+/* naya label banao */
+.cs-lbnew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-lbnew input {
+  flex: 1;
+  min-width: 0;
+  background: var(--inp);
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.cs-lbnew span {
+  width: 18px;
+  height: 18px;
+  color: var(--g);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* header 3-dot menu */
+.cs-ph {
+  position: relative;
+}
+.cs-hm {
+  position: absolute;
+  top: 54px;
+  right: 18px;
+  z-index: 60;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.32);
+  padding: 7px 0;
+  min-width: 226px;
+}
+.cs-app.lite .cs-hm,
+.cs-app.lite .cs-cmenu {
+  box-shadow: 0 4px 22px rgba(11, 20, 26, 0.16);
+  border: 1px solid var(--ln);
+}
+
+/* select mode */
+.cs-phsel {
+  gap: 4px;
+}
+.cs-selh {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+.cs-phsel {
+  gap: 8px;
+  padding: 13px 14px 10px;
+  flex-wrap: wrap;
+}
+.cs-phsel .cs-selh {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cs-phsel .cs-sbrow {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 7px;
+  margin-top: 2px;
+}
+.cs-sb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 15px;
+  border: 0;
+  background: var(--fld);
+  color: var(--tx2);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.cs-sb span:first-child {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-sb:hover:not(:disabled) {
+  background: var(--sel);
+  color: var(--tx);
+}
+.cs-sb.dgr {
+  color: var(--red);
+}
+.cs-sb:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cs-phsel .cs-ic {
+  width: 17px;
+  height: 17px;
+  padding: 8px;
+  box-sizing: content-box;
+}
+.cs-phsel::after {
+  display: none;
+}
+.cs-ic.off {
+  opacity: 0.32;
+  pointer-events: none;
+}
+.cs-ic.dgr {
+  color: var(--red);
+}
+.cs-ck {
+  width: 22px;
+  height: 22px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-ck.on {
+  color: var(--g);
+}
+
+/* light mode: bubbles aur panel ko kinara do */
+.cs-app.lite .cs-bub {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-day,
+.cs-app.lite .cs-sysm {
+  background: #ffffff;
+  color: #54656f;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-panel {
+  border-right: 1px solid var(--ln);
+}
+.cs-app.lite .cs-th {
+  border-bottom: 1px solid var(--ln);
+}
+.cs-app.lite .cs-comp {
+  border-top: 1px solid var(--ln);
+}
+.cs-app.lite .cs-cbar {
+  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.08);
+}
+.cs-app.lite .cs-un {
+  color: #ffffff;
+}
+.cs-app.lite .cs-rxi,
+.cs-app.lite .cs-q {
+  background: #f0f2f5;
+}
+
+/* tick: asli status */
+.cs-tick {
+  color: var(--tx3);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-tick.blue {
+  color: var(--b);
+}
+.cs-tick.err {
+  color: var(--red);
+}
+.cs-mt .cs-tick {
+  width: 14px;
+  height: 14px;
+}
+
+/* filter panel */
+.cs-flt {
+  width: 440px;
+}
+.cs-fltb {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 18px 14px;
+}
+.cs-fg {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-fg:last-child {
+  border-bottom: none;
+}
+.cs-fgl {
+  font-size: 12.5px;
+  color: var(--g);
+  margin-bottom: 9px;
+  font-weight: 500;
+}
+.cs-fgo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cs-fgo .cs-pl {
+  text-transform: capitalize;
+  user-select: none;
+}
+.cs-fgo .cs-pl.on::before {
+  content: '✓';
+  font-size: 11px;
+  margin-right: 2px;
+}
+.cs-fcn {
+  margin-left: auto;
+  background: var(--g);
+  color: #fff;
+  font-size: 11px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+}
+.cs-fwbtn.ghost {
+  background: transparent;
+  color: var(--tx2);
+  border: 1px solid var(--ln);
+}
+
+/* header quick actions */
+.cs-asg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--tx2);
+  background: var(--fld);
+  padding: 5px 11px;
+  border-radius: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-asg.none {
+  color: var(--tx3);
+}
+.cs-asgd {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--g);
+  flex-shrink: 0;
+}
+
+/* chat ke andar search */
+.cs-tqbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--head);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-tqbar > span {
+  width: 18px;
+  height: 18px;
+  color: var(--tx3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-tqbar input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 14px;
+  font-family: inherit;
+}
+.cs-tqc {
+  font-size: 12px !important;
+  color: var(--g) !important;
+  width: auto !important;
+}
+.cs-tqlist {
+  max-height: 190px;
+  overflow-y: auto;
+  background: var(--panel);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-tqr {
+  display: flex;
+  gap: 12px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tqr:hover {
+  background: var(--hov);
+}
+.cs-tqt {
+  font-size: 11.5px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-tqx {
+  font-size: 13.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* jump flash */
+.cs-msg.flash .cs-bub {
+  animation: csflash 1.3s ease;
+}
+@keyframes csflash {
+  0%,
+  100% {
+    filter: none;
+  }
+  30% {
+    filter: brightness(1.5);
+  }
+}
+
+/* unread divider */
+.cs-unrdiv {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+  color: var(--g);
+  font-size: 12px;
+}
+.cs-unrdiv::before,
+.cs-unrdiv::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--g);
+  opacity: 0.35;
+}
+
+/* scroll down */
+.cs-main {
+  position: relative;
+}
+.cs-older {
+  align-self: center;
+  font-size: 12px;
+  color: var(--tx3);
+  padding: 6px 0;
+}
+
+/* link preview */
+.cs-lp {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  padding: 7px 9px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--b);
+  font-size: 12.5px;
+}
+.cs-app.lite .cs-lp {
+  background: rgba(0, 0, 0, 0.05);
+}
+.cs-lp span:first-child {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.cs-lph {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* emoji search */
+.cs-emojiw {
+  background: var(--fld);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  overflow: hidden;
+}
+.cs-emsr {
+  margin: 8px 8px 4px !important;
+  background: var(--inp) !important;
+}
+.cs-emojiw .cs-emoji {
+  background: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* attachment preview */
+.cs-fp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--fld);
+  border-radius: 8px;
+  padding: 5px 9px 5px 5px;
+  max-width: 220px;
+}
+.cs-fpi {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.cs-fpf {
+  width: 22px;
+  height: 22px;
+  margin: 6px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-fpn {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--tx2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fpx {
+  width: 15px;
+  height: 15px;
+  color: var(--tx3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-comp.drag {
+  outline: 2px dashed var(--g);
+  outline-offset: -6px;
+}
+
+/* mobile: long press ke liye text select band */
+.cs-app.mob .cs-row,
+.cs-app.mob .cs-msg {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+
+/* thread ka apna menu — button ke neeche, DAAYEN taraf */
+.cs-th {
+  position: relative;
+}
+.cs-tm {
+  position: absolute;
+  top: 50px;
+  right: 12px;
+  z-index: 70;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  min-width: 240px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  overflow-x: visible;
+}
+.cs-app.lite .cs-tm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+/* submenu andar ki taraf khule, screen se bahar nahi */
+.cs-sub.left {
+  left: auto !important;
+  right: calc(100% + 4px) !important;
+}
+
+/* header icons: screenshot ke naap */
+.cs-th .cs-ic > svg {
+  width: 18px !important;
+  height: 18px !important;
+  display: block;
+}
+.cs-th .cs-ic:has(svg) {
+  width: 18px !important;
+  height: 18px !important;
+  display: grid;
+  place-items: center;
+}
+.cs-th .cs-ic,
+.cs-th span.cs-ic,
+.cs-th .i-lucide-search,
+.cs-th .i-lucide-more-vertical,
+.cs-th .i-lucide-arrow-left {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  font-size: 16px !important;
+  line-height: 16px !important;
+  padding: 8px !important;
+  box-sizing: content-box !important;
+  flex: 0 0 auto !important;
+  background-size: 16px 16px !important;
+}
+
+/* message select */
+.cs-msel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--head);
+  border-bottom: 1px solid var(--ln);
+  flex-shrink: 0;
+}
+.cs-mselc {
+  flex: 1;
+  font-size: 14px;
+  color: var(--tx);
+}
+.cs-msg.msel .cs-bub {
+  outline: 2px solid var(--g);
+  outline-offset: 2px;
+}
+.cs-msg.msel {
+  opacity: 0.92;
+}
+
+/* scroll-down: chhota aur saaf */
+/* dark theme -> HALKA button | light theme -> GEHRA button */
+.cs-down {
+  position: absolute;
+  right: 22px;
+  bottom: 108px;
+  width: 18px !important;
+  height: 18px !important;
+  padding: 11px !important;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: #e9edef;
+  color: #111b21;
+  border: none;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  z-index: 6;
+}
+.cs-down:hover {
+  background: #ffffff;
+}
+.cs-app.lite .cs-down {
+  background: #202c33;
+  color: #e9edef;
+  box-shadow: 0 3px 12px rgba(11, 20, 26, 0.3);
+}
+.cs-app.lite .cs-down:hover {
+  background: #111b21;
+}
+@media (max-width: 768px) {
+  .cs-down {
+    right: 14px;
+    bottom: 96px;
+  }
+}
+
+/* ===== MOBILE MENUS ===== */
+@media (max-width: 768px) {
+  .cs-cmenu {
+    max-width: calc(100vw - 20px);
+    min-width: 210px !important;
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+  .cs-hm,
+  .cs-tm {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 10px !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: 74vh;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+}
+
+/* confirm dialog */
+.cs-ask {
+  width: 400px;
+  max-width: 92vw;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 22px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.cs-askt {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--tx);
+  margin-bottom: 10px;
+}
+.cs-askb {
+  font-size: 14px;
+  color: var(--tx2);
+  line-height: 1.5;
+}
+.cs-askf {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.cs-fwbtn.dgr {
+  background: var(--red);
+}
+
+/* new canned */
+.cs-cnew {
+  width: 480px;
+}
+.cs-fl {
+  display: block;
+  font-size: 12.5px;
+  color: var(--g);
+  margin: 14px 0 6px;
+}
+.cs-fi {
+  width: 100%;
+  background: var(--inp);
+  border: 1px solid var(--ln);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--tx);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.cs-fta {
+  resize: vertical;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.cs-hint {
+  font-size: 12px;
+  color: var(--tx3);
+  margin-top: 7px;
+}
+.cs-tplnew {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--g);
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--ln2);
+}
+.cs-tplnew:hover {
+  background: var(--hov);
+}
+.cs-tplnew span:first-child {
+  width: 16px;
+  height: 16px;
+}
+.cs-tplt {
+  white-space: pre-wrap !important;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* toasts */
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+.cs-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 10002;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.cs-toast {
+  background: var(--menu);
+  color: var(--tx);
+  font-size: 13.5px;
+  padding: 10px 18px;
+  border-radius: 20px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  animation: cstin 0.18s ease-out;
+}
+.cs-toast.err {
+  background: var(--red);
+  color: #fff;
+}
+@keyframes cstin {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* channel error */
+.cs-cerr {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 12px 10px;
+  padding: 10px 13px;
+  background: rgba(241, 92, 109, 0.14);
+  border: 1px solid rgba(241, 92, 109, 0.4);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.cs-cerr > span:first-child {
+  width: 18px;
+  height: 18px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-cerrb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-cerrn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+}
+.cs-cerrm {
+  font-size: 12px;
+  color: var(--tx2);
+  line-height: 1.35;
+}
+.cs-cerrc {
+  font-size: 12px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+
+/* failed messages */
+.cs-failbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  background: rgba(241, 92, 109, 0.14);
+  border-top: 1px solid rgba(241, 92, 109, 0.35);
+  flex-shrink: 0;
+}
+.cs-failbar > span:first-child {
+  width: 17px;
+  height: 17px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.cs-failt {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx);
+}
+
+/* loading skeleton */
+.cs-sk {
+  display: flex;
+  gap: 14px;
+  padding: 11px 20px 11px 16px;
+  align-items: center;
+}
+.cs-ska {
+  width: 49px;
+  height: 49px;
+  border-radius: 50%;
+  background: var(--fld);
+  flex-shrink: 0;
+  animation: cspulse 1.3s ease-in-out infinite;
+}
+.cs-skb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-skl {
+  height: 11px;
+  border-radius: 6px;
+  background: var(--fld);
+  margin-bottom: 8px;
+  animation: cspulse 1.3s ease-in-out infinite;
+}
+.cs-skl.w60 {
+  width: 60%;
+}
+.cs-skl.w85 {
+  width: 85%;
+  height: 9px;
+  margin-bottom: 0;
+}
+@keyframes cspulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Read more */
+.cs-more {
+  display: inline-block;
+  color: var(--b);
+  font-size: 13.5px;
+  cursor: pointer;
+  margin-top: 3px;
+  user-select: none;
+}
+.cs-more:hover {
+  text-decoration: underline;
+}
+
+/* agent picker */
+.cs-asgc {
+  width: 13px;
+  height: 13px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.cs-agm {
+  position: absolute;
+  top: 50px;
+  right: 96px;
+  z-index: 70;
+  width: 290px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 8px 0 6px;
+  overflow: hidden;
+}
+.cs-app.lite .cs-agm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+.cs-agsr {
+  margin: 0 10px 8px !important;
+  background: var(--inp) !important;
+}
+.cs-agsr input {
+  padding: 8px 0 !important;
+  font-size: 13.5px !important;
+}
+.cs-agl {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.cs-agr {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.cs-agr:hover {
+  background: var(--menu-hov);
+}
+.cs-agr.on {
+  background: var(--g-tint);
+}
+.cs-agav {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.cs-agav.none {
+  background: var(--fld);
+  color: var(--tx3);
+  width: 20px;
+  height: 20px;
+  margin: 6px;
+}
+.cs-agnb {
+  flex: 1;
+  min-width: 0;
+}
+.cs-agn {
+  display: block;
+  font-size: 14px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-age {
+  display: block;
+  font-size: 11.5px;
+  color: var(--tx3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-agck {
+  width: 17px;
+  height: 17px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-agempty {
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tx3);
+}
+@media (max-width: 768px) {
+  .cs-agm {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    width: auto;
+    border-radius: 12px;
+  }
+}
+
+/* pill ke counts */
+.cs-plt {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tx3);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cs-pl.on .cs-plt {
+  color: var(--g);
+  opacity: 0.85;
+}
+.cs-plu + .cs-plt {
+  opacity: 0.55;
+}
+.cs-plu {
+  background: var(--badge);
+  color: var(--badge-tx);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+/* ===== SUBMENU: hamesha menu ke ANDAR (accordion) =====
+   Flyout (left:100%) screen se bahar chala jaata tha aur menu ka
+   overflow-y bhi torta tha. Andar khulne se dono masle khatam. */
+.cs-sub,
+.cs-sub.left,
+.cs-sub--tall {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: var(--menu-hov) !important;
+  padding: 4px 0 !important;
+  margin: 5px 0 2px !important;
+  max-height: 230px;
+  overflow-y: auto;
+}
+.cs-sub .cs-mi {
+  padding-left: 44px !important;
+  font-size: 13.5px !important;
+}
+.cs-has-sub {
+  flex-wrap: wrap;
+}
+.cs-has-sub .cs-arw {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+
+/* menus kabhi screen se bahar na jayen */
+.cs-cmenu,
+.cs-hm,
+.cs-tm {
+  max-height: min(78vh, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cs-cmenu::-webkit-scrollbar,
+.cs-hm::-webkit-scrollbar,
+.cs-tm::-webkit-scrollbar,
+.cs-sub::-webkit-scrollbar {
+  width: 5px;
+}
+.cs-cmenu::-webkit-scrollbar-thumb,
+.cs-hm::-webkit-scrollbar-thumb,
+.cs-tm::-webkit-scrollbar-thumb,
+.cs-sub::-webkit-scrollbar-thumb {
+  background: var(--ln);
+  border-radius: 3px;
+}
+
+/* NOTE: pehle yahan Chatwoot ka hamburger chhupaya jaata tha, magar
+   woh rule GLOBAL tha — har page par lagta tha. Nateeja: Campaigns,
+   Reports, Settings, Templates, Gallery par sidebar kholne ka koi
+   rasta hi nahi bachta tha. Ab woh rule hata diya gaya hai. */
+.cs-ham {
+  margin-right: 2px;
+}
+.cs-ph .cs-ham > svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* row ke chhote meta chips */
+.cs-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 0 3px;
+  flex-wrap: wrap;
+}
+.cs-asn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--tx3);
+  background: var(--fld);
+  padding: 1px 7px 1px 5px;
+  border-radius: 9px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cs-asn span {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+.cs-asn.none {
+  opacity: 0.6;
+  font-style: italic;
+  padding: 1px 7px;
+}
+.cs-asn.tm {
+  color: var(--b);
+}
+.cs-pr {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.cs-pr.p-urgent {
+  background: rgba(241, 92, 109, 0.18);
+  color: var(--red);
+}
+.cs-pr.p-high {
+  background: rgba(255, 159, 67, 0.18);
+  color: #ff9f43;
+}
+.cs-pr.p-medium {
+  background: rgba(83, 189, 235, 0.16);
+  color: var(--b);
+}
+.cs-pr.p-low {
+  background: var(--fld);
+  color: var(--tx3);
+}
+
+/* label par ✕ */
+.cs-lb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cs-lbx {
+  width: 11px;
+  height: 11px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.cs-lbx:hover {
+  opacity: 1;
+}
+
+/* active filter bar */
+.cs-fbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 12px 10px;
+  padding: 8px 11px;
+  background: var(--g-tint);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.cs-fbar > span:first-child {
+  width: 15px;
+  height: 15px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-fbt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.cs-fbc {
+  font-size: 11.5px;
+  color: var(--g);
+  background: var(--panel);
+  padding: 1px 7px;
+  border-radius: 8px;
+  text-transform: capitalize;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-fbn {
+  font-size: 11.5px;
+  color: var(--g);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+.cs-fbx {
+  width: 14px;
+  height: 14px;
+  padding: 5px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  color: var(--g);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.cs-fbx:hover {
+  opacity: 1;
+  background: var(--panel);
+}
+
+/* mobile rail overlay */
+.cs-railbg {
+  position: fixed;
+  inset: 0;
+  z-index: 9996;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* bulk actions dropdown */
+.cs-sbrow {
+  position: relative;
+}
+.cs-bm {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 80;
+  min-width: 236px;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+}
+.cs-app.lite .cs-bm {
+  border: 1px solid var(--ln);
+  box-shadow: 0 6px 26px rgba(11, 20, 26, 0.18);
+}
+@media (max-width: 768px) {
+  .cs-bm {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    min-width: 0;
+    border-radius: 12px;
+  }
+}
+
+/* bulk label panel (ChatsSync jaisa) */
+.cs-lbp {
+  padding: 8px 0 10px;
+}
+.cs-lbsr {
+  margin: 0 10px 8px !important;
+  background: var(--inp) !important;
+}
+.cs-lbsr input {
+  padding: 8px 0 !important;
+  font-size: 13.5px !important;
+}
+.cs-lbl {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0 6px;
+}
+.cs-lbr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cs-lbr:hover {
+  background: var(--menu-hov);
+}
+.cs-lbr.on {
+  background: var(--g-tint);
+}
+.cs-lbn {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-lbck {
+  width: 16px;
+  height: 16px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-lbbtn {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 10px 10px 0;
+  padding: 9px 0;
+  border: 0;
+  border-radius: 7px;
+  background: var(--g);
+  color: #fff;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cs-lbbtn.dgr {
+  background: var(--red);
+}
+.cs-lbbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* label picker */
+.cs-lpb {
+  width: 400px;
+  max-width: 92vw;
+  max-height: 76vh;
+  background: var(--panel);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cs-lpsr {
+  margin: 12px 14px 8px !important;
+  background: var(--fld) !important;
+}
+.cs-lpl {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+.cs-lpr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.cs-lpr:hover {
+  background: var(--hov);
+}
+.cs-lpr.on {
+  background: var(--g-tint);
+}
+.cs-lpr.new {
+  color: var(--g);
+}
+.cs-lpr.new > span:first-child {
+  width: 15px;
+  height: 15px;
+}
+.cs-lpr .cs-pld {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+.cs-lpn {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-lpcnt {
+  font-size: 11px;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.cs-lpck {
+  width: 17px;
+  height: 17px;
+  color: var(--g);
+  flex-shrink: 0;
+}
+.cs-lpf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ln2);
+  flex-shrink: 0;
+}
+.cs-lpc {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tx3);
+}
+
+/* ===== CONTEXT MENU ===== */
+/* desktop: overflow visible taake submenu flyout kata na jaye —
+   fitMenu menu ko khud screen ke andar khinch leta hai.
+   mobile: submenu andar khulta hai, isliye wahan scroll safe hai
+   (neeche media query mein). */
+.cs-cmenu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--menu);
+  border-radius: 8px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+  padding: 7px 0;
+  min-width: 224px;
+  max-height: min(78vh, calc(100vh - 24px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.cs-cmenu::-webkit-scrollbar {
+  width: 5px;
+}
+.cs-cmenu::-webkit-scrollbar-thumb {
+  background: var(--ln);
+  border-radius: 3px;
+}
+.cs-arch.on {
+  background: var(--g-tint);
+}
+.cs-arch.on .cs-arch-t {
+  color: var(--g);
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 768px) {
+  .cs-app {
+    overflow: hidden;
+    max-width: 100vw;
+    /* keyboard khulne par 100vh galat rehta hai — dvh asli jagah deta
+       hai, isliye header oopar chipka rehta hai jaise WhatsApp mein */
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+  .cs-th {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .cs-thread {
+    padding: 12px 4%;
+  }
+  .cs-panel {
+    width: 100%;
+    max-width: 100vw;
+    flex: 1 1 100%;
+    min-width: 0;
+    border-right: none;
+  }
+  .cs-img {
+    max-width: 78vw;
+    max-height: 60vh;
+  }
+  .cs-main {
+    display: none;
+  }
+  .cs-none {
+    display: none;
+  }
+  .cs-app.thr .cs-panel {
+    display: none;
+  }
+  .cs-app.thr .cs-main {
+    display: flex;
+    width: 100%;
+  }
+  .cs-thread {
+    padding: 14px 10px;
+  }
+  .cs-msg {
+    max-width: 82%;
+  }
+  .cs-comp {
+    padding: 7px 8px 9px;
+  }
+  .cs-ph {
+    padding: 14px 14px 10px;
+  }
+  .cs-row {
+    padding: 11px 14px;
+  }
+  .cs-cmenu {
+    min-width: 200px;
+    max-width: 84vw;
+  }
+  .cs-th {
+    height: 56px;
+    padding: 0 10px;
+    gap: 10px;
+  }
+  .cs-tav {
+    width: 36px;
+    height: 36px;
+  }
+  .cs-tn {
+    font-size: 15.5px;
+  }
+  .cs-av {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+  }
+  .cs-psr {
+    margin: 0 10px 10px;
+  }
+  .cs-pills {
+    padding: 0 10px 10px;
+  }
+  .cs-pfp {
+    width: 100%;
+    max-width: 100%;
+  }
+  .cs-cbar {
+    border-radius: 22px;
+    min-height: 44px;
+    gap: 9px;
+    padding: 0 12px;
+  }
+  .cs-emoji {
+    max-height: 150px;
+  }
+  .cs-msg:has(.cs-aud) .cs-bub {
+    min-width: 0;
+  }
+  .cs-msg:has(.cs-aud) {
+    width: min(330px, 84%);
+  }
+  .cs-lb img {
+    max-width: 98vw;
+  }
+  .cs-fwb {
+    max-height: 88vh;
+  }
+  .cs-cbar {
+    padding: 9px 13px;
+  }
+  .cs-comp {
+    padding: 7px 8px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  .cs-cbar {
+    border-radius: 24px;
+    min-height: 46px;
+    gap: 12px;
+    padding: 10px 15px;
+  }
+  .cs-msg {
+    max-width: 84%;
+  }
+  .cs-snd2,
+  .cs-ci {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+  }
+}
+.cs-mi {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 17px;
+  font-size: 14.5px;
+  color: var(--tx);
+  cursor: pointer;
+}
+.cs-mi:hover {
+  background: var(--menu-hov);
+}
+.cs-mi span:first-child {
+  width: 19px;
+  height: 19px;
+  color: var(--tx2);
+  flex-shrink: 0;
+}
+.cs-mi.danger,
+.cs-mi.danger span:first-child {
+  color: var(--red);
+}
+.cs-cmenu hr {
+  margin: 6px 0;
+  border: none;
+  border-top: 1px solid var(--ln);
+}
+/* =====================================================================
+   POLISH — WhatsApp jaisi finishing. Sirf CSS, koi logic nahi badla.
+   ===================================================================== */
+/* bubbles: halka saya aur narm kinare */
+.cs-msg {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cs-app.lite .cs-msg {
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.1);
+}
+.cs-msg.out {
+  border-radius: 8px 0 8px 8px;
+}
+.cs-msg.in {
+  border-radius: 0 8px 8px 8px;
+}
+.cs-msg.out:not(.f1) {
+  border-radius: 8px;
+}
+.cs-msg.in:not(.f1) {
+  border-radius: 8px;
+}
+
+/* list rows: narm hover aur saaf selected haalat */
+.cs-row {
+  transition: background 0.12s ease;
+}
+.cs-row.on {
+  box-shadow: inset 3px 0 0 var(--g);
+}
+.cs-app.lite .cs-row.on {
+  box-shadow: inset 3px 0 0 var(--g);
+}
+
+/* pills aur search: narm harkat */
+.cs-pl,
+.cs-search,
+.cs-ic,
+.cs-mi {
+  transition: background 0.13s ease, color 0.13s ease, filter 0.13s ease;
+}
+.cs-search:focus-within {
+  outline: 1px solid var(--g);
+}
+
+/* scrollbar: patli aur khamosh */
+.cs-list::-webkit-scrollbar,
+.cs-thread::-webkit-scrollbar,
+.cs-cscroll::-webkit-scrollbar {
+  width: 6px;
+}
+.cs-list::-webkit-scrollbar-thumb,
+.cs-thread::-webkit-scrollbar-thumb,
+.cs-cscroll::-webkit-scrollbar-thumb {
+  background: var(--sel);
+  border-radius: 3px;
+}
+.cs-list::-webkit-scrollbar-thumb:hover,
+.cs-thread::-webkit-scrollbar-thumb:hover {
+  background: var(--tx3);
+}
+.cs-list,
+.cs-thread {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sel) transparent;
+}
+
+/* menus: halka sa upar se aana */
+/* SIRF opacity. transform yahan nahi lagana — getBoundingClientRect
+   usay shamil karta hai aur fitMenu ki position bigar jaati hai. */
+.cs-hm,
+.cs-tm,
+.cs-cmenu {
+  animation: csPop 0.12s ease-out;
+}
+@keyframes csPop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* composer: focus par halki hari lakeer */
+.cs-bar {
+  transition: box-shadow 0.14s ease;
+}
+.cs-bar:focus-within {
+  box-shadow: 0 0 0 1px var(--g);
+}
+
+/* day chip aur unread divider thoda saaf */
+.cs-day span,
+.cs-unrd span {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+
+/* labels aur chips: text kabhi na toote */
+.cs-lb,
+.cs-chip,
+.cs-ib {
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-hm,
+  .cs-tm,
+  .cs-cmenu {
+    animation: none;
+  }
+}
+
+</style>
