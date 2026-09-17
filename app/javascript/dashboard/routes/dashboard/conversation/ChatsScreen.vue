@@ -241,13 +241,17 @@ const autoLoadAll = async () => {
       return;
     }
     listPage.value = page;
-    // store bharne do, phir KHUD merge karo aur uska nateeja dekho
+
+    // store ko bharne ka waqt do — sirf nextTick kaafi nahi, kyunki
+    // Vuex mutation aur re-render dono hone chahiyen
+    await new Promise(r => setTimeout(r, 350));
     await nextTick();
-    if (mergeFromStore() === 0) {
+
+    const added = mergeFromStore();
+    if (added === 0) {
       noMoreChats.value = true;
       return;
     }
-    await new Promise(r => setTimeout(r, 250));
   }
 };
 const recorderRef = ref(null);
@@ -2341,10 +2345,12 @@ onMounted(() => {
   // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
   // wapas de deta tha
   resetChatList();
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 }).then(() => {
-    // pehla page aane ke baad baqi khud
-    setTimeout(autoLoadAll, 400);
-  });
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
+  /* Baqi page khud. PEHLE ye safeD(...).then(...) ke andar tha aur
+     kabhi chalta hi nahi tha — page 2 kabhi maangi hi nahi jaati thi
+     (Network mein sirf page 1 dikhti thi). Ab kisi promise ka intezaar
+     nahi, seedha waqt ke hisaab se. */
+  setTimeout(autoLoadAll, 1500);
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
