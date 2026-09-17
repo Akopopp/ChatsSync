@@ -24,7 +24,47 @@ const store = useStore();
 const router = useRouter();
 
 /* ---------------- store ---------------- */
-const allChats = useMapGetter('getAllConversations');
+const storeChats = useMapGetter('getAllConversations');
+
+/* ===== CHAT LIST =====
+   Server bilkul theek hai — page 2 par alag chats deta hai (tasdeeq ho
+   chuki: 158 kul, har page par 25 alag).
+   Masla Vuex store mein tha: fetchAllConversations nayi chats laata hai
+   magar list mein JODTA nahi, BADAL deta hai. Isi liye 158 chats hone
+   ke bawajood hamesha sirf 25 dikhti thin.
+   Hal: apni list rakhte hain. Store se jo bhi aaye usay jodte jaate
+   hain (id se dedupe), aur purane page kabhi nahi khote. Websocket ke
+   naye/updated messages bhi store se hi aate hain, to woh bhi chalte
+   rahenge. */
+const extraChats = ref([]);
+
+const allChats = computed(() => {
+  const seen = new Map();
+  (storeChats.value || []).forEach(c => c && seen.set(c.id, c));
+  // store mein jo na ho, woh hamari apni list se
+  extraChats.value.forEach(c => {
+    if (c && !seen.has(c.id)) seen.set(c.id, c);
+  });
+  return [...seen.values()];
+});
+
+/* store ki list badalti rahe, hum har naya chat apne paas bacha lete
+   hain — taake agla page aane par purane gayab na hon */
+watch(
+  storeChats,
+  list => {
+    if (!Array.isArray(list) || !list.length) return;
+    const have = new Set(extraChats.value.map(c => c.id));
+    const add = list.filter(c => c && !have.has(c.id));
+    if (add.length) extraChats.value = [...extraChats.value, ...add];
+    else {
+      // mojood chats ka taaza data bhi rakh lo (unread count waghera)
+      const byId = new Map(list.map(c => [c.id, c]));
+      extraChats.value = extraChats.value.map(c => byId.get(c.id) || c);
+    }
+  },
+  { deep: false }
+);
 const currentChat = useMapGetter('getSelectedChat');
 const currentUser = useMapGetter('getCurrentUser');
 const inboxesList = useMapGetter('inboxes/getInboxes');
@@ -132,6 +172,14 @@ const emptyTries = ref(0);
    jaise hain. */
 const FETCH_PARAMS = { status: 'all', assigneeType: 'all' };
 
+/* account badle to sab kuch naye sire se */
+const resetChatList = () => {
+  extraChats.value = [];
+  listPage.value = 1;
+  noMoreChats.value = false;
+  emptyTries.value = 0;
+};
+
 const loadMoreChats = () => {
   if (loadingMore.value || noMoreChats.value) return;
   loadingMore.value = true;
@@ -146,7 +194,7 @@ const loadMoreChats = () => {
         // ek khali jawab par haar mat maano — agla page bhi dekh lo
         listPage.value = page;
         emptyTries.value += 1;
-        if (emptyTries.value >= 2) noMoreChats.value = true;
+        if (emptyTries.value >= 3) noMoreChats.value = true;
       }
     })
     .catch(() => {
@@ -2250,6 +2298,7 @@ onMounted(() => {
   store.dispatch('setChatStatusFilter', 'all');
   // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
   // wapas de deta tha
+  resetChatList();
   safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
