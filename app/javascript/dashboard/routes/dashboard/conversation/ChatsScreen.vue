@@ -210,6 +210,36 @@ const onListScroll = e => {
   const el = e.target;
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) loadMoreChats();
 };
+
+/* PEHLE sirf scroll par agla page aata tha. Magar list ka container
+   kabhi kabhi scroll hota hi nahi (clientHeight 0 nikla), to agla page
+   kabhi maanga hi nahi jaata tha — 158 chats hone par bhi sirf 25.
+
+   Ab mount par khud hi saare page laa lete hain, ek ek karke, thoda
+   waqfa de kar (server par bojh na pade). Scroll aur "Load more" ab
+   bhi chalte hain, magar list unke bagair bhi poori aa jaayegi. */
+const AUTO_PAGES = 12; // 12 x 25 = 300 chats tak khud
+let autoStop = false;
+
+const autoLoadAll = async () => {
+  for (let i = 0; i < AUTO_PAGES; i += 1) {
+    if (autoStop || noMoreChats.value) return;
+    const before = (allChats.value || []).length;
+    const page = listPage.value + 1;
+    try {
+      await safeD('fetchAllConversations', { ...FETCH_PARAMS, page });
+    } catch (e) {
+      return;
+    }
+    listPage.value = page;
+    // kuch naya nahi aaya -> list khatam
+    if ((allChats.value || []).length <= before) {
+      noMoreChats.value = true;
+      return;
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+};
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
@@ -2152,15 +2182,17 @@ const toggleFep = () => {
 };
 
 const fepOf = c => {
-  if (!fepOn.value) return null;
-  const a = c?.additional_attributes || {};
-  if (!a.cs_fep) return null;
+  if (!fepOn.value || !c) return null;
+  const a = c.additional_attributes || {};
+
+  // Ad se nahi aayi, ya muft window khatam -> LAAL (paise lagenge)
+  if (!a.cs_fep) return { live: false, left: 'Paid conversation' };
 
   const exp = Number(a.cs_fep_expires_at || 0);
   if (!exp) return { live: true, left: 'Free entry point' };
 
   const leftSec = exp - fepNow.value;
-  if (leftSec <= 0) return { live: false, left: 'Free window ended' };
+  if (leftSec <= 0) return { live: false, left: 'Free window ended — paid now' };
 
   const h = Math.floor(leftSec / 3600);
   const m = Math.floor((leftSec % 3600) / 60);
@@ -2299,7 +2331,10 @@ onMounted(() => {
   // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
   // wapas de deta tha
   resetChatList();
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 }).then(() => {
+    // pehla page aane ke baad baqi khud
+    setTimeout(autoLoadAll, 400);
+  });
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2325,6 +2360,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
   window.removeEventListener('chatssync:theme', onThemeEvent);
+  autoStop = true;
   clearInterval(themePoll);
   clearInterval(fepTimer);
   if (themeObs) {
