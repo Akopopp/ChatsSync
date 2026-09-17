@@ -53,10 +53,7 @@ const allChats = computed(() => {
    Ye function KITNE NAYE aaye, wahi lautata hai.
 
    AHEM: pehle ye sirf ek watch() ke andar tha. Watcher agle tick par
-   chalta hai, aur autoLoadAll fetch ke FORAN baad ginti dekhta tha —
-   us waqt tak merge hua hi nahi hota tha. Ginti purani dikhti thi,
-   code samajhta tha "list khatam", aur page 2 ke baad hi ruk jaata
-   tha. Isi liye 158 chats hone par bhi sirf 25 dikhtin.
+   chalta hai, isliye fetch ke foran baad ginti purani dikhti thi.
    Ab merge khud, usi waqt. */
 const mergeFromStore = () => {
   const list = storeChats.value || [];
@@ -215,9 +212,10 @@ const loadMoreChats = () => {
     });
 };
 
+/* neeche pahunchte hi agla page — chupchaap, bina shor ke */
 const onListScroll = e => {
   const el = e.target;
-  if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) loadMoreChats();
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMoreChats();
 };
 
 /* PEHLE sirf scroll par agla page aata tha. Magar list ka container
@@ -227,18 +225,20 @@ const onListScroll = e => {
    Ab mount par khud hi saare page laa lete hain, ek ek karke, thoda
    waqfa de kar (server par bojh na pade). Scroll aur "Load more" ab
    bhi chalte hain, magar list unke bagair bhi poori aa jaayegi. */
-const AUTO_PAGES = 12; // 12 x 25 = 300 chats tak khud
-let autoStop = false;
+/* ===== PAGES — bilkul Chatwoot ka apna tareeqa =====
+   PEHLE maine mount par saari chats ek saath khenchne wala loop laga
+   diya tha (6 requests peeche peeche). Isi liye har baar khulte hi
+   ginti 0 se 158 tak bhagti thi, sust lagta tha, aur kabhi error bhi
+   aa jaata tha. Woh galat tha.
 
-/* ===== PAGES SEEDHA REST SE =====
-   Vuex ka fetchAllConversations bar bar dhoka de gaya — page 2 kabhi
-   maangi hi nahi jaati thi (Network mein sirf ['1','1'] dikhta tha),
-   aur uske andar kya ho raha hai woh hamein nazar nahi aata.
+   Chatwoot aisa nahi karta (ChatList.vue): khulte hi sirf 25, aur
+   agla page SIRF tab jab banda neeche pahunche. Page number bhi khud
+   nahi ginta — store ka conversationPage module rakhta hai, aur wahi
+   batata hai ke list khatam hui ya nahi.
 
-   Ab wahi tareeqa jo Contacts aur Dashboard par pehle se chal raha
-   hai aur wahan koi masla nahi: seedha REST, apni list.
-   Store ab bhi chalta rahega — websocket ke naye message usi se aate
-   hain — magar list ki bunyad hamari apni hai. */
+   Ab wahi. Sirf ek cheez apni rakhi hai: extraChats. Store list ko
+   badal deta hai (replace), isi wajah se "158 dikhi phir 25 reh gayi"
+   hota tha — extraChats purani chats ko sambhal leti hai. */
 const fetchChatPage = async page => {
   const res = await req(
     'get',
@@ -251,26 +251,6 @@ const fetchChatPage = async page => {
   const add = list.filter(c => c && !have.has(c.id));
   if (add.length) extraChats.value = [...extraChats.value, ...add];
   return add.length;
-};
-
-const autoLoadAll = async () => {
-  for (let i = 0; i < AUTO_PAGES; i += 1) {
-    if (autoStop || noMoreChats.value) return;
-    const page = listPage.value + 1;
-    let added = 0;
-    try {
-      added = await fetchChatPage(page);
-    } catch (e) {
-      console.warn('[ChatsSync] page', page, 'failed', e);
-      return;
-    }
-    listPage.value = page;
-    if (added === 0) {
-      noMoreChats.value = true;
-      return;
-    }
-    await new Promise(r => setTimeout(r, 120));
-  }
 };
 const recorderRef = ref(null);
 const fileInput = ref(null);
@@ -2363,12 +2343,8 @@ onMounted(() => {
   // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
   // wapas de deta tha
   resetChatList();
+  // sirf pehla page — baqi tab jab banda neeche scroll kare
   safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
-  /* Baqi page khud. PEHLE ye safeD(...).then(...) ke andar tha aur
-     kabhi chalta hi nahi tha — page 2 kabhi maangi hi nahi jaati thi
-     (Network mein sirf page 1 dikhti thi). Ab kisi promise ka intezaar
-     nahi, seedha waqt ke hisaab se. */
-  setTimeout(autoLoadAll, 1500);
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2394,7 +2370,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
   window.removeEventListener('chatssync:theme', onThemeEvent);
-  autoStop = true;
   clearInterval(themePoll);
   clearInterval(fepTimer);
   if (themeObs) {
