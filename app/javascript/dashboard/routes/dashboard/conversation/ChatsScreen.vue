@@ -24,55 +24,25 @@ const store = useStore();
 const router = useRouter();
 
 /* ---------------- store ---------------- */
-const storeChats = useMapGetter('getAllConversations');
+/* ===== CHAT LIST — bilkul Chatwoot ka apna tareeqa =====
+   PEHLE maine apni alag list bana kar store ke upar rakh di thi.
+   Do bade masle us se paida hue:
+     1. pills ki ginti apni list se aati thi, server ke asal total se
+        nahi — isliye har baar 25 se shuru
+     2. 25 ke baad wali chat khulti hi nahi thi, kyunki woh sirf meri
+        list mein thi, Chatwoot ke store mein nahi — aur chat kholne
+        ka poora nizaam store se chalta hai
 
-/* ===== CHAT LIST =====
-   Server bilkul theek hai — page 2 par alag chats deta hai (tasdeeq ho
-   chuki: 158 kul, har page par 25 alag).
-   Masla Vuex store mein tha: fetchAllConversations nayi chats laata hai
-   magar list mein JODTA nahi, BADAL deta hai. Isi liye 158 chats hone
-   ke bawajood hamesha sirf 25 dikhti thin.
-   Hal: apni list rakhte hain. Store se jo bhi aaye usay jodte jaate
-   hain (id se dedupe), aur purane page kabhi nahi khote. Websocket ke
-   naye/updated messages bhi store se hi aate hain, to woh bhi chalte
-   rahenge. */
-const extraChats = ref([]);
+   Chatwoot ki ChatList.vue apni koi list nahi banati. Ab hum bhi nahi.
+   Sirf store, aur pagination conversationPage module par. */
+const allChats = useMapGetter('getAllConversations');
 
-const allChats = computed(() => {
-  const seen = new Map();
-  (storeChats.value || []).forEach(c => c && seen.set(c.id, c));
-  // store mein jo na ho, woh hamari apni list se
-  extraChats.value.forEach(c => {
-    if (c && !seen.has(c.id)) seen.set(c.id, c);
-  });
-  return [...seen.values()];
-});
+/* server ka ASAL total — pills ki ginti isi se */
+const convStats = useMapGetter('conversationStats/getStats');
 
-/* Store ki list badalti rahti hai — hum har naya chat apne paas bacha
-   lete hain taake agla page aane par purane gayab na hon.
-   Ye function KITNE NAYE aaye, wahi lautata hai.
-
-   AHEM: pehle ye sirf ek watch() ke andar tha. Watcher agle tick par
-   chalta hai, isliye fetch ke foran baad ginti purani dikhti thi.
-   Ab merge khud, usi waqt. */
-const mergeFromStore = () => {
-  const list = storeChats.value || [];
-  if (!Array.isArray(list) || !list.length) return 0;
-
-  const have = new Set(extraChats.value.map(c => c.id));
-  const add = list.filter(c => c && !have.has(c.id));
-  if (add.length) {
-    extraChats.value = [...extraChats.value, ...add];
-    return add.length;
-  }
-  // kuch naya nahi — mojood chats ka taaza data rakh lo
-  const byId = new Map(list.map(c => [c.id, c]));
-  extraChats.value = extraChats.value.map(c => byId.get(c.id) || c);
-  return 0;
-};
-
-// websocket se naye/updated chats bhi store se hi aate hain
-watch(storeChats, () => mergeFromStore(), { deep: false });
+/* Chatwoot khud page ginta hai, hum nahi */
+const cwCurrentPage = useMapGetter('conversationPage/getCurrentPageFilter');
+const cwEndReached = useMapGetter('conversationPage/getHasEndReached');
 const currentChat = useMapGetter('getSelectedChat');
 const currentUser = useMapGetter('getCurrentUser');
 const inboxesList = useMapGetter('inboxes/getInboxes');
@@ -164,52 +134,35 @@ const onThreadScroll = e => {
   }
 };
 
-/* Pehle page number bheja hi nahi jaata tha, isliye server hamesha
-   page 1 wapas deta tha aur 25 se aage kabhi kuch nahi aata tha. */
-const listPage = ref(1);
 const noMoreChats = ref(false);
-const emptyTries = ref(0);
 
-/* Server ek baar mein 25 chats deta hai. Aage ke liye page number
-   bhejna paRta hai.
-   PEHLE ek hi khali jawab par noMoreChats hamesha ke liye true ho
-   jaata tha — aur mount par fetchAllConversations bina params ke
-   chalta tha, to filters mel nahi khate the aur page 2 wahi 25 wapas
-   de deta tha. Nateeja: 150 chats hon to bhi sirf 25 dikhtin.
-   Ab do khali jawab ke baad rukte hain, aur params dono jagah ek
-   jaise hain. */
+/* ===== PAGINATION — bilkul Chatwoot ka apna tareeqa =====
+   Chatwoot ki ChatList.vue page khud nahi ginti: store ka
+   conversationPage module rakhta hai (getCurrentPageFilter), aur wahi
+   batata hai ke list khatam hui (getHasEndReached).
+   Khulte hi sirf 25, aur agla page SIRF tab jab banda neeche pahunche.
+
+   Meri purani koshishein — apni page ginti, apni list, mount par saare
+   page khenchna — sab hata di gayi hain. Un se do masle bane the:
+   pills mein hamesha 25, aur 25 ke baad wali chat khulti hi nahi thi. */
 const FETCH_PARAMS = { status: 'all', assigneeType: 'all' };
 
-/* account badle to sab kuch naye sire se */
 const resetChatList = () => {
-  extraChats.value = [];
-  listPage.value = 1;
+  safeD('conversationPage/reset');
   noMoreChats.value = false;
-  emptyTries.value = 0;
 };
 
+/* pills ki ginti — server ka ASAL total, meri list se nahi.
+   Chatwoot ki ChatList.vue bhi yehi karti hai. */
+const statCount = key => Number(convStats.value?.[key] || 0);
+
 const loadMoreChats = () => {
-  if (loadingMore.value || noMoreChats.value) return;
+  if (loadingMore.value || cwEndReached.value) return;
   loadingMore.value = true;
-  const page = listPage.value + 1;
-  fetchChatPage(page)
-    .then(added => {
-      listPage.value = page;
-      if (added > 0) {
-        emptyTries.value = 0;
-      } else {
-        // ek khali jawab par haar mat maano — agla page bhi dekh lo
-        emptyTries.value += 1;
-        if (emptyTries.value >= 3) noMoreChats.value = true;
-      }
-    })
-    .catch(() => {
-      emptyTries.value += 1;
-      if (emptyTries.value >= 2) noMoreChats.value = true;
-    })
-    .finally(() => {
-      loadingMore.value = false;
-    });
+  const page = Number(cwCurrentPage.value || 1) + 1;
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page }).finally(() => {
+    loadingMore.value = false;
+  });
 };
 
 /* neeche pahunchte hi agla page — chupchaap, bina shor ke */
@@ -218,40 +171,6 @@ const onListScroll = e => {
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMoreChats();
 };
 
-/* PEHLE sirf scroll par agla page aata tha. Magar list ka container
-   kabhi kabhi scroll hota hi nahi (clientHeight 0 nikla), to agla page
-   kabhi maanga hi nahi jaata tha — 158 chats hone par bhi sirf 25.
-
-   Ab mount par khud hi saare page laa lete hain, ek ek karke, thoda
-   waqfa de kar (server par bojh na pade). Scroll aur "Load more" ab
-   bhi chalte hain, magar list unke bagair bhi poori aa jaayegi. */
-/* ===== PAGES — bilkul Chatwoot ka apna tareeqa =====
-   PEHLE maine mount par saari chats ek saath khenchne wala loop laga
-   diya tha (6 requests peeche peeche). Isi liye har baar khulte hi
-   ginti 0 se 158 tak bhagti thi, sust lagta tha, aur kabhi error bhi
-   aa jaata tha. Woh galat tha.
-
-   Chatwoot aisa nahi karta (ChatList.vue): khulte hi sirf 25, aur
-   agla page SIRF tab jab banda neeche pahunche. Page number bhi khud
-   nahi ginta — store ka conversationPage module rakhta hai, aur wahi
-   batata hai ke list khatam hui ya nahi.
-
-   Ab wahi. Sirf ek cheez apni rakhi hai: extraChats. Store list ko
-   badal deta hai (replace), isi wajah se "158 dikhi phir 25 reh gayi"
-   hota tha — extraChats purani chats ko sambhal leti hai. */
-const fetchChatPage = async page => {
-  const res = await req(
-    'get',
-    `/conversations?status=all&assignee_type=all&page=${page}`
-  );
-  const list = res?.data?.payload || res?.payload || [];
-  if (!Array.isArray(list) || !list.length) return 0;
-
-  const have = new Set(extraChats.value.map(c => c.id));
-  const add = list.filter(c => c && !have.has(c.id));
-  if (add.length) extraChats.value = [...extraChats.value, ...add];
-  return add.length;
-};
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
@@ -432,10 +351,20 @@ const pills = computed(() => {
   (labelsList.value || []).forEach(l => {
     base.push({ k: `lb-${l.title}`, n: l.title, lb: true, color: l.color });
   });
+  /* All / Mine / Unassigned ki ginti SERVER ke total se aati hai,
+     loaded list se nahi — warna har baar 25 dikhta tha aur scroll
+     karne par barhta jaata tha. Chatwoot bhi yehi karta hai
+     (conversationStats/getStats). */
+  const serverTotal = {
+    all: statCount('allCount'),
+    mine: statCount('mineCount'),
+    unassigned: statCount('unAssignedCount'),
+  };
+
   return base.map(p => ({
     ...p,
     unread: unreadIn(p.k),
-    total: setFor(p.k).length,
+    total: serverTotal[p.k] || setFor(p.k).length,
     // All par sirf total, Unread par sirf unread, baqi par dono
     showTotal: p.k !== 'unread',
     showUnread: p.k !== 'all',
@@ -2345,6 +2274,8 @@ onMounted(() => {
   resetChatList();
   // sirf pehla page — baqi tab jab banda neeche scroll kare
   safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
+  // server ka asal total — pills ki ginti isi se
+  safeD('conversationStats/get', FETCH_PARAMS);
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2889,7 +2820,7 @@ watch(
              bhi aage laya ja sake -->
         <div v-if="loadingMore" class="cs-loadmore">Loading more…</div>
         <div
-          v-else-if="!noMoreChats && !q && rows.length >= 20"
+          v-else-if="!cwEndReached && !q && rows.length >= 20"
           class="cs-loadmore act"
           @click="loadMoreChats"
         >
