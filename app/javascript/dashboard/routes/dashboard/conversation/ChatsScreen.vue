@@ -195,11 +195,10 @@ const loadMoreChats = () => {
   if (loadingMore.value || noMoreChats.value) return;
   loadingMore.value = true;
   const page = listPage.value + 1;
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page })
-    .then(() => nextTick())
-    .then(() => {
+  fetchChatPage(page)
+    .then(added => {
       listPage.value = page;
-      if (mergeFromStore() > 0) {
+      if (added > 0) {
         emptyTries.value = 0;
       } else {
         // ek khali jawab par haar mat maano — agla page bhi dekh lo
@@ -231,27 +230,46 @@ const onListScroll = e => {
 const AUTO_PAGES = 12; // 12 x 25 = 300 chats tak khud
 let autoStop = false;
 
+/* ===== PAGES SEEDHA REST SE =====
+   Vuex ka fetchAllConversations bar bar dhoka de gaya — page 2 kabhi
+   maangi hi nahi jaati thi (Network mein sirf ['1','1'] dikhta tha),
+   aur uske andar kya ho raha hai woh hamein nazar nahi aata.
+
+   Ab wahi tareeqa jo Contacts aur Dashboard par pehle se chal raha
+   hai aur wahan koi masla nahi: seedha REST, apni list.
+   Store ab bhi chalta rahega — websocket ke naye message usi se aate
+   hain — magar list ki bunyad hamari apni hai. */
+const fetchChatPage = async page => {
+  const res = await req(
+    'get',
+    `/conversations?status=all&assignee_type=all&page=${page}`
+  );
+  const list = res?.data?.payload || res?.payload || [];
+  if (!Array.isArray(list) || !list.length) return 0;
+
+  const have = new Set(extraChats.value.map(c => c.id));
+  const add = list.filter(c => c && !have.has(c.id));
+  if (add.length) extraChats.value = [...extraChats.value, ...add];
+  return add.length;
+};
+
 const autoLoadAll = async () => {
   for (let i = 0; i < AUTO_PAGES; i += 1) {
     if (autoStop || noMoreChats.value) return;
     const page = listPage.value + 1;
+    let added = 0;
     try {
-      await safeD('fetchAllConversations', { ...FETCH_PARAMS, page });
+      added = await fetchChatPage(page);
     } catch (e) {
+      console.warn('[ChatsSync] page', page, 'failed', e);
       return;
     }
     listPage.value = page;
-
-    // store ko bharne ka waqt do — sirf nextTick kaafi nahi, kyunki
-    // Vuex mutation aur re-render dono hone chahiyen
-    await new Promise(r => setTimeout(r, 350));
-    await nextTick();
-
-    const added = mergeFromStore();
     if (added === 0) {
       noMoreChats.value = true;
       return;
     }
+    await new Promise(r => setTimeout(r, 120));
   }
 };
 const recorderRef = ref(null);
