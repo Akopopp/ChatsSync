@@ -48,23 +48,34 @@ const allChats = computed(() => {
   return [...seen.values()];
 });
 
-/* store ki list badalti rahe, hum har naya chat apne paas bacha lete
-   hain — taake agla page aane par purane gayab na hon */
-watch(
-  storeChats,
-  list => {
-    if (!Array.isArray(list) || !list.length) return;
-    const have = new Set(extraChats.value.map(c => c.id));
-    const add = list.filter(c => c && !have.has(c.id));
-    if (add.length) extraChats.value = [...extraChats.value, ...add];
-    else {
-      // mojood chats ka taaza data bhi rakh lo (unread count waghera)
-      const byId = new Map(list.map(c => [c.id, c]));
-      extraChats.value = extraChats.value.map(c => byId.get(c.id) || c);
-    }
-  },
-  { deep: false }
-);
+/* Store ki list badalti rahti hai — hum har naya chat apne paas bacha
+   lete hain taake agla page aane par purane gayab na hon.
+   Ye function KITNE NAYE aaye, wahi lautata hai.
+
+   AHEM: pehle ye sirf ek watch() ke andar tha. Watcher agle tick par
+   chalta hai, aur autoLoadAll fetch ke FORAN baad ginti dekhta tha —
+   us waqt tak merge hua hi nahi hota tha. Ginti purani dikhti thi,
+   code samajhta tha "list khatam", aur page 2 ke baad hi ruk jaata
+   tha. Isi liye 158 chats hone par bhi sirf 25 dikhtin.
+   Ab merge khud, usi waqt. */
+const mergeFromStore = () => {
+  const list = storeChats.value || [];
+  if (!Array.isArray(list) || !list.length) return 0;
+
+  const have = new Set(extraChats.value.map(c => c.id));
+  const add = list.filter(c => c && !have.has(c.id));
+  if (add.length) {
+    extraChats.value = [...extraChats.value, ...add];
+    return add.length;
+  }
+  // kuch naya nahi — mojood chats ka taaza data rakh lo
+  const byId = new Map(list.map(c => [c.id, c]));
+  extraChats.value = extraChats.value.map(c => byId.get(c.id) || c);
+  return 0;
+};
+
+// websocket se naye/updated chats bhi store se hi aate hain
+watch(storeChats, () => mergeFromStore(), { deep: false });
 const currentChat = useMapGetter('getSelectedChat');
 const currentUser = useMapGetter('getCurrentUser');
 const inboxesList = useMapGetter('inboxes/getInboxes');
@@ -183,16 +194,15 @@ const resetChatList = () => {
 const loadMoreChats = () => {
   if (loadingMore.value || noMoreChats.value) return;
   loadingMore.value = true;
-  const before = (allChats.value || []).length;
   const page = listPage.value + 1;
   safeD('fetchAllConversations', { ...FETCH_PARAMS, page })
+    .then(() => nextTick())
     .then(() => {
-      if ((allChats.value || []).length > before) {
-        listPage.value = page;
+      listPage.value = page;
+      if (mergeFromStore() > 0) {
         emptyTries.value = 0;
       } else {
         // ek khali jawab par haar mat maano — agla page bhi dekh lo
-        listPage.value = page;
         emptyTries.value += 1;
         if (emptyTries.value >= 3) noMoreChats.value = true;
       }
@@ -224,7 +234,6 @@ let autoStop = false;
 const autoLoadAll = async () => {
   for (let i = 0; i < AUTO_PAGES; i += 1) {
     if (autoStop || noMoreChats.value) return;
-    const before = (allChats.value || []).length;
     const page = listPage.value + 1;
     try {
       await safeD('fetchAllConversations', { ...FETCH_PARAMS, page });
@@ -232,8 +241,9 @@ const autoLoadAll = async () => {
       return;
     }
     listPage.value = page;
-    // kuch naya nahi aaya -> list khatam
-    if ((allChats.value || []).length <= before) {
+    // store bharne do, phir KHUD merge karo aur uska nateeja dekho
+    await nextTick();
+    if (mergeFromStore() === 0) {
       noMoreChats.value = true;
       return;
     }
