@@ -171,6 +171,27 @@ const onListScroll = e => {
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMoreChats();
 };
 
+/* List ke aakhir mein ek chhota sa nishan rakhte hain. Jab woh nazar
+   mein aata hai, agla page maang lete hain.
+   Scroll event par akela bharosa nahi kiya ja sakta: list ka container
+   kabhi kabhi scroll hota hi nahi (test mein clientHeight 0 nikla tha)
+   aur tab onListScroll kabhi chalta hi nahi tha. IntersectionObserver
+   us soorat mein bhi kaam karta hai. */
+const endRef = ref(null);
+let endObs = null;
+
+const watchListEnd = () => {
+  if (endObs) endObs.disconnect();
+  if (!endRef.value) return;
+  endObs = new IntersectionObserver(
+    entries => {
+      if (entries.some(en => en.isIntersecting)) loadMoreChats();
+    },
+    { root: null, rootMargin: '300px', threshold: 0 }
+  );
+  endObs.observe(endRef.value);
+};
+
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
@@ -2272,10 +2293,11 @@ onMounted(() => {
   // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
   // wapas de deta tha
   resetChatList();
-  // sirf pehla page — baqi tab jab banda neeche scroll kare
+  // sirf pehla page — baqi tab jab banda neeche pahunche
   safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
   // server ka asal total — pills ki ginti isi se
   safeD('conversationStats/get', FETCH_PARAMS);
+  nextTick(watchListEnd);
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2301,6 +2323,10 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
   window.removeEventListener('chatssync:theme', onThemeEvent);
+  if (endObs) {
+    endObs.disconnect();
+    endObs = null;
+  }
   clearInterval(themePoll);
   clearInterval(fepTimer);
   if (themeObs) {
@@ -2816,16 +2842,26 @@ watch(
           No chats, contacts or messages found
         </div>
 
-        <!-- scroll wala tareeqa kisi wajah se na chale to haath se
-             bhi aage laya ja sake -->
-        <div v-if="loadingMore" class="cs-loadmore">Loading more…</div>
-        <div
-          v-else-if="!cwEndReached && !q && rows.length >= 20"
-          class="cs-loadmore act"
-          @click="loadMoreChats"
-        >
-          Load more chats
-        </div>
+        <!-- list ka aakhir — yahan pahunchte hi agla page aa jaata hai -->
+        <div ref="endRef" class="cs-end" />
+      </div>
+
+      <!-- List ke BAHAR, panel ke neeche — hamesha nazar mein.
+           Pehle ye list ke ANDAR tha, aur list scroll hi nahi karti
+           thi, to button kabhi pahunch mein hi nahi aata tha. -->
+      <div
+        v-if="!q && !cwEndReached && rows.length"
+        class="cs-loadbar"
+        :class="{ busy: loadingMore }"
+        @click="loadMoreChats"
+      >
+        <template v-if="loadingMore">Loading…</template>
+        <template v-else>
+          <span>Load more</span>
+          <span class="cs-loadn">
+            {{ rows.length }} / {{ statCount('allCount') }}
+          </span>
+        </template>
       </div>
     </div>
 
@@ -4515,18 +4551,36 @@ watch(
 .cs-sub .cs-mi {
   text-transform: capitalize;
 }
-.cs-loadmore {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--tx3);
-  padding: 14px 0 22px;
+.cs-end {
+  height: 1px;
 }
-.cs-loadmore.act {
+/* panel ke neeche chipki hui patti — list scroll kare ya na kare,
+   ye hamesha nazar mein rehti hai */
+.cs-loadbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 0;
+  border-top: 1px solid var(--ln);
+  background: var(--panel);
   color: var(--g);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
-.cs-loadmore.act:hover {
-  text-decoration: underline;
+.cs-loadbar:hover {
+  background: var(--hov);
+}
+.cs-loadbar.busy {
+  color: var(--tx3);
+  cursor: default;
+}
+.cs-loadn {
+  color: var(--tx3);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 .cs-empty-list {
   padding: 40px 20px;
