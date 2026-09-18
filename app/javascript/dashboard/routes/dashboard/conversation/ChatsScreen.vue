@@ -40,9 +40,24 @@ const allChats = useMapGetter('getAllConversations');
 /* server ka ASAL total — pills ki ginti isi se */
 const convStats = useMapGetter('conversationStats/getStats');
 
-/* Chatwoot khud page ginta hai, hum nahi */
-const cwCurrentPage = useMapGetter('conversationPage/getCurrentPageFilter');
-const cwEndReached = useMapGetter('conversationPage/getHasEndReached');
+/* ===== PAGE KI GINTI =====
+   PEHLE yahan conversationPage ke do getters istemal kiye the:
+     conversationPage/getCurrentPageFilter
+     conversationPage/getHasEndReached
+   Woh GHALAT tha. Chatwoot inhein useFunctionGetter se leta hai —
+   yani ye FUNCTION getters hain, inhein filter key deni paRti hai.
+   useMapGetter se .value ek function nikalta hai, value nahi.
+
+   Nateeja: JS mein function hamesha truthy hota hai, to
+     if (loadingMore || cwEndReached) return;
+   hamesha return kar jaata tha — loadMoreChats kabhi chalta hi nahi
+   tha. Aur button bhi "!cwEndReached" par tha, isliye kabhi dikha hi
+   nahi. Page bhi Number(function)+1 = NaN ban jaata tha.
+
+   Ab koi getter nahi. Store mein kitni chats hain, usi se page nikal
+   aata hai (25 per page). Aur "khatam" ka faisla server ke total se. */
+const PER_PAGE = 25;
+const loadedCount = computed(() => (allChats.value || []).length);
 const currentChat = useMapGetter('getSelectedChat');
 const currentUser = useMapGetter('getCurrentUser');
 const inboxesList = useMapGetter('inboxes/getInboxes');
@@ -152,17 +167,36 @@ const resetChatList = () => {
   noMoreChats.value = false;
 };
 
+/* server ka asal total — pills aur "aur baqi hain?" dono isi se */
+const totalCount = computed(() => Number(convStats.value?.allCount || 0));
+
+const hasMoreChats = computed(() => {
+  if (noMoreChats.value) return false;
+  if (!totalCount.value) return loadedCount.value >= PER_PAGE;
+  return loadedCount.value < totalCount.value;
+});
+
 /* pills ki ginti — server ka ASAL total, meri list se nahi.
    Chatwoot ki ChatList.vue bhi yehi karti hai. */
 const statCount = key => Number(convStats.value?.[key] || 0);
 
 const loadMoreChats = () => {
-  if (loadingMore.value || cwEndReached.value) return;
+  if (loadingMore.value || !hasMoreChats.value) return;
   loadingMore.value = true;
-  const page = Number(cwCurrentPage.value || 1) + 1;
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page }).finally(() => {
-    loadingMore.value = false;
-  });
+
+  const before = loadedCount.value;
+  const page = Math.floor(before / PER_PAGE) + 1;
+
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page })
+    .then(() => nextTick())
+    .then(() => {
+      // kuch naya nahi aaya -> list waqai khatam
+      if (loadedCount.value <= before) noMoreChats.value = true;
+    })
+    .catch(() => {})
+    .finally(() => {
+      loadingMore.value = false;
+    });
 };
 
 /* neeche pahunchte hi agla page — chupchaap, bina shor ke */
@@ -2904,7 +2938,7 @@ watch(
            Pehle ye list ke ANDAR tha, aur list scroll hi nahi karti
            thi, to button kabhi pahunch mein hi nahi aata tha. -->
       <div
-        v-if="!q && !cwEndReached && rows.length"
+        v-if="!q && hasMoreChats && rows.length"
         class="cs-loadbar"
         :class="{ busy: loadingMore }"
         @click="loadMoreChats"
@@ -2912,9 +2946,7 @@ watch(
         <template v-if="loadingMore">Loading…</template>
         <template v-else>
           <span>Load more</span>
-          <span class="cs-loadn">
-            {{ rows.length }} / {{ statCount('allCount') }}
-          </span>
+          <span class="cs-loadn">{{ loadedCount }} / {{ totalCount }}</span>
         </template>
       </div>
     </div>
