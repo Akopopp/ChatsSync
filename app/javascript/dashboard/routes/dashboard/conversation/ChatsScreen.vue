@@ -40,158 +40,53 @@ const allChats = useMapGetter('getAllConversations');
 /* server ka ASAL total — pills ki ginti isi se */
 const convStats = useMapGetter('conversationStats/getStats');
 
-/* ===== PAGE KI GINTI =====
-   PEHLE yahan conversationPage ke do getters istemal kiye the:
-     conversationPage/getCurrentPageFilter
-     conversationPage/getHasEndReached
-   Woh GHALAT tha. Chatwoot inhein useFunctionGetter se leta hai —
-   yani ye FUNCTION getters hain, inhein filter key deni paRti hai.
-   useMapGetter se .value ek function nikalta hai, value nahi.
+/* ===== PAGINATION — Chatwoot ka ASAL tareeqa =====
+   Server par 3 files dekhne ke baad ye saaf hua:
 
-   Nateeja: JS mein function hamesha truthy hota hai, to
-     if (loadingMore || cwEndReached) return;
-   hamesha return kar jaata tha — loadMoreChats kabhi chalta hi nahi
-   tha. Aur button bhi "!cwEndReached" par tha, isliye kabhi dikha hi
-   nahi. Page bhi Number(function)+1 = NaN ban jaata tha.
+   1. fetchAllConversations KISI PARAM ko qubool nahi karta — woh
+      hamesha state.conversationFilters se page/status/assignee uthata
+      hai (actions.js: `const params = state.conversationFilters`).
+      Maine safeD('fetchAllConversations', {page}) bheja tha — woh
+      HAMESHA nazarandaaz hota tha. Isi liye page kabhi badla hi nahi.
 
-   Ab koi getter nahi. Store mein kitni chats hain, usi se page nikal
-   aata hai (25 per page). Aur "khatam" ka faisla server ke total se. */
-const PER_PAGE = 25;
-const loadedCount = computed(() => (allChats.value || []).length);
-const currentChat = useMapGetter('getSelectedChat');
-const currentUser = useMapGetter('getCurrentUser');
-const inboxesList = useMapGetter('inboxes/getInboxes');
-const accountId = useMapGetter('getCurrentAccountId');
-const listLoading = useMapGetter('getChatListLoadingStatus');
-const agentsList = useMapGetter('agents/getAgents');
-const teamsList = useMapGetter('teams/getTeams');
-const typingGetter = useMapGetter('conversationTypingStatus/getUserList');
+   2. conversationPage/getCurrentPageFilter aur getHasEndReached
+      FUNCTION getters hain aur filter KEY maangte hain ('all', 'me',
+      waghera) — useMapGetter se .value ek function nikalta hai, jo
+      JS mein hamesha truthy hota hai. Isi liye button kabhi dikha hi
+      nahi (!cwEndReached hamesha false tha) aur page NaN ban jaata
+      tha.
 
-const typingNames = computed(() => {
+   Sahi tareeqa: PEHLE store ka apna filter update karo
+   (updateChatListFilters), PHIR fetchAllConversations chalao — woh
+   khud naya page uthayega. Button poori tarah hata diya — Chatwoot
+   mein bhi nahi hai, sirf scroll kaam karta hai. */
+const PAGE_FILTER = 'all';
+let chatPage = 1;
+
+const getEndReached = () => {
   try {
-    const u = typingGetter.value?.(currentChat.value?.id) || [];
-    return u.map(x => x.name).filter(Boolean);
+    return !!store.getters['conversationPage/getHasEndReached'](PAGE_FILTER);
   } catch (e) {
-    return [];
-  }
-});
-
-/* ---------------- local state ---------------- */
-const q = ref('');
-const filt = ref('all');
-const draft = ref('');
-const isRecording = ref(false);
-const recState = ref('');
-const recTime = ref('0:00');
-const sendAfterRec = ref(false);
-const pendingFiles = ref([]);
-const failed = ref([]);
-let failId = 0;
-
-const retryFail = f => {
-  failed.value = failed.value.filter(x => x.id !== f.id);
-  pushMessage(f.payload)
-    .then(scrollDown)
-    .catch(() => {
-      failed.value.push(f);
-      toast('Still failing', 'err');
-    });
-};
-const threadRef = ref(null);
-const loadingOlder = ref(false);
-const loadingMore = ref(false);
-const showDown = ref(false);
-const firstUnreadId = ref(null);
-
-const atBottom = ref(true);
-const noMoreOlder = ref(false);
-let lastFetch = 0;
-
-const onThreadScroll = e => {
-  const el = e.target;
-  const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-  atBottom.value = gap < 80;
-  showDown.value = gap > 320;
-
-  if (
-    el.scrollTop < 120 &&
-    !loadingOlder.value &&
-    !noMoreOlder.value &&
-    Date.now() - lastFetch > 900 &&
-    messages.value.length >= 15
-  ) {
-    lastFetch = Date.now();
-    loadingOlder.value = true;
-    const before = messages.value[0]?.id;
-    const h0 = el.scrollHeight;
-    const t0 = el.scrollTop;
-    // smooth scroll ko band karo warna position bahal karte waqt
-    // browser animate karta hai aur chat upar-neeche koodti hai
-    el.style.scrollBehavior = 'auto';
-    const n0 = messages.value.length;
-    const done = () => {
-      nextTick(() => {
-        requestAnimationFrame(() => {
-          // kuch naya nahi aaya -> aur purane hain hi nahi, ab mat poochho
-          if (messages.value.length === n0) noMoreOlder.value = true;
-          el.scrollTop = t0 + (el.scrollHeight - h0);
-          el.style.scrollBehavior = '';
-          loadingOlder.value = false;
-        });
-      });
-    };
-    const r = safeD('fetchPreviousMessages', {
-      conversationId: currentChat.value.id,
-      before,
-    });
-    if (r && r.finally) r.finally(done);
-    else setTimeout(done, 400);
+    return false;
   }
 };
-
-const noMoreChats = ref(false);
-
-/* ===== PAGINATION — bilkul Chatwoot ka apna tareeqa =====
-   Chatwoot ki ChatList.vue page khud nahi ginti: store ka
-   conversationPage module rakhta hai (getCurrentPageFilter), aur wahi
-   batata hai ke list khatam hui (getHasEndReached).
-   Khulte hi sirf 25, aur agla page SIRF tab jab banda neeche pahunche.
-
-   Meri purani koshishein — apni page ginti, apni list, mount par saare
-   page khenchna — sab hata di gayi hain. Un se do masle bane the:
-   pills mein hamesha 25, aur 25 ke baad wali chat khulti hi nahi thi. */
-const FETCH_PARAMS = { status: 'all', assigneeType: 'all' };
-
-const resetChatList = () => {
-  safeD('conversationPage/reset');
-  noMoreChats.value = false;
-};
-
-/* server ka asal total — pills aur "aur baqi hain?" dono isi se */
-const totalCount = computed(() => Number(convStats.value?.allCount || 0));
-
-const hasMoreChats = computed(() => {
-  if (noMoreChats.value) return false;
-  if (!totalCount.value) return loadedCount.value >= PER_PAGE;
-  return loadedCount.value < totalCount.value;
-});
-
-/* pills ki ginti — server ka ASAL total, meri list se nahi.
-   Chatwoot ki ChatList.vue bhi yehi karti hai. */
-const statCount = key => Number(convStats.value?.[key] || 0);
 
 const loadMoreChats = () => {
-  if (loadingMore.value || !hasMoreChats.value) return;
+  if (loadingMore.value || getEndReached()) return;
   loadingMore.value = true;
 
-  const before = loadedCount.value;
-  const page = Math.floor(before / PER_PAGE) + 1;
+  const before = (allChats.value || []).length;
+  chatPage += 1;
 
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page })
+  store
+    .dispatch('updateChatListFilters', { page: chatPage })
+    .then(() => safeD('fetchAllConversations'))
     .then(() => nextTick())
     .then(() => {
-      // kuch naya nahi aaya -> list waqai khatam
-      if (loadedCount.value <= before) noMoreChats.value = true;
+      // kuch naya nahi aaya -> list waqai khatam, Chatwoot ko bata do
+      if ((allChats.value || []).length <= before) {
+        safeD('conversationPage/setEndReached', { filter: PAGE_FILTER });
+      }
     })
     .catch(() => {})
     .finally(() => {
@@ -454,10 +349,11 @@ const pills = computed(() => {
      loaded list se nahi — warna har baar 25 dikhta tha aur scroll
      karne par barhta jaata tha. Chatwoot bhi yehi karta hai
      (conversationStats/getStats). */
+  const st = convStats.value || {};
   const serverTotal = {
-    all: statCount('allCount'),
-    mine: statCount('mineCount'),
-    unassigned: statCount('unAssignedCount'),
+    all: Number(st.allCount || 0),
+    mine: Number(st.mineCount || 0),
+    unassigned: Number(st.unAssignedCount || 0),
   };
 
   return base.map(p => ({
@@ -2362,19 +2258,18 @@ onMounted(() => {
   store.dispatch('labels/get');
   store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
-  store.dispatch('updateChatListFilters', {
-    assigneeType: 'all',
-    status: 'all',
-    page: 1,
-  });
   store.dispatch('setChatStatusFilter', 'all');
-  // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
-  // wapas de deta tha
-  resetChatList();
-  // sirf pehla page — baqi tab jab banda neeche pahunche
-  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
+  chatPage = 1;
+  safeD('conversationPage/reset');
+  store
+    .dispatch('updateChatListFilters', {
+      assigneeType: 'all',
+      status: 'all',
+      page: 1,
+    })
+    .then(() => safeD('fetchAllConversations'));
   // server ka asal total — pills ki ginti isi se
-  safeD('conversationStats/get', FETCH_PARAMS);
+  safeD('conversationStats/get', { assigneeType: 'all', status: 'all' });
   nextTick(watchListEnd);
   fitHeight();
   // pehla render sambhal jaye, phir dobara naapo
@@ -2932,22 +2827,7 @@ watch(
 
         <!-- list ka aakhir — yahan pahunchte hi agla page aa jaata hai -->
         <div ref="endRef" class="cs-end" />
-      </div>
-
-      <!-- List ke BAHAR, panel ke neeche — hamesha nazar mein.
-           Pehle ye list ke ANDAR tha, aur list scroll hi nahi karti
-           thi, to button kabhi pahunch mein hi nahi aata tha. -->
-      <div
-        v-if="!q && hasMoreChats && rows.length"
-        class="cs-loadbar"
-        :class="{ busy: loadingMore }"
-        @click="loadMoreChats"
-      >
-        <template v-if="loadingMore">Loading…</template>
-        <template v-else>
-          <span>Load more</span>
-          <span class="cs-loadn">{{ loadedCount }} / {{ totalCount }}</span>
-        </template>
+        <div v-if="loadingMore" class="cs-loadmore">Loading more…</div>
       </div>
     </div>
 
@@ -4647,31 +4527,11 @@ watch(
 }
 /* panel ke neeche chipki hui patti — list scroll kare ya na kare,
    ye hamesha nazar mein rehti hai */
-.cs-loadbar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px 0;
-  border-top: 1px solid var(--ln);
-  background: var(--panel);
-  color: var(--g);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-.cs-loadbar:hover {
-  background: var(--hov);
-}
-.cs-loadbar.busy {
+.cs-loadmore {
+  text-align: center;
+  font-size: 12px;
   color: var(--tx3);
-  cursor: default;
-}
-.cs-loadn {
-  color: var(--tx3);
-  font-size: 11.5px;
-  font-weight: 400;
+  padding: 12px 0;
 }
 .cs-empty-list {
   padding: 40px 20px;
