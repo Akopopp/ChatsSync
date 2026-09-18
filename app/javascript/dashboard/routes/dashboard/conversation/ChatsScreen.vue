@@ -207,8 +207,33 @@ const appRef = ref(null);
 const fitHeight = () => {
   const el = appRef.value;
   if (!el) return;
-  const top = Math.max(0, Math.round(el.getBoundingClientRect().top));
-  el.style.height = `calc(100dvh - ${top}px)`;
+
+  /* PEHLE yahan hamesha "calc(100dvh - top)" laga dete the. Woh galat
+     tha: page thoda scroll ho ya parent mein padding ho to hisaab bigar
+     jaata tha aur panel screen se neeche nikal jaata tha.
+
+     Ab pehle dekhte hain ke CSS ki unchai theek hai ya nahi. Theek ho
+     to bilkul haath nahi lagate. Sirf tab dakhal dete hain jab unchai
+     waqai gir gayi ho — aur tab bhi naapi hui jagah ke mutabiq, kisi
+     hisaab se nahi. */
+  const parent = el.parentElement;
+  const avail = parent ? parent.clientHeight : 0;
+
+  // CSS khud kaam kar raha hai — chhoR do
+  if (el.clientHeight > 200) {
+    if (el.style.height) el.style.height = '';
+    return;
+  }
+
+  if (avail > 200) {
+    el.style.height = `${avail}px`;
+    return;
+  }
+
+  // aakhri chara: screen ka bacha hua hissa
+  const top = el.getBoundingClientRect().top;
+  const h = window.innerHeight - (top > 0 ? top : 0);
+  if (h > 200) el.style.height = `${Math.round(h)}px`;
 };
 
 const recorderRef = ref(null);
