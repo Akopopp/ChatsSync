@@ -192,6 +192,25 @@ const watchListEnd = () => {
   endObs.observe(endRef.value);
 };
 
+/* ===== UNCHAI =====
+   .cs-app par "height: 100%" tha. Woh sirf tab chalta hai jab uske
+   parent ki unchai muqarrar ho — warna auto ho jaata hai, panel gir
+   jaata hai, aur andar ki list scroll hi nahi karti (test mein
+   clientHeight 0 nikla tha). Isi wajah se na scroll chalta tha aur na
+   list ke andar wala button pahunch mein aata tha.
+
+   Ab CSS par bharosa nahi. Khud naapte hain: app ka upar ka kinara
+   kahan hai, aur baqi poori screen usay de dete hain. Upar koi banner
+   ho ya na ho, dono soorat mein theek rehta hai. */
+const appRef = ref(null);
+
+const fitHeight = () => {
+  const el = appRef.value;
+  if (!el) return;
+  const top = Math.max(0, Math.round(el.getBoundingClientRect().top));
+  el.style.height = `calc(100dvh - ${top}px)`;
+};
+
 const recorderRef = ref(null);
 const fileInput = ref(null);
 const menu = ref({ open: false, x: 0, y: 0, chat: null, up: false });
@@ -2298,6 +2317,11 @@ onMounted(() => {
   // server ka asal total — pills ki ginti isi se
   safeD('conversationStats/get', FETCH_PARAMS);
   nextTick(watchListEnd);
+  fitHeight();
+  // pehla render sambhal jaye, phir dobara naapo
+  setTimeout(fitHeight, 200);
+  setTimeout(fitHeight, 900);
+  window.addEventListener('resize', fitHeight);
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', onHotkey);
   window.addEventListener('resize', onResize);
@@ -2322,6 +2346,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenu);
   document.removeEventListener('keydown', onHotkey);
   window.removeEventListener('resize', onResize);
+  window.removeEventListener('resize', fitHeight);
   window.removeEventListener('chatssync:theme', onThemeEvent);
   if (endObs) {
     endObs.disconnect();
@@ -2423,7 +2448,11 @@ watch(
 </script>
 
 <template>
-  <section class="cs-app" :class="{ mob: isMobile, lite: isLight, thr: threadOpen }">
+  <section
+    ref="appRef"
+    class="cs-app"
+    :class="{ mob: isMobile, lite: isLight, thr: threadOpen }"
+  >
     <!-- ============ LEFT: CHATS PANEL ============ -->
     <div class="cs-panel">
       <div v-if="selectMode" class="cs-ph cs-phsel">
@@ -4215,6 +4244,11 @@ watch(
   flex-direction: column;
   flex-shrink: 0;
   border-right: 1px solid var(--ln);
+  /* in teen ke bagair panel ki unchai gir jaati thi aur andar ki list
+     scroll hi nahi karti thi (clientHeight 0) */
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 .cs-ph {
   padding: 17px 20px 12px;
