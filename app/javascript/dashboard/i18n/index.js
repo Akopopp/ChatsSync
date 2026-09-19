@@ -1,85 +1,32 @@
-import ar from './locale/ar';
-import bg from './locale/bg';
-import ca from './locale/ca';
-import cs from './locale/cs';
-import da from './locale/da';
-import de from './locale/de';
-import el from './locale/el';
+/* =====================================================================
+   ChatsSync — zubanein
+   =====================================================================
+   PEHLE yahan 56 zubanein static import hoti thin (ar, bg, ca, cs, da,
+   de, el, es, et, fa, fi, fr, he, hi, hu, id, it, ja, ko, ml, lv, nl,
+   no, pl, pt, pt_BR, ro, ru, sk, sr, sv, ta, th, tr, uk, vi, zh_CN,
+   zh_TW, is, lt ... waghera).
+
+   Static import ka matlab hai ke SAB ki SAB bundle mein chali jaati
+   hain, chahe koi istemal kare ya na kare. Nateeja: 13 MB ka ek chunk
+   (DashboardIcon-*.js) jo har page par utarta tha — web par bhi aur
+   app par bhi.
+
+   Ab sirf woh zubanein jo hamare clients waqai istemal karte hain.
+   Kisi aur zuban ki zaroorat paRe to bas uski do line yahan joR dena:
+       import de from './locale/de';
+       ... aur neeche export mein   de,
+   Locale ki files repo mein jyon ki tyon maujood hain, kuch delete
+   nahi hua.
+
+   Koi icon, button ya feature is se nahi toot-ta — sirf hataai gayi
+   zuban ke bajaye English nazar aayegi.
+   ===================================================================== */
 import en from './locale/en';
-import es from './locale/es';
-import et from './locale/et';
-import fa from './locale/fa';
-import fi from './locale/fi';
-import fr from './locale/fr';
-import he from './locale/he';
-import hi from './locale/hi';
-import hu from './locale/hu';
-import id from './locale/id';
-import it from './locale/it';
-import ja from './locale/ja';
-import ko from './locale/ko';
-import lv from './locale/lv';
-import ml from './locale/ml';
-import nl from './locale/nl';
-import no from './locale/no';
-import pl from './locale/pl';
-import pt from './locale/pt';
-import pt_BR from './locale/pt_BR';
-import ro from './locale/ro';
-import ru from './locale/ru';
-import sk from './locale/sk';
-import sr from './locale/sr';
-import sv from './locale/sv';
-import ta from './locale/ta';
-import th from './locale/th';
-import tr from './locale/tr';
-import uk from './locale/uk';
-import vi from './locale/vi';
-import zh_CN from './locale/zh_CN';
-import zh_TW from './locale/zh_TW';
-import is from './locale/is';
-import lt from './locale/lt';
+import ur from './locale/ur';
+import ar from './locale/ar';
 
 export default {
-  ar,
-  bg,
-  ca,
-  cs,
-  da,
-  de,
-  el,
   en,
-  es,
-  et,
-  fa,
-  fi,
-  fr,
-  he,
-  hi,
-  hu,
-  id,
-  it,
-  ja,
-  ko,
-  ml,
-  lv,
-  nl,
-  no,
-  pl,
-  pt_BR,
-  pt,
-  ro,
-  ru,
-  sk,
-  sr,
-  sv,
-  ta,
-  th,
-  tr,
-  uk,
-  vi,
-  zh_CN,
-  zh_TW,
-  is,
-  lt,
+  ur,
+  ar,
 };
