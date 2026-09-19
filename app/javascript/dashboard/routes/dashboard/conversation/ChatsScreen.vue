@@ -40,61 +40,90 @@ const allChats = useMapGetter('getAllConversations');
 /* server ka ASAL total — pills ki ginti isi se */
 const convStats = useMapGetter('conversationStats/getStats');
 
-/* ===== PAGINATION — Chatwoot ka ASAL tareeqa =====
-   Server par 3 files dekhne ke baad ye saaf hua:
+/* ===== PAGINATION — bilkul Chatwoot ki naqal =====
+   Chatwoot ki ChatList.vue ka poora pagination sirf ITNA hai:
 
-   1. fetchAllConversations KISI PARAM ko qubool nahi karta — woh
-      hamesha state.conversationFilters se page/status/assignee uthata
-      hai (actions.js: `const params = state.conversationFilters`).
-      Maine safeD('fetchAllConversations', {page}) bheja tha — woh
-      HAMESHA nazarandaaz hota tha. Isi liye page kabhi badla hi nahi.
+     function fetchConversations() {
+       store.dispatch('updateChatListFilters', conversationFilters.value);
+       store.dispatch('fetchAllConversations').then(emitConversationLoaded);
+     }
 
-   2. conversationPage/getCurrentPageFilter aur getHasEndReached
-      FUNCTION getters hain aur filter KEY maangte hain ('all', 'me',
-      waghera) — useMapGetter se .value ek function nikalta hai, jo
-      JS mein hamesha truthy hota hai. Isi liye button kabhi dikha hi
-      nahi (!cwEndReached hamesha false tha) aur page NaN ban jaata
-      tha.
+     function loadMoreConversations() {
+       if (hasCurrentPageEndReached.value || chatListLoading.value) return;
+       fetchConversations();
+     }
 
-   Sahi tareeqa: PEHLE store ka apna filter update karo
-   (updateChatListFilters), PHIR fetchAllConversations chalao — woh
-   khud naya page uthayega. Button poori tarah hata diya — Chatwoot
-   mein bhi nahi hai, sirf scroll kaam karta hai. */
+   aur conversationFilters mein:
+     page: currentPage.value + 1
+
+   Yani page KHUD BA KHUD barhta hai — store ka currentPage
+   fetchAllConversations ke andar update hota hai, aur agli baar
+   conversationFilters naya page bana deta hai. Apni ginti rakhne ki
+   zaroorat hi nahi.
+
+   MERI TEEN GHALTIYAN:
+     1. store.dispatch('updateChatListFilters', ...) par .then() lagaya.
+        Chatwoot ismein .then NAHI lagata — woh action promise nahi
+        lautata. Usi se poora screen khali ho gaya tha.
+     2. apni chatPage ginti rakhi — Chatwoot currentPage+1 leta hai.
+     3. useMapGetter istemal kiya jabke ye FUNCTION getters hain
+        (filter key chahiye: 'all', 'me', 'unassigned').
+   Ab bilkul wahi, apna kuch nahi. */
 const PAGE_FILTER = 'all';
-let chatPage = 1;
 
-const getEndReached = () => {
+/* Chatwoot ka chatListLoading — store se aata hai, apna nahi.
+   PEHLE ye dono kahin define hi nahi the magar template aur
+   loadMoreChats dono mein istemal ho rahe the. Usi se poora screen
+   khali ho jaata tha. */
+const listLoading = useMapGetter('getChatListLoadingStatus');
+const loadingMore = ref(false);
+
+/* ye function getters hain — key ke saath hi kaam karte hain */
+const currentChatPage = computed(() => {
   try {
-    return !!store.getters['conversationPage/getHasEndReached'](PAGE_FILTER);
+    const g = store.getters['conversationPage/getCurrentPageFilter'];
+    return Number(g(PAGE_FILTER)) || 0;
+  } catch (e) {
+    return 0;
+  }
+});
+
+const chatListEndReached = computed(() => {
+  try {
+    const g = store.getters['conversationPage/getHasEndReached'];
+    return !!g(PAGE_FILTER);
   } catch (e) {
     return false;
   }
+});
+
+/* Chatwoot ka conversationFilters — page hamesha currentPage + 1 */
+const chatFilters = () => ({
+  assigneeType: PAGE_FILTER,
+  status: 'all',
+  page: currentChatPage.value + 1,
+});
+
+/* Chatwoot ka fetchConversations — koi .then nahi lagana
+   updateChatListFilters par */
+const fetchChats = () => {
+  store.dispatch('updateChatListFilters', chatFilters());
+  safeD('fetchAllConversations');
 };
 
+/* Chatwoot ka loadMoreConversations */
 const loadMoreChats = () => {
-  if (loadingMore.value || getEndReached()) return;
+  if (chatListEndReached.value || listLoading.value || loadingMore.value)
+    return;
   loadingMore.value = true;
-
-  const before = (allChats.value || []).length;
-  chatPage += 1;
-
-  store
-    .dispatch('updateChatListFilters', { page: chatPage })
-    .then(() => safeD('fetchAllConversations'))
-    .then(() => nextTick())
-    .then(() => {
-      // kuch naya nahi aaya -> list waqai khatam, Chatwoot ko bata do
-      if ((allChats.value || []).length <= before) {
-        safeD('conversationPage/setEndReached', { filter: PAGE_FILTER });
-      }
-    })
-    .catch(() => {})
-    .finally(() => {
-      loadingMore.value = false;
-    });
+  fetchChats();
+  // chatListLoading ka apna flag nahi hai, isliye thoRi der baad khol do
+  setTimeout(() => {
+    loadingMore.value = false;
+  }, 800);
 };
 
-/* neeche pahunchte hi agla page — chupchaap, bina shor ke */
+/* neeche pahunchte hi agla page */
 const onListScroll = e => {
   const el = e.target;
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMoreChats();
@@ -2259,15 +2288,10 @@ onMounted(() => {
   store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
   store.dispatch('setChatStatusFilter', 'all');
-  chatPage = 1;
+  // Chatwoot ka resetAndFetchData: reset -> empty -> fetch
   safeD('conversationPage/reset');
-  store
-    .dispatch('updateChatListFilters', {
-      assigneeType: 'all',
-      status: 'all',
-      page: 1,
-    })
-    .then(() => safeD('fetchAllConversations'));
+  safeD('emptyAllConversations');
+  fetchChats();
   // server ka asal total — pills ki ginti isi se
   safeD('conversationStats/get', { assigneeType: 'all', status: 'all' });
   nextTick(watchListEnd);
