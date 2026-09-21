@@ -19,6 +19,9 @@ const emit = defineEmits([
   'pause',
   'play',
   'recordError',
+  'recordPause',
+  'recordResume',
+  'recordCancel',
 ]);
 
 const waveformContainer = ref(null);
@@ -27,7 +30,9 @@ const record = ref(null);
 const isRecording = ref(false);
 const isPlaying = ref(false);
 const hasRecording = ref(false);
+const cancelled = ref(false);
 const recordedAudioUrl = ref(null);
+const destroyed = ref(false);
 
 const formatTimeProgress = time => {
   const duration = intervalToDuration({ start: 0, end: time });
@@ -62,12 +67,14 @@ const getRecordPluginOptions = audioFormat => {
 const initWaveSurfer = () => {
   wavesurfer.value = WaveSurfer.create({
     container: waveformContainer.value,
-    waveColor: '#1F93FF',
-    progressColor: '#6E6F73',
-    height: 100,
+    // WhatsApp jaisi waveform: patli, chhoti, grey
+    waveColor: 'rgba(134, 150, 160, 0.85)',
+    progressColor: 'rgba(0, 168, 132, 0.9)',
+    cursorWidth: 0,
+    height: 34,
     barWidth: 2,
-    barGap: 1,
-    barRadius: 2,
+    barGap: 2,
+    barRadius: 3,
     plugins: [
       RecordPlugin.create(getRecordPluginOptions(props.audioRecordFormat)),
     ],
@@ -83,6 +90,10 @@ const initWaveSurfer = () => {
   });
 
   record.value.on('record-end', async blob => {
+    if (cancelled.value) {
+      cancelled.value = false;
+      return;
+    }
     try {
       const audioBlob = await convertAudio(blob, props.audioRecordFormat);
       // Use the converted blob's actual type, which may differ from the
@@ -97,7 +108,6 @@ const initWaveSurfer = () => {
       });
       if (recordedAudioUrl.value) URL.revokeObjectURL(recordedAudioUrl.value);
       recordedAudioUrl.value = URL.createObjectURL(audioBlob);
-      wavesurfer.value.load(recordedAudioUrl.value);
       emit('finishRecord', {
         name: file.name,
         type: file.type,
@@ -105,6 +115,10 @@ const initWaveSurfer = () => {
         file,
       });
       hasRecording.value = true;
+      if (!destroyed.value && wavesurfer.value) {
+        const ld = wavesurfer.value.load(recordedAudioUrl.value);
+        if (ld && typeof ld.catch === 'function') ld.catch(() => {});
+      }
       isRecording.value = false;
     } catch (error) {
       isRecording.value = false;
@@ -118,16 +132,63 @@ const initWaveSurfer = () => {
   });
 };
 
+const isPaused = ref(false);
+
 const stopRecording = () => {
   if (isRecording.value) {
     record.value.stopRecording();
     isRecording.value = false;
+    isPaused.value = false;
   }
 };
 
+// WhatsApp jaisa: pause matlab recording ruk jaye — apni awaz na sunayi de
+const pauseResumeRecording = () => {
+  if (!isRecording.value) return;
+  if (isPaused.value) {
+    record.value.resumeRecording();
+    isPaused.value = false;
+    emit('recordResume');
+  } else {
+    record.value.pauseRecording();
+    isPaused.value = true;
+    emit('recordPause');
+  }
+};
+
+// delete — recording band karo aur file bhejo hi mat
+const cancelRecording = () => {
+  cancelled.value = true;
+  if (isRecording.value) {
+    record.value.stopRecording();
+    isRecording.value = false;
+  }
+  isPaused.value = false;
+  if (recordedAudioUrl.value) {
+    URL.revokeObjectURL(recordedAudioUrl.value);
+    recordedAudioUrl.value = null;
+  }
+  hasRecording.value = false;
+  emit('recordCancel');
+};
+
 const startRecording = () => {
-  record.value.startRecording();
-  isRecording.value = true;
+  try {
+    const started = record.value.startRecording();
+    isRecording.value = true;
+    // startRecording() promise deta hai. Mic block ho to yahi
+    // reject hota hai — pehle koi ise pakadta nahi tha, isliye
+    // chup-chaap fail ho jaata tha.
+    if (started && typeof started.catch === 'function') {
+      started.catch(error => {
+        isRecording.value = false;
+        emit('recordError', { error });
+      });
+    }
+  } catch (error) {
+    isRecording.value = false;
+    emit('recordError', { error });
+  }
 };
 
 const playPause = () => {
@@ -143,18 +204,37 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  destroyed.value = true;
   if (recordedAudioUrl.value) {
     URL.revokeObjectURL(recordedAudioUrl.value);
     recordedAudioUrl.value = null;
   }
   if (wavesurfer.value) {
-    wavesurfer.value.destroy();
+    try {
+      wavesurfer.value.destroy();
+    } catch (e) {}
+    wavesurfer.value = null;
   }
 });
 
-defineExpose({ playPause, stopRecording, record });
+defineExpose({
+  playPause,
+  stopRecording,
+  pauseResumeRecording,
+  cancelRecording,
+  isPaused,
+  record,
+});
 </script>
 
 <template>
-  <div ref="waveformContainer" class="w-full p-1" />
+  <div ref="waveformContainer" class="cs-wave w-full" />
 </template>
+
+<style scoped>
+/* WhatsApp jaisi patli waveform */
+.cs-wave {
+  padding: 0.25rem 0;
+  min-height: 34px;
+}
+</style>

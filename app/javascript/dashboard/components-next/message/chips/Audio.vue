@@ -107,10 +107,10 @@ useEmitter('pause_playing_audio', currentPlayingId => {
 });
 
 const formatTime = time => {
-  if (!time || Number.isNaN(time)) return '00:00';
+  if (!time || Number.isNaN(time)) return '0:00';
   const minutes = Math.floor(time / 60);
   const seconds = Math.floor(time % 60);
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
 const toggleMute = () => {
@@ -155,6 +155,37 @@ const changePlaybackSpeed = () => {
   audioPlayer.value.playbackRate = playbackSpeed.value;
 };
 
+// WhatsApp jaisi waveform: file ke naam se seed, taake har baar wahi shakl bane
+const waveBars = computed(() => {
+  const seedStr = String(attachment.dataUrl || attachment.id || 'a');
+  let seed = 0;
+  for (let i = 0; i < seedStr.length; i += 1) {
+    seed = (seed * 31 + seedStr.charCodeAt(i)) % 100000;
+  }
+  const bars = [];
+  for (let i = 0; i < 34; i += 1) {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    bars.push(18 + ((seed >> 8) % 82));
+  }
+  return bars;
+});
+
+const progressPct = computed(() => {
+  if (!duration.value) return 0;
+  return Math.min(100, (currentTime.value / duration.value) * 100);
+});
+
+const remainingLabel = computed(() =>
+  formatTime(currentTime.value > 0 ? currentTime.value : duration.value)
+);
+
+const seekToBar = index => {
+  if (!duration.value) return;
+  const t = (index / 34) * duration.value;
+  audioPlayer.value.currentTime = t;
+  currentTime.value = t;
+};
+
 const downloadAudio = async () => {
   const { fileType, dataUrl, extension } = attachment;
   downloadFile({ url: dataUrl, type: fileType, extension });
@@ -173,52 +204,36 @@ const downloadAudio = async () => {
   >
     <source :src="timeStampURL" />
   </audio>
-  <div
-    v-bind="$attrs"
-    class="rounded-xl w-full gap-2 p-1.5 bg-n-alpha-white flex flex-col items-center border border-n-container shadow-[0px_2px_8px_0px_rgba(94,94,94,0.06)]"
-  >
-    <div class="flex gap-1 w-full flex-1 items-center justify-start">
-      <button class="p-0 border-0 size-8" @click="playOrPause">
+  <div v-bind="$attrs" class="cs-voice">
+    <div class="cs-voice__row">
+      <button class="cs-voice__play" @click="playOrPause">
         <Icon
           v-if="isPlaying"
-          class="size-8"
+          class="size-5"
           icon="i-teenyicons-pause-small-solid"
         />
-        <Icon v-else class="size-8" icon="i-teenyicons-play-small-solid" />
+        <Icon v-else class="size-5" icon="i-teenyicons-play-small-solid" />
       </button>
-      <div class="tabular-nums text-xs">
-        {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
-      </div>
-      <div class="flex-1 items-center flex px-2">
-        <input
-          type="range"
-          min="0"
-          :max="duration"
-          :value="currentTime"
-          class="w-full h-1 bg-n-slate-12/40 rounded-lg appearance-none cursor-pointer accent-current"
-          @input="seek"
+
+      <div class="cs-voice__wave" @click.stop>
+        <span
+          v-for="(h, i) in waveBars"
+          :key="i"
+          class="cs-voice__bar"
+          :class="{ 'cs-voice__bar--on': (i / 34) * 100 <= progressPct }"
+          :style="{ height: h + '%' }"
+          @click="seekToBar(i)"
         />
       </div>
+
+      <span class="cs-voice__time">{{ remainingLabel }}</span>
+
       <button
-        class="border-0 w-10 h-6 grid place-content-center bg-n-alpha-2 hover:bg-alpha-3 rounded-2xl"
+        class="cs-voice__speed"
+        :class="{ 'cs-voice__speed--on': playbackSpeed !== 1 }"
         @click="changePlaybackSpeed"
       >
-        <span class="text-xs text-n-slate-11 font-medium">
-          {{ playbackSpeedLabel }}
-        </span>
-      </button>
-      <button
-        class="p-0 border-0 size-8 grid place-content-center"
-        @click="toggleMute"
-      >
-        <Icon v-if="isMuted" class="size-4" icon="i-lucide-volume-off" />
-        <Icon v-else class="size-4" icon="i-lucide-volume-2" />
-      </button>
-      <button
-        class="p-0 border-0 size-8 grid place-content-center"
-        @click="downloadAudio"
-      >
-        <Icon class="size-4" icon="i-lucide-download" />
+        {{ playbackSpeedLabel }}
       </button>
     </div>
 
@@ -241,3 +256,96 @@ const downloadAudio = async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* WhatsApp jaisa voice player — bubble ke andar */
+.cs-voice {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.cs-voice__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cs-voice__play {
+  border: 0;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.cs-voice__play:hover {
+  opacity: 1;
+}
+
+.cs-voice__wave {
+  flex: 1 1 0;
+  /* min-width: 0 zaroori hai warna bars bubble se bahar bah jaati hain */
+  min-width: 0;
+  height: 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cs-voice__bar {
+  flex: 1 1 0;
+  min-width: 1px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.32;
+  transition: opacity 0.12s ease;
+}
+
+.cs-voice__bar--on {
+  opacity: 0.85;
+}
+
+.cs-voice__speed {
+  border: 0;
+  background: transparent;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  flex-shrink: 0;
+}
+
+.cs-voice__speed--on {
+  opacity: 0.9;
+}
+
+.cs-voice__time {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-voice__dl {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.45;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.cs-voice__dl:hover {
+  opacity: 0.85;
+}
+</style>

@@ -47,3 +47,1369 @@ div:has(> [class*='--chip-width']),
 .editor-root .empty-node::before {
   content: 'Message…' !important;
 }
+
+/* ==========================================================================
+   ChatsSync — WhatsApp theme
+   Rang WhatsApp Web ke apne CSS se. Har section alag se.
+   Hatana ho to yeh poora block delete kar do.
+   ========================================================================== */
+
+/* ============ 1. RANG ============ */
+:root {
+  --wa-chat: 239 231 222;
+  --wa-panel: 255 255 255;
+  --wa-rail: 240 242 245;
+  --wa-head: 240 242 245;
+  --wa-surface: 247 248 250;
+  --wa-sent: 217 253 211;
+  --wa-recv: 255 255 255;
+  --wa-txt: 17 27 33;
+  --wa-txt2: 84 101 111;
+  --wa-txt3: 134 150 160;
+  --wa-hover: 245 246 246;
+  --wa-active: 240 242 245;
+  --wa-green: 0 128 105;
+  --wa-tick: 83 189 235;
+  --wa-badge: 37 211 102;
+  --wa-doodle: 0.06;
+  --wa-sh: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  --wa-line: rgba(11, 20, 26, 0.08);
+  --wa-pop: 0 4px 22px rgba(11, 20, 26, 0.16);
+}
+
+.dark {
+  --wa-chat: 11 20 26;
+  --wa-panel: 17 27 33;
+  --wa-rail: 32 44 51;
+  --wa-head: 32 44 51;
+  --wa-surface: 17 27 33;
+  --wa-sent: 0 92 75;
+  --wa-recv: 32 44 51;
+  --wa-txt: 233 237 239;
+  --wa-txt2: 174 186 193;
+  --wa-txt3: 134 150 160;
+  --wa-hover: 32 44 51;
+  --wa-active: 42 57 66;
+  --wa-green: 0 168 132;
+  --wa-tick: 83 189 235;
+  --wa-badge: 0 168 132;
+  --wa-doodle: 0.042;
+  --wa-sh: 0 1px 0.5px rgba(0, 0, 0, 0.35);
+  --wa-line: rgba(255, 255, 255, 0.07);
+  --wa-pop: 0 4px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* ============ 2. RAIL ============ */
+aside[class*='bg-n-background'] {
+  background: rgb(var(--wa-rail)) !important;
+  border-right: 1px solid var(--wa-line) !important;
+}
+
+aside nav a,
+aside nav button,
+aside > section a,
+aside > section button {
+  border-radius: 50% !important;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+aside nav a:hover,
+aside nav button:hover {
+  background: var(--wa-line) !important;
+}
+
+aside a[aria-current='page'] {
+  background: rgb(var(--wa-green) / 0.14) !important;
+  color: rgb(var(--wa-green)) !important;
+}
+
+aside a[aria-current='page'] span[class*='i-'] {
+  color: rgb(var(--wa-green)) !important;
+}
+
+/* ============ 3. CHAT LIST ============ */
+.conversations-list-wrap {
+  background: rgb(var(--wa-panel)) !important;
+  border-right: 1px solid var(--wa-line);
+}
+
+.conversations-list-wrap h1 {
+  font-size: 1.375rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+  color: rgb(var(--wa-txt)) !important;
+}
+
+.conversation {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-bottom: none !important;
+  transition: background-color 0.13s ease;
+
+  .border-line {
+    border-bottom: 1px solid var(--wa-line);
+    padding-top: 0.625rem !important;
+    padding-bottom: 0.625rem !important;
+  }
+
+  &:last-child .border-line {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: rgb(var(--wa-hover)) !important;
+  }
+
+  &.active,
+  &.selected {
+    background: rgb(var(--wa-active)) !important;
+  }
+}
+
+/* unread badge */
+.conversation [class*='bg-n-brand'],
+.conversation [class*='bg-woot'] {
+  background: rgb(var(--wa-badge)) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  font-weight: 500;
+  min-width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* search */
+.conversations-list-wrap input[type='text'] {
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  color: rgb(var(--wa-txt)) !important;
+  font-size: 0.875rem;
+}
+
+.conversations-list-wrap input[type='text']::placeholder {
+  color: rgb(var(--wa-txt3)) !important;
+}
+
+/* ============ 4. PILLS ============ */
+.cs-pills {
+  scrollbar-width: none;
+}
+
+.cs-pills::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============ 5. CHAT HEADER ============ */
+.conversation--header,
+[class*='conversation--header'] {
+  background: rgb(var(--wa-head)) !important;
+  border-bottom: 1px solid var(--wa-line) !important;
+}
+
+/* ============ 6. THREAD + url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='352' height='232' viewBox='0 0 352 232'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18,20)'%3E%3Cpath d='M0 6a6 6 0 0 1 12 0 6 6 0 0 1-6 6H2l2-3a6 6 0 0 1-4-3z'/%3E%3C/g%3E%3Cg transform='translate(62,14)'%3E%3Cpath d='M0 0h14v10H4L0 13z'/%3E%3C/g%3E%3Cg transform='translate(108,22)'%3E%3Cpath d='M6 0l1.8 3.7 4 .6-2.9 2.8.7 4L6 9.2 2.4 11l.7-4L.2 4.3l4-.6z'/%3E%3C/g%3E%3Cg transform='translate(150,16)'%3E%3Cpath d='M2 2h12v12H2z M2 6h12'/%3E%3C/g%3E%3Cg transform='translate(192,20)'%3E%3Cpath d='M7 0C3 0 0 3 0 6.5 0 11 7 16 7 16s7-5 7-9.5C14 3 11 0 7 0z M7 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'/%3E%3C/g%3E%3Cg transform='translate(234,14)'%3E%3Cpath d='M0 8c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7z M4 8h6 M7 5v6'/%3E%3C/g%3E%3Cg transform='translate(276,20)'%3E%3Cpath d='M0 3h16v10H0z M0 3l8 6 8-6'/%3E%3C/g%3E%3Cg transform='translate(318,16)'%3E%3Cpath d='M3 0h10v4H3z M1 4h14v11H1z M6 8h4'/%3E%3C/g%3E%3Cg transform='translate(14,64)'%3E%3Cpath d='M0 10c3-5 9-5 12 0 M6 4a2.5 2.5 0 1 1 0 .01'/%3E%3C/g%3E%3Cg transform='translate(56,58)'%3E%3Cpath d='M0 0h13M0 5h9M0 10h11'/%3E%3C/g%3E%3Cg transform='translate(98,62)'%3E%3Cpath d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0z M8 4v4.5l3 2'/%3E%3C/g%3E%3Cg transform='translate(140,60)'%3E%3Cpath d='M0 0l11 6-11 6z'/%3E%3C/g%3E%3Cg transform='translate(182,58)'%3E%3Cpath d='M2 0h11l3 4v11H2z M13 0v4h3'/%3E%3C/g%3E%3Cg transform='translate(224,62)'%3E%3Cpath d='M0 6h4l4-5v14l-4-5H0z M11 4a4 4 0 0 1 0 8'/%3E%3C/g%3E%3Cg transform='translate(266,58)'%3E%3Cpath d='M1 1h14v10H1z M1 11l5-4 3 2 3-3 3 3'/%3E%3C/g%3E%3Cg transform='translate(308,64)'%3E%3Cpath d='M6 0a6 6 0 0 1 6 6c0 4-6 10-6 10S0 10 0 6a6 6 0 0 1 6-6z'/%3E%3C/g%3E%3Cg transform='translate(20,106)'%3E%3Cpath d='M0 4h5l3-4h4l3 4h1v10H0z M8 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z'/%3E%3C/g%3E%3Cg transform='translate(62,110)'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/g%3E%3Cg transform='translate(104,104)'%3E%3Cpath d='M0 0h12v12H0z M3 3h6v6H3z'/%3E%3C/g%3E%3Cg transform='translate(146,108)'%3E%3Cpath d='M0 6a6 6 0 1 0 12 0 6 6 0 0 0-12 0z M3 6l2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(188,104)'%3E%3Cpath d='M1 3h14v9H1z M4 3V1h8v2 M4 12v2h8v-2'/%3E%3C/g%3E%3Cg transform='translate(230,110)'%3E%3Cpath d='M0 12L6 0l6 12z M4 12v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(272,106)'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/g%3E%3Cg transform='translate(314,110)'%3E%3Cpath d='M0 8h16 M4 4l-4 4 4 4 M12 4l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(16,150)'%3E%3Cpath d='M0 2h14v12H0z M3 0v4M11 0v4M0 6h14'/%3E%3C/g%3E%3Cg transform='translate(58,154)'%3E%3Cpath d='M7 0a7 7 0 1 1 0 14A7 7 0 0 1 7 0z M4 7h6'/%3E%3C/g%3E%3Cg transform='translate(100,148)'%3E%3Cpath d='M0 10c0-6 5-10 8-10s8 4 8 10'/%3E%3C/g%3E%3Cg transform='translate(142,152)'%3E%3Cpath d='M2 0h10v14l-5-4-5 4z'/%3E%3C/g%3E%3Cg transform='translate(184,150)'%3E%3Cpath d='M0 0h14v3H0z M2 3v10h10V3 M6 6v4M8 6v4'/%3E%3C/g%3E%3Cg transform='translate(226,154)'%3E%3Cpath d='M8 0l2 5 5 .5-4 3.5 1 5-4-2.6L4 14l1-5L1 5.5 6 5z'/%3E%3C/g%3E%3Cg transform='translate(268,148)'%3E%3Cpath d='M1 1h13v13H1z M4 7h7M7 4v7'/%3E%3C/g%3E%3Cg transform='translate(310,152)'%3E%3Cpath d='M0 5a5 5 0 0 1 10 0v6H0z M3 11v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(22,196)'%3E%3Cpath d='M0 3h16v9H0z M5 12v2h6v-2 M2 16h12'/%3E%3C/g%3E%3Cg transform='translate(64,198)'%3E%3Cpath d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0z M6 3v3l2 2'/%3E%3C/g%3E%3Cg transform='translate(106,194)'%3E%3Cpath d='M0 6h12 M8 2l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(148,198)'%3E%3Cpath d='M2 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z M4 3h4M4 6h4M4 9h2'/%3E%3C/g%3E%3Cg transform='translate(190,194)'%3E%3Cpath d='M0 0h14M0 5h14M0 10h8'/%3E%3C/g%3E%3Cg transform='translate(232,198)'%3E%3Cpath d='M7 0l7 7-7 7-7-7z'/%3E%3C/g%3E%3Cg transform='translate(274,194)'%3E%3Cpath d='M1 4h12v9H1z M4 4V2a3 3 0 0 1 6 0v2'/%3E%3C/g%3E%3Cg transform='translate(316,198)'%3E%3Cpath d='M0 0l14 7-14 7 3-7z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") ============ */
+.conversation-panel {
+  position: relative;
+  background-color: rgb(var(--wa-chat)) !important;
+  padding-left: 6% !important;
+  padding-right: 6% !important;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+.conversation-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--wa-doodle);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='352' height='232' viewBox='0 0 352 232'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18,20)'%3E%3Cpath d='M0 6a6 6 0 0 1 12 0 6 6 0 0 1-6 6H2l2-3a6 6 0 0 1-4-3z'/%3E%3C/g%3E%3Cg transform='translate(62,14)'%3E%3Cpath d='M0 0h14v10H4L0 13z'/%3E%3C/g%3E%3Cg transform='translate(108,22)'%3E%3Cpath d='M6 0l1.8 3.7 4 .6-2.9 2.8.7 4L6 9.2 2.4 11l.7-4L.2 4.3l4-.6z'/%3E%3C/g%3E%3Cg transform='translate(150,16)'%3E%3Cpath d='M2 2h12v12H2z M2 6h12'/%3E%3C/g%3E%3Cg transform='translate(192,20)'%3E%3Cpath d='M7 0C3 0 0 3 0 6.5 0 11 7 16 7 16s7-5 7-9.5C14 3 11 0 7 0z M7 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'/%3E%3C/g%3E%3Cg transform='translate(234,14)'%3E%3Cpath d='M0 8c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7z M4 8h6 M7 5v6'/%3E%3C/g%3E%3Cg transform='translate(276,20)'%3E%3Cpath d='M0 3h16v10H0z M0 3l8 6 8-6'/%3E%3C/g%3E%3Cg transform='translate(318,16)'%3E%3Cpath d='M3 0h10v4H3z M1 4h14v11H1z M6 8h4'/%3E%3C/g%3E%3Cg transform='translate(14,64)'%3E%3Cpath d='M0 10c3-5 9-5 12 0 M6 4a2.5 2.5 0 1 1 0 .01'/%3E%3C/g%3E%3Cg transform='translate(56,58)'%3E%3Cpath d='M0 0h13M0 5h9M0 10h11'/%3E%3C/g%3E%3Cg transform='translate(98,62)'%3E%3Cpath d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0z M8 4v4.5l3 2'/%3E%3C/g%3E%3Cg transform='translate(140,60)'%3E%3Cpath d='M0 0l11 6-11 6z'/%3E%3C/g%3E%3Cg transform='translate(182,58)'%3E%3Cpath d='M2 0h11l3 4v11H2z M13 0v4h3'/%3E%3C/g%3E%3Cg transform='translate(224,62)'%3E%3Cpath d='M0 6h4l4-5v14l-4-5H0z M11 4a4 4 0 0 1 0 8'/%3E%3C/g%3E%3Cg transform='translate(266,58)'%3E%3Cpath d='M1 1h14v10H1z M1 11l5-4 3 2 3-3 3 3'/%3E%3C/g%3E%3Cg transform='translate(308,64)'%3E%3Cpath d='M6 0a6 6 0 0 1 6 6c0 4-6 10-6 10S0 10 0 6a6 6 0 0 1 6-6z'/%3E%3C/g%3E%3Cg transform='translate(20,106)'%3E%3Cpath d='M0 4h5l3-4h4l3 4h1v10H0z M8 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z'/%3E%3C/g%3E%3Cg transform='translate(62,110)'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/g%3E%3Cg transform='translate(104,104)'%3E%3Cpath d='M0 0h12v12H0z M3 3h6v6H3z'/%3E%3C/g%3E%3Cg transform='translate(146,108)'%3E%3Cpath d='M0 6a6 6 0 1 0 12 0 6 6 0 0 0-12 0z M3 6l2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(188,104)'%3E%3Cpath d='M1 3h14v9H1z M4 3V1h8v2 M4 12v2h8v-2'/%3E%3C/g%3E%3Cg transform='translate(230,110)'%3E%3Cpath d='M0 12L6 0l6 12z M4 12v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(272,106)'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/g%3E%3Cg transform='translate(314,110)'%3E%3Cpath d='M0 8h16 M4 4l-4 4 4 4 M12 4l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(16,150)'%3E%3Cpath d='M0 2h14v12H0z M3 0v4M11 0v4M0 6h14'/%3E%3C/g%3E%3Cg transform='translate(58,154)'%3E%3Cpath d='M7 0a7 7 0 1 1 0 14A7 7 0 0 1 7 0z M4 7h6'/%3E%3C/g%3E%3Cg transform='translate(100,148)'%3E%3Cpath d='M0 10c0-6 5-10 8-10s8 4 8 10'/%3E%3C/g%3E%3Cg transform='translate(142,152)'%3E%3Cpath d='M2 0h10v14l-5-4-5 4z'/%3E%3C/g%3E%3Cg transform='translate(184,150)'%3E%3Cpath d='M0 0h14v3H0z M2 3v10h10V3 M6 6v4M8 6v4'/%3E%3C/g%3E%3Cg transform='translate(226,154)'%3E%3Cpath d='M8 0l2 5 5 .5-4 3.5 1 5-4-2.6L4 14l1-5L1 5.5 6 5z'/%3E%3C/g%3E%3Cg transform='translate(268,148)'%3E%3Cpath d='M1 1h13v13H1z M4 7h7M7 4v7'/%3E%3C/g%3E%3Cg transform='translate(310,152)'%3E%3Cpath d='M0 5a5 5 0 0 1 10 0v6H0z M3 11v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(22,196)'%3E%3Cpath d='M0 3h16v9H0z M5 12v2h6v-2 M2 16h12'/%3E%3C/g%3E%3Cg transform='translate(64,198)'%3E%3Cpath d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0z M6 3v3l2 2'/%3E%3C/g%3E%3Cg transform='translate(106,194)'%3E%3Cpath d='M0 6h12 M8 2l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(148,198)'%3E%3Cpath d='M2 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z M4 3h4M4 6h4M4 9h2'/%3E%3C/g%3E%3Cg transform='translate(190,194)'%3E%3Cpath d='M0 0h14M0 5h14M0 10h8'/%3E%3C/g%3E%3Cg transform='translate(232,198)'%3E%3Cpath d='M7 0l7 7-7 7-7-7z'/%3E%3C/g%3E%3Cg transform='translate(274,194)'%3E%3Cpath d='M1 4h12v9H1z M4 4V2a3 3 0 0 1 6 0v2'/%3E%3C/g%3E%3Cg transform='translate(316,198)'%3E%3Cpath d='M0 0l14 7-14 7 3-7z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size: 264px 174px;
+}
+
+.conversation-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* din ka separator + system message */
+.conversation-panel [class*='date-separator'] span,
+.conversation-panel [class*='bg-n-alpha-1'][class*='rounded-lg'] {
+  background: rgb(var(--wa-head)) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.32rem 0.8rem !important;
+  font-size: 0.75rem !important;
+  box-shadow: var(--wa-sh);
+  border: 0 !important;
+  color: rgb(var(--wa-txt2)) !important;
+}
+
+/* ============ 7. BUBBLES ============ */
+.message-bubble-container {
+  margin-bottom: 0.125rem !important;
+  margin-top: 0.375rem;
+  animation: wa-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes wa-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.message-bubble-container .left-bubble,
+.message-bubble-container .right-bubble {
+  padding: 0.375rem 0.4375rem 0.5rem 0.5625rem !important;
+  box-shadow: var(--wa-sh);
+  max-width: 65% !important;
+  line-height: 1.35;
+  font-size: 0.8875rem;
+}
+
+.message-bubble-container [class*='i-lucide-check'],
+.message-bubble-container [class*='check-double'] {
+  color: rgb(var(--wa-tick)) !important;
+}
+
+.message-bubble-container time {
+  color: rgb(var(--wa-txt3));
+  font-size: 0.6875rem;
+  opacity: 0.65;
+}
+
+/* ============ 8. COMPOSER ============ */
+.reply-box {
+  background: rgb(var(--wa-head)) !important;
+  border: 1px solid var(--wa-line) !important;
+  border-radius: 1.5rem !important;
+  margin: 0.5rem 0.75rem 0.75rem !important;
+  min-height: 2.75rem;
+  transition: border-color 0.16s ease;
+}
+
+.reply-box:focus-within {
+  border-color: rgb(var(--wa-green) / 0.4) !important;
+}
+
+.reply-box .ProseMirror-woot-style,
+.reply-box .ProseMirror,
+.reply-box .editor-root,
+.resizable-editor-wrapper .ProseMirror-woot-style {
+  min-height: 1.5rem !important;
+  max-height: 7.5rem !important;
+}
+
+.reply-box [class*='cursor-row-resize'],
+.reply-box [class*='cursor-ns-resize'] {
+  display: none !important;
+}
+
+/* ============ 9. CONTEXT MENUS ============ */
+[class*='context-menu'],
+.dropdown-pane,
+[role='menu'] {
+  border-radius: 0.6rem !important;
+  box-shadow: var(--wa-pop) !important;
+  border: 1px solid var(--wa-line) !important;
+  background: rgb(var(--wa-panel)) !important;
+  padding: 0.4rem 0 !important;
+}
+
+[role='menuitem'],
+[class*='context-menu'] button,
+[class*='context-menu'] li {
+  border-radius: 0 !important;
+  padding: 0.55rem 1rem !important;
+  font-size: 0.9rem;
+  transition: background-color 0.12s ease;
+}
+
+[role='menuitem']:hover,
+[class*='context-menu'] button:hover {
+  background: rgb(var(--wa-hover)) !important;
+}
+
+/* ============ 10. RIGHT PANEL ============ */
+[class*='conversation-sidebar'],
+.conversation-sidebar-wrap {
+  background: rgb(var(--wa-panel)) !important;
+  border-left: 1px solid var(--wa-line);
+}
+
+/* ============ 11. SETTINGS ============ */
+.settings,
+[class*='bg-n-surface-1'] {
+  background: rgb(var(--wa-surface)) !important;
+}
+
+/* settings ka bada heading chhota aur saaf */
+.settings h1,
+[class*='max-w-7xl'] h1 {
+  font-size: 1.5rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+}
+
+.settings h2,
+[class*='text-heading-1'] {
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+}
+
+/* settings ke cards */
+[class*='border-n-weak'][class*='rounded'] {
+  border-color: var(--wa-line) !important;
+  border-radius: 0.75rem !important;
+  margin-bottom: 0.875rem;
+}
+
+/* settings ke andar ke rows — v17 jaisi saans */
+[class*='max-w-7xl'] [class*='py-'] > [class*='border-b'] {
+  padding-top: 0.875rem !important;
+  padding-bottom: 0.875rem !important;
+}
+
+/* ============ 12. TABLES (settings, reports, contacts) ============ */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table thead {
+  background: rgb(var(--wa-hover)) !important;
+}
+
+table thead th {
+  font-size: 0.6875rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--wa-txt3)) !important;
+  padding: 0.7rem 1rem !important;
+}
+
+table tbody td {
+  padding: 0.8rem 1rem !important;
+  font-size: 0.875rem;
+  border-top: 1px solid var(--wa-line) !important;
+}
+
+table tbody tr:hover {
+  background: rgb(var(--wa-hover)) !important;
+}
+
+/* numbers align */
+table td[class*='text-right'],
+table th[class*='text-right'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ 13. BUTTONS + LINKS ============ */
+button[class*='bg-n-brand'],
+.button--primary,
+button[class*='bg-woot-500'] {
+  background: rgb(var(--wa-green)) !important;
+  border-color: rgb(var(--wa-green)) !important;
+  transition: filter 0.14s ease, transform 0.12s ease;
+}
+
+button[class*='bg-n-brand']:hover,
+.button--primary:hover {
+  filter: brightness(1.08);
+}
+
+button[class*='bg-n-brand']:active,
+.button--primary:active {
+  transform: scale(0.97);
+}
+
+a[class*='text-n-brand'],
+[class*='text-woot-500'] {
+  color: rgb(var(--wa-green)) !important;
+}
+
+/* ============ 14. FORM FIELDS ============ */
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+input[type='search'],
+select,
+textarea {
+  border-radius: 0.6rem !important;
+  transition: border-color 0.14s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgb(var(--wa-green) / 0.5) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* ============ 15. SCROLLBARS ============ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(11, 20, 26, 0.18);
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============ 16. SMOOTHNESS ============ */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.conversation,
+aside a,
+aside button,
+[role='menuitem'],
+table tbody tr {
+  transition: background-color 0.13s ease, color 0.13s ease,
+    transform 0.13s ease, opacity 0.13s ease;
+}
+
+/* ============ 17. MOBILE ============ */
+@media (max-width: 767px) {
+  .conversation-panel {
+    padding-left: 3% !important;
+    padding-right: 3% !important;
+  }
+
+  .message-bubble-container .left-bubble,
+  .message-bubble-container .right-bubble {
+    max-width: 84% !important;
+    font-size: 0.9375rem;
+  }
+
+  .reply-box {
+    margin: 0.4rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom)) !important;
+    border-radius: 1.5rem !important;
+  }
+
+  /* mobile par input 16px — warna iOS zoom karta hai */
+  .reply-box .ProseMirror-woot-style,
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  .conversations-list-wrap h1 {
+    font-size: 1.25rem !important;
+  }
+
+  .conversation .border-line {
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+  }
+
+  /* menus mobile par neeche se, poori chaudai */
+  [class*='context-menu'],
+  [role='menu'] {
+    border-radius: 0.9rem !important;
+  }
+
+  table thead th,
+  table tbody td {
+    padding: 0.6rem 0.7rem !important;
+    font-size: 0.8125rem;
+  }
+
+  .settings h1,
+  [class*='max-w-7xl'] h1 {
+    font-size: 1.25rem !important;
+  }
+}
+
+/* ============ 18. ACCESSIBILITY ============ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============ 19. CHHOTI SCREEN (400px se neeche) ============ */
+@media (max-width: 400px) {
+  .message-bubble-container .left-bubble,
+  .message-bubble-container .right-bubble {
+    max-width: 88% !important;
+  }
+
+  .conversations-list-wrap h1 {
+    font-size: 1.125rem !important;
+  }
+
+  .cs-pill {
+    font-size: 0.75rem;
+    padding: 0.28rem 0.7rem;
+  }
+}
+/* ============ 20. VOICE MESSAGE ============ */
+/* voice bubble screen se bahar na jaye */
+.message-bubble-container [data-bubble-name='audio'] {
+  max-width: min(19rem, 65%) !important;
+  min-width: 0 !important;
+}
+
+@media (max-width: 767px) {
+  .message-bubble-container [data-bubble-name='audio'] {
+    max-width: min(17rem, 84%) !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .message-bubble-container [data-bubble-name='audio'] {
+    max-width: 88% !important;
+  }
+}
+
+/* CS-WA-START  — ChatsSync WhatsApp layout. Is marker ke andar sab kuch
+   apply-wa-layout.sh ka likha hua hai. Haath se edit karo to theek hai,
+   magar script dobara chalane par ye block replace ho jayega. */
+
+:root {
+  --cs-rail:#F0F2F5; --cs-rail-hov:#E3E6EA; --cs-rail-on:#DCEFE9;
+  --cs-rail-ic:#54656F; --cs-rail-ic-on:#008069;
+  --cs-panel:#FFFFFF; --cs-head:#F0F2F5; --cs-card:#FFFFFF;
+  --cs-fld:#F0F2F5; --cs-fld-b:#E4E7E9;
+  --cs-tx:#111B21; --cs-tx2:#54656F; --cs-tx3:#8696A0;
+  --cs-ln:#E4E7E9; --cs-ln2:#F0F2F4; --cs-hov:#F5F6F8; --cs-sel:#E9EDEF;
+  --cs-g:#008069; --cs-g-tint:#DCEFE9; --cs-b:#2F7FD1;
+  --cs-menu:#FFFFFF; --cs-menu-hov:#F0F2F5;
+  --cs-sent:#D9FDD3; --cs-recv:#FFFFFF;
+  --cs-chat:#EFE7DE; --cs-doodle:.06;
+  --cs-badge:#25D366; --cs-badge-tx:#053E20;
+  --cs-red:#D63C4B;
+  --cs-sh:0 1px .5px rgba(11,20,26,.13);
+  --cs-menu-sh:0 4px 22px rgba(11,20,26,.18);
+}
+
+html.dark, body.dark, .dark, [data-theme='dark'] {
+  --cs-rail:#202C33; --cs-rail-hov:#2A3942; --cs-rail-on:#103529;
+  --cs-rail-ic:#AEBAC1; --cs-rail-ic-on:#00A884;
+  --cs-panel:#111B21; --cs-head:#202C33; --cs-card:#182229;
+  --cs-fld:#202C33; --cs-fld-b:#2A3942;
+  --cs-tx:#E9EDEF; --cs-tx2:#AEBAC1; --cs-tx3:#8696A0;
+  --cs-ln:#222E35; --cs-ln2:#1D282F; --cs-hov:#202C33; --cs-sel:#2A3942;
+  --cs-g:#00A884; --cs-g-tint:#103529; --cs-b:#53BDEB;
+  --cs-menu:#233138; --cs-menu-hov:#182229;
+  --cs-sent:#005C4B; --cs-recv:#202C33;
+  --cs-chat:#0B141A; --cs-doodle:.045;
+  --cs-badge:#00A884; --cs-badge-tx:#0B141A;
+  --cs-red:#F15C6D;
+  --cs-sh:0 1px .5px rgba(0,0,0,.35);
+  --cs-menu-sh:0 4px 22px rgba(0,0,0,.45);
+}
+
+/* ---------- 1. CHAT LIST ROW ---------- */
+.cs-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 20px 11px 16px;
+  cursor: pointer;
+  position: relative;
+}
+.cs-row:hover   { background: var(--cs-hov); }
+.cs-row--on     { background: var(--cs-sel) !important; }
+.cs-row--sel    { background: var(--cs-g-tint) !important; }
+
+.cs-row__av { flex-shrink: 0; position: relative; }
+.cs-row__av > * { border-radius: 50% !important; }
+
+.cs-row__body {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 1px solid var(--cs-ln2);
+  padding-bottom: 11px;
+  margin-bottom: -11px;
+}
+.cs-row:last-child .cs-row__body { border-bottom: none; }
+
+.cs-row__l1 {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 3px;
+}
+.cs-row__name {
+  font-size: 15.5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cs-tx);
+}
+.cs-row--unread .cs-row__name { font-weight: 600; }
+.cs-row__time {
+  font-size: 11.5px;
+  color: var(--cs-tx3);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.cs-row--unread .cs-row__time { color: var(--cs-g); }
+
+.cs-row__l2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.cs-row__prev {
+  font-size: 13.5px;
+  color: var(--cs-tx3);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.45;
+  margin: 0;
+}
+.cs-row__prev * { color: inherit !important; font-size: inherit !important; }
+.cs-row__badge { flex-shrink: 0; }
+.cs-row__badge > * {
+  background: var(--cs-badge) !important;
+  color: var(--cs-badge-tx) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px !important;
+}
+
+/* ---------- 2. LIST HEADER (bara title) ---------- */
+.conversations-list-wrap h1,
+.chat-list__top h1 {
+  font-size: 21px !important;
+  font-weight: 600 !important;
+}
+
+/* ---------- 3. THREAD: doodle + day chips ---------- */
+.conversation-panel,
+.cs-chat-bg {
+  background-color: var(--cs-chat) !important;
+  position: relative;
+}
+.conversation-panel::before,
+.cs-chat-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--cs-doodle);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='352' height='232' viewBox='0 0 352 232'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18,20)'%3E%3Cpath d='M0 6a6 6 0 0 1 12 0 6 6 0 0 1-6 6H2l2-3a6 6 0 0 1-4-3z'/%3E%3C/g%3E%3Cg transform='translate(62,14)'%3E%3Cpath d='M0 0h14v10H4L0 13z'/%3E%3C/g%3E%3Cg transform='translate(108,22)'%3E%3Cpath d='M6 0l1.8 3.7 4 .6-2.9 2.8.7 4L6 9.2 2.4 11l.7-4L.2 4.3l4-.6z'/%3E%3C/g%3E%3Cg transform='translate(150,16)'%3E%3Cpath d='M2 2h12v12H2z M2 6h12'/%3E%3C/g%3E%3Cg transform='translate(192,20)'%3E%3Cpath d='M7 0C3 0 0 3 0 6.5 0 11 7 16 7 16s7-5 7-9.5C14 3 11 0 7 0z M7 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'/%3E%3C/g%3E%3Cg transform='translate(234,14)'%3E%3Cpath d='M0 8c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7z M4 8h6 M7 5v6'/%3E%3C/g%3E%3Cg transform='translate(276,20)'%3E%3Cpath d='M0 3h16v10H0z M0 3l8 6 8-6'/%3E%3C/g%3E%3Cg transform='translate(318,16)'%3E%3Cpath d='M3 0h10v4H3z M1 4h14v11H1z M6 8h4'/%3E%3C/g%3E%3Cg transform='translate(14,64)'%3E%3Cpath d='M0 10c3-5 9-5 12 0 M6 4a2.5 2.5 0 1 1 0 .01'/%3E%3C/g%3E%3Cg transform='translate(56,58)'%3E%3Cpath d='M0 0h13M0 5h9M0 10h11'/%3E%3C/g%3E%3Cg transform='translate(98,62)'%3E%3Cpath d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0z M8 4v4.5l3 2'/%3E%3C/g%3E%3Cg transform='translate(140,60)'%3E%3Cpath d='M0 0l11 6-11 6z'/%3E%3C/g%3E%3Cg transform='translate(182,58)'%3E%3Cpath d='M2 0h11l3 4v11H2z M13 0v4h3'/%3E%3C/g%3E%3Cg transform='translate(224,62)'%3E%3Cpath d='M0 6h4l4-5v14l-4-5H0z M11 4a4 4 0 0 1 0 8'/%3E%3C/g%3E%3Cg transform='translate(266,58)'%3E%3Cpath d='M1 1h14v10H1z M1 11l5-4 3 2 3-3 3 3'/%3E%3C/g%3E%3Cg transform='translate(308,64)'%3E%3Cpath d='M6 0a6 6 0 0 1 6 6c0 4-6 10-6 10S0 10 0 6a6 6 0 0 1 6-6z'/%3E%3C/g%3E%3Cg transform='translate(20,106)'%3E%3Cpath d='M0 4h5l3-4h4l3 4h1v10H0z M8 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z'/%3E%3C/g%3E%3Cg transform='translate(62,110)'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/g%3E%3Cg transform='translate(104,104)'%3E%3Cpath d='M0 0h12v12H0z M3 3h6v6H3z'/%3E%3C/g%3E%3Cg transform='translate(146,108)'%3E%3Cpath d='M0 6a6 6 0 1 0 12 0 6 6 0 0 0-12 0z M3 6l2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(188,104)'%3E%3Cpath d='M1 3h14v9H1z M4 3V1h8v2 M4 12v2h8v-2'/%3E%3C/g%3E%3Cg transform='translate(230,110)'%3E%3Cpath d='M0 12L6 0l6 12z M4 12v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(272,106)'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/g%3E%3Cg transform='translate(314,110)'%3E%3Cpath d='M0 8h16 M4 4l-4 4 4 4 M12 4l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(16,150)'%3E%3Cpath d='M0 2h14v12H0z M3 0v4M11 0v4M0 6h14'/%3E%3C/g%3E%3Cg transform='translate(58,154)'%3E%3Cpath d='M7 0a7 7 0 1 1 0 14A7 7 0 0 1 7 0z M4 7h6'/%3E%3C/g%3E%3Cg transform='translate(100,148)'%3E%3Cpath d='M0 10c0-6 5-10 8-10s8 4 8 10'/%3E%3C/g%3E%3Cg transform='translate(142,152)'%3E%3Cpath d='M2 0h10v14l-5-4-5 4z'/%3E%3C/g%3E%3Cg transform='translate(184,150)'%3E%3Cpath d='M0 0h14v3H0z M2 3v10h10V3 M6 6v4M8 6v4'/%3E%3C/g%3E%3Cg transform='translate(226,154)'%3E%3Cpath d='M8 0l2 5 5 .5-4 3.5 1 5-4-2.6L4 14l1-5L1 5.5 6 5z'/%3E%3C/g%3E%3Cg transform='translate(268,148)'%3E%3Cpath d='M1 1h13v13H1z M4 7h7M7 4v7'/%3E%3C/g%3E%3Cg transform='translate(310,152)'%3E%3Cpath d='M0 5a5 5 0 0 1 10 0v6H0z M3 11v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(22,196)'%3E%3Cpath d='M0 3h16v9H0z M5 12v2h6v-2 M2 16h12'/%3E%3C/g%3E%3Cg transform='translate(64,198)'%3E%3Cpath d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0z M6 3v3l2 2'/%3E%3C/g%3E%3Cg transform='translate(106,194)'%3E%3Cpath d='M0 6h12 M8 2l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(148,198)'%3E%3Cpath d='M2 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z M4 3h4M4 6h4M4 9h2'/%3E%3C/g%3E%3Cg transform='translate(190,194)'%3E%3Cpath d='M0 0h14M0 5h14M0 10h8'/%3E%3C/g%3E%3Cg transform='translate(232,198)'%3E%3Cpath d='M7 0l7 7-7 7-7-7z'/%3E%3C/g%3E%3Cg transform='translate(274,194)'%3E%3Cpath d='M1 4h12v9H1z M4 4V2a3 3 0 0 1 6 0v2'/%3E%3C/g%3E%3Cg transform='translate(316,198)'%3E%3Cpath d='M0 0l14 7-14 7 3-7z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.conversation-panel > *,
+.cs-chat-bg > * { position: relative; z-index: 1; }
+
+/* din ka chip — Chatwoot ka date separator */
+.conversation-panel .date--separator,
+.conversation-panel [class*='date-separator'] {
+  display: flex !important;
+  justify-content: center !important;
+  margin: 10px 0 !important;
+  background: none !important;
+}
+.conversation-panel .date--separator::before,
+.conversation-panel .date--separator::after { display: none !important; }
+.conversation-panel .date--separator > span,
+.conversation-panel .date--separator > div {
+  background: var(--cs-head) !important;
+  color: var(--cs-tx2) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 5px 13px !important;
+  border-radius: 8px !important;
+  box-shadow: var(--cs-sh);
+  border: none !important;
+}
+
+/* ---------- 4. BUBBLE + NOK (tail) ---------- */
+.left-bubble, .right-bubble {
+  position: relative;
+  box-shadow: var(--cs-sh);
+}
+.left-bubble::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  border-top: 9px solid var(--cs-recv);
+  border-left: 9px solid transparent;
+}
+.right-bubble::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  border-top: 9px solid var(--cs-sent);
+  border-right: 9px solid transparent;
+}
+/* grouped message par nok nahi */
+.left-bubble.rounded-tl-none::before,
+.right-bubble.rounded-tr-none::before { content: ''; }
+.bg-n-solid-sent     { background: var(--cs-sent) !important; }
+.bg-n-solid-received { background: var(--cs-recv) !important; }
+
+/* ---------- 5. COMPOSER: patli pill ---------- */
+.cs-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--cs-fld);
+  border-radius: 10px;
+  padding: 4px 10px;
+  min-height: 46px;
+}
+.cs-left, .cs-right, .cs-rec {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.cs-rec { flex: 1; gap: 8px; }
+.cs-rec__spacer { flex: 1; }
+.cs-rec__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--cs-red);
+  animation: cs-blink 1.4s ease-in-out infinite;
+}
+.cs-rec__dot--paused { animation: none; opacity: .45; }
+@keyframes cs-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+.cs-rec__time {
+  font-size: 13px;
+  color: var(--cs-tx2);
+  font-variant-numeric: tabular-nums;
+}
+.cs-send > * {
+  border-radius: 50% !important;
+  background: var(--cs-g) !important;
+  color: #fff !important;
+}
+
+/* ---------- 6. PILLS ---------- */
+.cs-pills {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 12px;
+  align-items: center;
+  overflow-x: auto;
+}
+.cs-pills::-webkit-scrollbar { display: none; }
+.cs-pill {
+  font-size: 13.5px;
+  padding: 5px 14px;
+  border-radius: 16px;
+  background: var(--cs-fld);
+  color: var(--cs-tx2);
+  cursor: pointer;
+  white-space: nowrap;
+  border: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.cs-pill:hover  { filter: brightness(1.12); }
+.cs-pill--on    { background: var(--cs-g-tint); color: var(--cs-g); }
+.cs-pill__count { font-weight: 600; }
+
+/* ---------- 7. RIGHT-CLICK MENU ---------- */
+.z-\[9999\] > div,
+.z-\[9999\] > ul,
+.z-\[9999\] > nav {
+  background: var(--cs-menu) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--cs-menu-sh) !important;
+  padding: 7px 0 !important;
+  min-width: 212px;
+  border: none !important;
+  font-size: 14.5px;
+}
+.z-\[9999\] li,
+.z-\[9999\] [role='button'],
+.z-\[9999\] button {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 10px 17px !important;
+  border-radius: 0 !important;
+  height: auto !important;
+  color: var(--cs-tx) !important;
+  font-size: 14.5px !important;
+  font-weight: 400 !important;
+  width: 100%;
+}
+.z-\[9999\] li:hover,
+.z-\[9999\] [role='button']:hover,
+.z-\[9999\] button:hover {
+  background: var(--cs-menu-hov) !important;
+}
+.z-\[9999\] span { font-size: 14.5px !important; }
+.z-\[9999\] svg,
+.z-\[9999\] i { width: 19px; height: 19px; color: var(--cs-tx2); }
+.z-\[9999\] hr { border-color: var(--cs-ln) !important; margin: 6px 0 !important; }
+.z-\[9999\] .text-n-ruby-11,
+.z-\[9999\] [class*='ruby'] { color: var(--cs-red) !important; }
+
+/* ---------- 8. SCROLLBAR ---------- */
+.conversation-panel::-webkit-scrollbar,
+.conversations-list::-webkit-scrollbar { width: 6px; }
+.conversation-panel::-webkit-scrollbar-thumb,
+.conversations-list::-webkit-scrollbar-thumb {
+  background: var(--cs-fld-b);
+  border-radius: 3px;
+}
+.conversation-panel::-webkit-scrollbar-track,
+.conversations-list::-webkit-scrollbar-track { background: transparent; }
+
+/* CS-WA-END */
+
+/* CS-WA2-START */
+
+/* ===== CANARY: agar list ke upar HARI PATTI dikhe to CSS lag rahi hai ===== */
+.conversations-list-wrap::before,
+.conversations-list::before {
+  content: '';
+  display: block;
+  height: 4px;
+  background: #00A884;
+}
+
+/* ===== 1. THREAD: doodle saaf nazar aaye ===== */
+.conversation-panel {
+  background-color: var(--cs-chat, #0B141A) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='352' height='232' viewBox='0 0 352 232'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18,20)'%3E%3Cpath d='M0 6a6 6 0 0 1 12 0 6 6 0 0 1-6 6H2l2-3a6 6 0 0 1-4-3z'/%3E%3C/g%3E%3Cg transform='translate(62,14)'%3E%3Cpath d='M0 0h14v10H4L0 13z'/%3E%3C/g%3E%3Cg transform='translate(108,22)'%3E%3Cpath d='M6 0l1.8 3.7 4 .6-2.9 2.8.7 4L6 9.2 2.4 11l.7-4L.2 4.3l4-.6z'/%3E%3C/g%3E%3Cg transform='translate(150,16)'%3E%3Cpath d='M2 2h12v12H2z M2 6h12'/%3E%3C/g%3E%3Cg transform='translate(192,20)'%3E%3Cpath d='M7 0C3 0 0 3 0 6.5 0 11 7 16 7 16s7-5 7-9.5C14 3 11 0 7 0z M7 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'/%3E%3C/g%3E%3Cg transform='translate(234,14)'%3E%3Cpath d='M0 8c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7z M4 8h6 M7 5v6'/%3E%3C/g%3E%3Cg transform='translate(276,20)'%3E%3Cpath d='M0 3h16v10H0z M0 3l8 6 8-6'/%3E%3C/g%3E%3Cg transform='translate(318,16)'%3E%3Cpath d='M3 0h10v4H3z M1 4h14v11H1z M6 8h4'/%3E%3C/g%3E%3Cg transform='translate(14,64)'%3E%3Cpath d='M0 10c3-5 9-5 12 0 M6 4a2.5 2.5 0 1 1 0 .01'/%3E%3C/g%3E%3Cg transform='translate(56,58)'%3E%3Cpath d='M0 0h13M0 5h9M0 10h11'/%3E%3C/g%3E%3Cg transform='translate(98,62)'%3E%3Cpath d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0z M8 4v4.5l3 2'/%3E%3C/g%3E%3Cg transform='translate(140,60)'%3E%3Cpath d='M0 0l11 6-11 6z'/%3E%3C/g%3E%3Cg transform='translate(182,58)'%3E%3Cpath d='M2 0h11l3 4v11H2z M13 0v4h3'/%3E%3C/g%3E%3Cg transform='translate(224,62)'%3E%3Cpath d='M0 6h4l4-5v14l-4-5H0z M11 4a4 4 0 0 1 0 8'/%3E%3C/g%3E%3Cg transform='translate(266,58)'%3E%3Cpath d='M1 1h14v10H1z M1 11l5-4 3 2 3-3 3 3'/%3E%3C/g%3E%3Cg transform='translate(308,64)'%3E%3Cpath d='M6 0a6 6 0 0 1 6 6c0 4-6 10-6 10S0 10 0 6a6 6 0 0 1 6-6z'/%3E%3C/g%3E%3Cg transform='translate(20,106)'%3E%3Cpath d='M0 4h5l3-4h4l3 4h1v10H0z M8 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z'/%3E%3C/g%3E%3Cg transform='translate(62,110)'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/g%3E%3Cg transform='translate(104,104)'%3E%3Cpath d='M0 0h12v12H0z M3 3h6v6H3z'/%3E%3C/g%3E%3Cg transform='translate(146,108)'%3E%3Cpath d='M0 6a6 6 0 1 0 12 0 6 6 0 0 0-12 0z M3 6l2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(188,104)'%3E%3Cpath d='M1 3h14v9H1z M4 3V1h8v2 M4 12v2h8v-2'/%3E%3C/g%3E%3Cg transform='translate(230,110)'%3E%3Cpath d='M0 12L6 0l6 12z M4 12v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(272,106)'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/g%3E%3Cg transform='translate(314,110)'%3E%3Cpath d='M0 8h16 M4 4l-4 4 4 4 M12 4l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(16,150)'%3E%3Cpath d='M0 2h14v12H0z M3 0v4M11 0v4M0 6h14'/%3E%3C/g%3E%3Cg transform='translate(58,154)'%3E%3Cpath d='M7 0a7 7 0 1 1 0 14A7 7 0 0 1 7 0z M4 7h6'/%3E%3C/g%3E%3Cg transform='translate(100,148)'%3E%3Cpath d='M0 10c0-6 5-10 8-10s8 4 8 10'/%3E%3C/g%3E%3Cg transform='translate(142,152)'%3E%3Cpath d='M2 0h10v14l-5-4-5 4z'/%3E%3C/g%3E%3Cg transform='translate(184,150)'%3E%3Cpath d='M0 0h14v3H0z M2 3v10h10V3 M6 6v4M8 6v4'/%3E%3C/g%3E%3Cg transform='translate(226,154)'%3E%3Cpath d='M8 0l2 5 5 .5-4 3.5 1 5-4-2.6L4 14l1-5L1 5.5 6 5z'/%3E%3C/g%3E%3Cg transform='translate(268,148)'%3E%3Cpath d='M1 1h13v13H1z M4 7h7M7 4v7'/%3E%3C/g%3E%3Cg transform='translate(310,152)'%3E%3Cpath d='M0 5a5 5 0 0 1 10 0v6H0z M3 11v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(22,196)'%3E%3Cpath d='M0 3h16v9H0z M5 12v2h6v-2 M2 16h12'/%3E%3C/g%3E%3Cg transform='translate(64,198)'%3E%3Cpath d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0z M6 3v3l2 2'/%3E%3C/g%3E%3Cg transform='translate(106,194)'%3E%3Cpath d='M0 6h12 M8 2l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(148,198)'%3E%3Cpath d='M2 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z M4 3h4M4 6h4M4 9h2'/%3E%3C/g%3E%3Cg transform='translate(190,194)'%3E%3Cpath d='M0 0h14M0 5h14M0 10h8'/%3E%3C/g%3E%3Cg transform='translate(232,198)'%3E%3Cpath d='M7 0l7 7-7 7-7-7z'/%3E%3C/g%3E%3Cg transform='translate(274,194)'%3E%3Cpath d='M1 4h12v9H1z M4 4V2a3 3 0 0 1 6 0v2'/%3E%3C/g%3E%3Cg transform='translate(316,198)'%3E%3Cpath d='M0 0l14 7-14 7 3-7z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") !important;
+  background-repeat: repeat !important;
+  background-size: 352px 232px !important;
+  background-blend-mode: overlay;
+}
+.conversation-panel::before { content: none !important; }
+
+/* ===== 2. DAY CHIP ===== */
+.conversation-panel li > .flex.justify-center > span,
+.conversation-panel .date--separator span,
+.conversation-panel [class*='date'] span {
+  background: var(--cs-head, #202C33) !important;
+  color: var(--cs-tx2, #AEBAC1) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 5px 13px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px .5px rgba(0,0,0,.35) !important;
+  border: none !important;
+  text-transform: none !important;
+}
+
+/* ===== 3. BUBBLE KI NOK ===== */
+.right-bubble, .left-bubble { overflow: visible !important; }
+.right-bubble::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-sent, #005C4B);
+  border-right: 9px solid transparent;
+}
+.left-bubble::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-recv, #202C33);
+  border-left: 9px solid transparent;
+}
+
+/* ===== 4. COMPOSER: bada khali box khatam ===== */
+.ProseMirror {
+  min-height: 1.5rem !important;
+  max-height: 7.5rem !important;
+  padding: 0 !important;
+}
+.conversation-footer, .reply-box,
+[class*='reply-box'], [class*='ReplyBox'] {
+  min-height: 0 !important;
+}
+.conversation-footer .editor-root,
+.reply-box__top { padding: 4px 10px !important; }
+
+/* ===== 5. LIST HEADER bara ===== */
+.conversations-list-wrap h1 {
+  font-size: 21px !important;
+  font-weight: 600 !important;
+}
+
+/* ===== 6. ROW: avatar pakka 49px ===== */
+.cs-row__av > *,
+.cs-row__av img,
+.cs-row__av > div {
+  width: 49px !important;
+  height: 49px !important;
+  min-width: 49px !important;
+  border-radius: 50% !important;
+  font-size: 15px !important;
+}
+
+/* CS-WA2-END */
+
+/* CS-WA3-START */
+
+.conversations-list-wrap::before, .conversations-list::before { content: none !important; }
+
+/* ---- doodle halka ---- */
+.conversation-panel {
+  background-color: var(--cs-chat, #0B141A) !important;
+  background-image: none !important;
+  position: relative;
+}
+.conversation-panel::before {
+  content: '' !important;
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 0;
+  opacity: .05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='352' height='232' viewBox='0 0 352 232'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18,20)'%3E%3Cpath d='M0 6a6 6 0 0 1 12 0 6 6 0 0 1-6 6H2l2-3a6 6 0 0 1-4-3z'/%3E%3C/g%3E%3Cg transform='translate(62,14)'%3E%3Cpath d='M0 0h14v10H4L0 13z'/%3E%3C/g%3E%3Cg transform='translate(108,22)'%3E%3Cpath d='M6 0l1.8 3.7 4 .6-2.9 2.8.7 4L6 9.2 2.4 11l.7-4L.2 4.3l4-.6z'/%3E%3C/g%3E%3Cg transform='translate(150,16)'%3E%3Cpath d='M2 2h12v12H2z M2 6h12'/%3E%3C/g%3E%3Cg transform='translate(192,20)'%3E%3Cpath d='M7 0C3 0 0 3 0 6.5 0 11 7 16 7 16s7-5 7-9.5C14 3 11 0 7 0z M7 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z'/%3E%3C/g%3E%3Cg transform='translate(234,14)'%3E%3Cpath d='M0 8c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7z M4 8h6 M7 5v6'/%3E%3C/g%3E%3Cg transform='translate(276,20)'%3E%3Cpath d='M0 3h16v10H0z M0 3l8 6 8-6'/%3E%3C/g%3E%3Cg transform='translate(318,16)'%3E%3Cpath d='M3 0h10v4H3z M1 4h14v11H1z M6 8h4'/%3E%3C/g%3E%3Cg transform='translate(14,64)'%3E%3Cpath d='M0 10c3-5 9-5 12 0 M6 4a2.5 2.5 0 1 1 0 .01'/%3E%3C/g%3E%3Cg transform='translate(56,58)'%3E%3Cpath d='M0 0h13M0 5h9M0 10h11'/%3E%3C/g%3E%3Cg transform='translate(98,62)'%3E%3Cpath d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0z M8 4v4.5l3 2'/%3E%3C/g%3E%3Cg transform='translate(140,60)'%3E%3Cpath d='M0 0l11 6-11 6z'/%3E%3C/g%3E%3Cg transform='translate(182,58)'%3E%3Cpath d='M2 0h11l3 4v11H2z M13 0v4h3'/%3E%3C/g%3E%3Cg transform='translate(224,62)'%3E%3Cpath d='M0 6h4l4-5v14l-4-5H0z M11 4a4 4 0 0 1 0 8'/%3E%3C/g%3E%3Cg transform='translate(266,58)'%3E%3Cpath d='M1 1h14v10H1z M1 11l5-4 3 2 3-3 3 3'/%3E%3C/g%3E%3Cg transform='translate(308,64)'%3E%3Cpath d='M6 0a6 6 0 0 1 6 6c0 4-6 10-6 10S0 10 0 6a6 6 0 0 1 6-6z'/%3E%3C/g%3E%3Cg transform='translate(20,106)'%3E%3Cpath d='M0 4h5l3-4h4l3 4h1v10H0z M8 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z'/%3E%3C/g%3E%3Cg transform='translate(62,110)'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/g%3E%3Cg transform='translate(104,104)'%3E%3Cpath d='M0 0h12v12H0z M3 3h6v6H3z'/%3E%3C/g%3E%3Cg transform='translate(146,108)'%3E%3Cpath d='M0 6a6 6 0 1 0 12 0 6 6 0 0 0-12 0z M3 6l2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(188,104)'%3E%3Cpath d='M1 3h14v9H1z M4 3V1h8v2 M4 12v2h8v-2'/%3E%3C/g%3E%3Cg transform='translate(230,110)'%3E%3Cpath d='M0 12L6 0l6 12z M4 12v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(272,106)'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/g%3E%3Cg transform='translate(314,110)'%3E%3Cpath d='M0 8h16 M4 4l-4 4 4 4 M12 4l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(16,150)'%3E%3Cpath d='M0 2h14v12H0z M3 0v4M11 0v4M0 6h14'/%3E%3C/g%3E%3Cg transform='translate(58,154)'%3E%3Cpath d='M7 0a7 7 0 1 1 0 14A7 7 0 0 1 7 0z M4 7h6'/%3E%3C/g%3E%3Cg transform='translate(100,148)'%3E%3Cpath d='M0 10c0-6 5-10 8-10s8 4 8 10'/%3E%3C/g%3E%3Cg transform='translate(142,152)'%3E%3Cpath d='M2 0h10v14l-5-4-5 4z'/%3E%3C/g%3E%3Cg transform='translate(184,150)'%3E%3Cpath d='M0 0h14v3H0z M2 3v10h10V3 M6 6v4M8 6v4'/%3E%3C/g%3E%3Cg transform='translate(226,154)'%3E%3Cpath d='M8 0l2 5 5 .5-4 3.5 1 5-4-2.6L4 14l1-5L1 5.5 6 5z'/%3E%3C/g%3E%3Cg transform='translate(268,148)'%3E%3Cpath d='M1 1h13v13H1z M4 7h7M7 4v7'/%3E%3C/g%3E%3Cg transform='translate(310,152)'%3E%3Cpath d='M0 5a5 5 0 0 1 10 0v6H0z M3 11v3h4v-3'/%3E%3C/g%3E%3Cg transform='translate(22,196)'%3E%3Cpath d='M0 3h16v9H0z M5 12v2h6v-2 M2 16h12'/%3E%3C/g%3E%3Cg transform='translate(64,198)'%3E%3Cpath d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0z M6 3v3l2 2'/%3E%3C/g%3E%3Cg transform='translate(106,194)'%3E%3Cpath d='M0 6h12 M8 2l4 4-4 4'/%3E%3C/g%3E%3Cg transform='translate(148,198)'%3E%3Cpath d='M2 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z M4 3h4M4 6h4M4 9h2'/%3E%3C/g%3E%3Cg transform='translate(190,194)'%3E%3Cpath d='M0 0h14M0 5h14M0 10h8'/%3E%3C/g%3E%3Cg transform='translate(232,198)'%3E%3Cpath d='M7 0l7 7-7 7-7-7z'/%3E%3C/g%3E%3Cg transform='translate(274,194)'%3E%3Cpath d='M1 4h12v9H1z M4 4V2a3 3 0 0 1 6 0v2'/%3E%3C/g%3E%3Cg transform='translate(316,198)'%3E%3Cpath d='M0 0l14 7-14 7 3-7z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 352px 232px;
+}
+.conversation-panel > * { position: relative; z-index: 1; }
+
+/* ---- composer chhota ---- */
+.resizable-editor-wrapper {
+  --editor-height: 54px !important;
+  --editor-min-allowed: 44px !important;
+  min-height: 0 !important;
+}
+.resizable-editor-wrapper .ProseMirror {
+  min-height: 1.4rem !important;
+  max-height: 7rem !important;
+}
+.reply-box { border: none !important; background: transparent !important; padding: 4px 10px 8px !important; }
+
+/* ---- SEARCH BAR ---- */
+.cs-search {
+  margin: 0 12px 11px;
+  background: var(--cs-fld, #202C33);
+  border-radius: 9px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.cs-search__ic { width: 19px; height: 19px; color: var(--cs-tx3, #8696A0); flex-shrink: 0; }
+.cs-search input {
+  flex: 1; min-width: 0;
+  background: none; border: none; outline: none;
+  color: var(--cs-tx, #E9EDEF);
+  font-size: 14px; font-family: inherit;
+  padding: 10px 0;
+}
+.cs-search input::placeholder { color: var(--cs-tx3, #8696A0); }
+.cs-search__x { width: 17px; height: 17px; color: var(--cs-tx3); cursor: pointer; flex-shrink: 0; }
+
+/* ---- PILLS ---- */
+.cs-pills { display: flex; gap: 8px; padding: 0 12px 10px; overflow-x: auto; flex-shrink: 0; }
+.cs-pills::-webkit-scrollbar { display: none; }
+.cs-pill {
+  font-size: 13.5px; padding: 5px 14px; border-radius: 16px;
+  background: var(--cs-fld, #202C33); color: var(--cs-tx2, #AEBAC1);
+  border: 0; cursor: pointer; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.cs-pill:hover { filter: brightness(1.15); }
+.cs-pill--on { background: var(--cs-g-tint, #103529); color: var(--cs-g, #00A884); }
+.cs-pill__count { font-weight: 600; }
+
+/* ---- list row ---- */
+.cs-row { padding: 10px 16px !important; }
+.cs-row__av > *, .cs-row__av img {
+  width: 49px !important; height: 49px !important; min-width: 49px !important;
+  border-radius: 50% !important; font-size: 15px !important;
+}
+.cs-row__body { border-bottom: 1px solid var(--cs-ln2, #1D282F) !important; }
+
+/* ---- right-click menu ---- */
+.z-\[9999\] > div {
+  background: var(--cs-menu, #233138) !important;
+  backdrop-filter: none !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  box-shadow: 0 4px 22px rgba(0,0,0,.45) !important;
+  padding: 7px 0 !important;
+  min-width: 232px !important;
+}
+.z-\[9999\] [role='button'], .z-\[9999\] > div > div {
+  height: auto !important; padding: 9px 16px !important;
+  border-radius: 0 !important; gap: 14px !important;
+}
+.z-\[9999\] [role='button']:hover { background: var(--cs-menu-hov, #182229) !important; }
+.z-\[9999\] span { font-size: 14.5px !important; }
+.z-\[9999\] hr { margin: 6px 0 !important; border-color: var(--cs-ln, #222E35) !important; }
+
+/* ---- list header ---- */
+.conversations-list-wrap h1 { font-size: 21px !important; font-weight: 600 !important; }
+aside nav ul { gap: 4px !important; }
+
+/* CS-WA3-END */
+
+/* CS-WA4-START */
+
+/* search bar patli — target jaisi */
+.cs-search { margin: 0 12px 10px !important; padding: 0 14px !important; }
+.cs-search input { padding: 9px 0 !important; font-size: 14px !important; }
+.cs-search__ic { width: 18px !important; height: 18px !important; }
+
+/* channel chip  WA / FB / IG */
+.cs-chip {
+  font-size: 9.5px; font-weight: 600;
+  padding: 1px 6px; border-radius: 4px;
+  flex-shrink: 0; line-height: 1.5;
+  background: #123A22; color: #7DD99B;
+}
+.cs-chip--fb { background: #12283F; color: #8CBEF2; }
+.cs-chip--ig { background: #3A1526; color: #F09BC0; }
+
+/* tick */
+.cs-tick { color: var(--cs-b, #53BDEB); font-size: 13px; flex-shrink: 0; line-height: 1; }
+
+/* row: line sirf text ke neeche (avatar ke neeche nahi) */
+.cs-row { padding: 10px 20px 10px 16px !important; }
+.cs-row__body {
+  border-bottom: 1px solid var(--cs-ln2, #1D282F) !important;
+  padding-bottom: 10px !important;
+  margin-bottom: -10px !important;
+}
+.cs-row:last-child .cs-row__body { border-bottom: none !important; }
+
+/* day chip */
+.conversation-panel li > div.flex.justify-center > span,
+.conversation-panel .date--separator span {
+  background: var(--cs-head, #202C33) !important;
+  color: var(--cs-tx2, #AEBAC1) !important;
+  font-size: 12px !important; font-weight: 500 !important;
+  padding: 5px 13px !important; border-radius: 8px !important;
+  box-shadow: 0 1px .5px rgba(0,0,0,.35) !important;
+  border: none !important;
+}
+
+/* bubble ki nok */
+.right-bubble, .left-bubble { overflow: visible !important; }
+.right-bubble::after {
+  content: ''; position: absolute; top: 0; right: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-sent, #005C4B);
+  border-right: 9px solid transparent;
+}
+.left-bubble::after {
+  content: ''; position: absolute; top: 0; left: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-recv, #202C33);
+  border-left: 9px solid transparent;
+}
+
+/* composer wrapper */
+.resizable-editor-wrapper { min-height: 0 !important; }
+.resizable-editor-wrapper .ProseMirror { min-height: 1.4rem !important; }
+
+/* CS-WA4-END */
+
+/* CS-WA5-START  — target ke exact numbers (index.html se) */
+
+/* ===== 1. DOODLE: poori scroll height par (::before nahi) ===== */
+.conversation-panel {
+  background-color: var(--cs-chat, #0B141A) !important;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27352%27%20height%3D%27232%27%20viewBox%3D%270%200%20352%20232%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-opacity%3D%27.055%27%20stroke-width%3D%271.25%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cg%20transform%3D%27translate%2818%2C20%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%200%201%2012%200%206%206%200%200%201-6%206H2l2-3a6%206%200%200%201-4-3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C14%29%27%3E%3Cpath%20d%3D%27M0%200h14v10H4L0%2013z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28108%2C22%29%27%3E%3Cpath%20d%3D%27M6%200l1.8%203.7%204%20.6-2.9%202.8.7%204L6%209.2%202.4%2011l.7-4L.2%204.3l4-.6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28150%2C16%29%27%3E%3Cpath%20d%3D%27M2%202h12v12H2z%20M2%206h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28192%2C20%29%27%3E%3Cpath%20d%3D%27M7%200C3%200%200%203%200%206.5%200%2011%207%2016%207%2016s7-5%207-9.5C14%203%2011%200%207%200z%20M7%204a2.5%202.5%200%201%201%200%205%202.5%202.5%200%200%201%200-5z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28234%2C14%29%27%3E%3Cpath%20d%3D%27M0%208c0-4%203-7%207-7s7%203%207%207-3%207-7%207-7-3-7-7z%20M4%208h6%20M7%205v6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28276%2C20%29%27%3E%3Cpath%20d%3D%27M0%203h16v10H0z%20M0%203l8%206%208-6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28318%2C16%29%27%3E%3Cpath%20d%3D%27M3%200h10v4H3z%20M1%204h14v11H1z%20M6%208h4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2814%2C64%29%27%3E%3Cpath%20d%3D%27M0%2010c3-5%209-5%2012%200%20M6%204a2.5%202.5%200%201%201%200%20.01%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2856%2C58%29%27%3E%3Cpath%20d%3D%27M0%200h13M0%205h9M0%2010h11%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2898%2C62%29%27%3E%3Cpath%20d%3D%27M8%200a8%208%200%201%201%200%2016A8%208%200%200%201%208%200z%20M8%204v4.5l3%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28140%2C60%29%27%3E%3Cpath%20d%3D%27M0%200l11%206-11%206z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28182%2C58%29%27%3E%3Cpath%20d%3D%27M2%200h11l3%204v11H2z%20M13%200v4h3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28224%2C62%29%27%3E%3Cpath%20d%3D%27M0%206h4l4-5v14l-4-5H0z%20M11%204a4%204%200%200%201%200%208%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28266%2C58%29%27%3E%3Cpath%20d%3D%27M1%201h14v10H1z%20M1%2011l5-4%203%202%203-3%203%203%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28308%2C64%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%200%201%206%206c0%204-6%2010-6%2010S0%2010%200%206a6%206%200%200%201%206-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2820%2C106%29%27%3E%3Cpath%20d%3D%27M0%204h5l3-4h4l3%204h1v10H0z%20M8%206a3%203%200%201%201%200%206%203%203%200%200%201%200-6z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2862%2C110%29%27%3E%3Cpath%20d%3D%27M6%200l6%2012H0z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%2C104%29%27%3E%3Cpath%20d%3D%27M0%200h12v12H0z%20M3%203h6v6H3z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28146%2C108%29%27%3E%3Cpath%20d%3D%27M0%206a6%206%200%201%200%2012%200%206%206%200%200%200-12%200z%20M3%206l2%202%204-4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28188%2C104%29%27%3E%3Cpath%20d%3D%27M1%203h14v9H1z%20M4%203V1h8v2%20M4%2012v2h8v-2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28230%2C110%29%27%3E%3Cpath%20d%3D%27M0%2012L6%200l6%2012z%20M4%2012v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28272%2C106%29%27%3E%3Cpath%20d%3D%27M2%202l10%2010M12%202L2%2012%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28314%2C110%29%27%3E%3Cpath%20d%3D%27M0%208h16%20M4%204l-4%204%204%204%20M12%204l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2816%2C150%29%27%3E%3Cpath%20d%3D%27M0%202h14v12H0z%20M3%200v4M11%200v4M0%206h14%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2858%2C154%29%27%3E%3Cpath%20d%3D%27M7%200a7%207%200%201%201%200%2014A7%207%200%200%201%207%200z%20M4%207h6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28100%2C148%29%27%3E%3Cpath%20d%3D%27M0%2010c0-6%205-10%208-10s8%204%208%2010%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28142%2C152%29%27%3E%3Cpath%20d%3D%27M2%200h10v14l-5-4-5%204z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28184%2C150%29%27%3E%3Cpath%20d%3D%27M0%200h14v3H0z%20M2%203v10h10V3%20M6%206v4M8%206v4%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28226%2C154%29%27%3E%3Cpath%20d%3D%27M8%200l2%205%205%20.5-4%203.5%201%205-4-2.6L4%2014l1-5L1%205.5%206%205z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28268%2C148%29%27%3E%3Cpath%20d%3D%27M1%201h13v13H1z%20M4%207h7M7%204v7%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28310%2C152%29%27%3E%3Cpath%20d%3D%27M0%205a5%205%200%200%201%2010%200v6H0z%20M3%2011v3h4v-3%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2822%2C196%29%27%3E%3Cpath%20d%3D%27M0%203h16v9H0z%20M5%2012v2h6v-2%20M2%2016h12%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2864%2C198%29%27%3E%3Cpath%20d%3D%27M6%200a6%206%200%201%201%200%2012A6%206%200%200%201%206%200z%20M6%203v3l2%202%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28106%2C194%29%27%3E%3Cpath%20d%3D%27M0%206h12%20M8%202l4%204-4%204%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28148%2C198%29%27%3E%3Cpath%20d%3D%27M2%200h8a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H2a2%202%200%200%201-2-2V2a2%202%200%200%201%202-2z%20M4%203h4M4%206h4M4%209h2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28190%2C194%29%27%3E%3Cpath%20d%3D%27M0%200h14M0%205h14M0%2010h8%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28232%2C198%29%27%3E%3Cpath%20d%3D%27M7%200l7%207-7%207-7-7z%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28274%2C194%29%27%3E%3Cpath%20d%3D%27M1%204h12v9H1z%20M4%204V2a3%203%200%200%201%206%200v2%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28316%2C198%29%27%3E%3Cpath%20d%3D%27M0%200l14%207-14%207%203-7z%27%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E") !important;
+  background-repeat: repeat !important;
+  background-size: 352px 232px !important;
+}
+.conversation-panel::before { content: none !important; }
+
+
+/* ===== 2. SEARCH  (.psr) ===== */
+.cs-search {
+  margin: 0 12px 11px !important;
+  background: var(--cs-fld, #202C33) !important;
+  border-radius: 9px !important;
+  padding: 0 14px !important;
+  gap: 12px !important;
+  display: flex; align-items: center; flex-shrink: 0;
+}
+.cs-search input {
+  flex: 1; min-width: 0;
+  background: none; border: none; outline: none;
+  color: var(--cs-tx, #E9EDEF);
+  font-size: 14px !important; font-family: inherit;
+  padding: 10px 0 !important;
+}
+.cs-search input::placeholder { color: var(--cs-tx3, #8696A0); }
+.cs-search__ic, .cs-search__x { width: 19px; height: 19px; color: var(--cs-tx3, #8696A0); flex-shrink: 0; }
+.cs-search__x { cursor: pointer; }
+
+/* ===== 3. PILLS: EK hi row, scroll  (.pills) ===== */
+.cs-pills {
+  display: flex !important;
+  gap: 8px !important;
+  padding: 0 12px 12px !important;
+  align-items: center !important;
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  flex-shrink: 0;
+}
+.cs-pills::-webkit-scrollbar { display: none; }
+/* ChatTypeTabs aur channel pills ko ek hi row bana do */
+.cs-pills + .cs-pills { padding-top: 0 !important; margin-top: -6px !important; }
+.cs-pill {
+  font-size: 13.5px !important;
+  padding: 5px 14px !important;
+  border-radius: 16px !important;
+  background: var(--cs-fld, #202C33);
+  color: var(--cs-tx2, #AEBAC1);
+  border: 0; cursor: pointer; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0 !important;
+  transition: background .12s, color .12s;
+}
+.cs-pill--on { background: var(--cs-g-tint, #103529); color: var(--cs-g, #00A884); }
+
+/* ===== 4. ROW  (.row) ===== */
+.cs-row {
+  display: flex !important;
+  gap: 14px !important;
+  padding: 11px 20px 11px 16px !important;
+  align-items: center !important;
+}
+.cs-row__av > *, .cs-row__av img {
+  width: 48px !important; height: 48px !important; min-width: 48px !important;
+  border-radius: 50% !important; font-size: 15px !important;
+}
+.cs-row__body {
+  flex: 1; min-width: 0;
+  border-bottom: 1px solid var(--cs-ln2, #1D282F) !important;
+  padding-bottom: 11px !important;
+  margin-bottom: -11px !important;
+}
+.cs-row:last-child .cs-row__body { border-bottom: none !important; }
+
+/* ===== 5. COMPOSER  (.cbar) ===== */
+.cs-composer {
+  background: var(--cs-fld, #202C33) !important;
+  border-radius: 10px !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  gap: 12px !important;
+  padding: 0 14px !important;
+  min-height: 46px !important;
+}
+.resizable-editor-wrapper { min-height: 0 !important; }
+.resizable-editor-wrapper .ProseMirror {
+  min-height: 1.4rem !important;
+  max-height: 6rem !important;
+  padding: 0 !important;
+}
+.reply-box {
+  border: none !important;
+  background: transparent !important;
+  padding: 8px 14px 10px !important;
+}
+
+/* ===== 6. AUDIO: meri hi ghalti thi (min-width 13rem) ===== */
+.cs-voice {
+  min-width: 0 !important;
+  width: 100% !important;
+  background: transparent !important;
+}
+[data-bubble-name='audio'] .cs-voice,
+[data-bubble-name='audio'] > * { background: transparent !important; }
+.cs-voice__wave { min-width: 0 !important; overflow: hidden !important; gap: 1px !important; }
+.cs-voice__bar { flex: 1 1 0 !important; min-width: 1px !important; }
+
+/* ===== 7. bubble ki nok ===== */
+.right-bubble, .left-bubble { overflow: visible !important; }
+.right-bubble::after {
+  content: ''; position: absolute; top: 0; right: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-sent, #005C4B);
+  border-right: 9px solid transparent;
+}
+.left-bubble::after {
+  content: ''; position: absolute; top: 0; left: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-recv, #202C33);
+  border-left: 9px solid transparent;
+}
+
+/* ===== 8. header h1  (.ph h1) ===== */
+.conversations-list-wrap h1 {
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.02em !important;
+}
+
+/* ===== 9. right-click menu  (.cmenu / .mi) ===== */
+.z-\[9999\] > div {
+  background: var(--cs-menu, #233138) !important;
+  backdrop-filter: none !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  box-shadow: 0 4px 22px rgba(0,0,0,.45) !important;
+  padding: 7px 0 !important;
+  min-width: 212px !important;
+  font-size: 14.5px !important;
+}
+.z-\[9999\] [role='button'], .z-\[9999\] > div > div {
+  display: flex !important; align-items: center !important;
+  gap: 14px !important; padding: 10px 17px !important;
+  height: auto !important; border-radius: 0 !important;
+}
+.z-\[9999\] [role='button']:hover { background: var(--cs-menu-hov, #182229) !important; }
+.z-\[9999\] span { font-size: 14.5px !important; }
+.z-\[9999\] hr { margin: 6px 0 !important; border-color: var(--cs-ln, #222E35) !important; }
+
+/* CS-WA5-END */
+
+/* CS-CBAR-START  — composer ek row (target .cbar) */
+
+/* ReplyTopPanel (Reply / Private note) bar ke UPAR */
+.reply-box {
+  position: relative !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: flex-end !important;
+  gap: 12px !important;
+  background: var(--cs-fld, #202C33) !important;
+  border-radius: 10px !important;
+  padding: 0 14px !important;
+  min-height: 46px !important;
+  margin: 34px 14px 12px !important;
+  border: none !important;
+}
+.reply-box > *:first-child {
+  position: absolute !important;
+  top: -31px; left: 0; right: 0;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* icons aur editor ek hi row mein */
+.cs-composer { display: contents !important; }
+.cs-left  { order: 1; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.cs-right { order: 3; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.cs-rec   { order: 1; display: flex; align-items: center; gap: 8px; flex: 1; }
+.reply-box__top {
+  order: 2 !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.reply-box__top .ProseMirror {
+  min-height: 1.4rem !important;
+  max-height: 6rem !important;
+  padding: 11px 0 !important;
+  margin: 0 !important;
+}
+
+/* editor ka wrapper: height ab bar se aati hai */
+.resizable-editor-wrapper { min-height: 0 !important; }
+.resizable-editor-wrapper > div:first-child { display: none !important; }
+
+/* send gol hara */
+.cs-send > *, .cs-send button {
+  border-radius: 50% !important;
+  background: var(--cs-g, #00A884) !important;
+  color: #fff !important;
+  width: 34px !important; height: 34px !important;
+}
+
+/* recording patti */
+.cs-rec__spacer { flex: 1; }
+.cs-rec__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #F15C6D; animation: cs-blink 1.4s ease-in-out infinite;
+}
+.cs-rec__dot--paused { animation: none; opacity: .45; }
+@keyframes cs-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+.cs-rec__time { font-size: 13px; color: var(--cs-tx2, #AEBAC1); font-variant-numeric: tabular-nums; }
+
+/* ---------- THREAD ---------- */
+/* day chip */
+.conversation-panel li > div.flex.justify-center > span,
+.conversation-panel .date--separator span {
+  background: var(--cs-head, #202C33) !important;
+  color: var(--cs-tx2, #AEBAC1) !important;
+  font-size: 12px !important; font-weight: 500 !important;
+  padding: 5px 13px !important; border-radius: 8px !important;
+  box-shadow: 0 1px .5px rgba(0,0,0,.35) !important;
+  border: none !important; text-transform: none !important;
+}
+
+/* bubble ki nok */
+.right-bubble, .left-bubble { overflow: visible !important; }
+.right-bubble::after {
+  content: ''; position: absolute; top: 0; right: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-sent, #005C4B);
+  border-right: 9px solid transparent;
+}
+.left-bubble::after {
+  content: ''; position: absolute; top: 0; left: -8px;
+  width: 0; height: 0;
+  border-top: 9px solid var(--cs-recv, #202C33);
+  border-left: 9px solid transparent;
+}
+
+/* audio bubble ka apna box na bane */
+.cs-voice { min-width: 0 !important; width: 100% !important; background: transparent !important; }
+[data-bubble-name='audio'] .cs-voice { background: transparent !important; }
+.cs-voice__wave { min-width: 0 !important; overflow: hidden !important; gap: 1px !important; }
+.cs-voice__bar { flex: 1 1 0 !important; min-width: 1px !important; }
+
+/* ---------- right-click menu (target .cmenu / .mi) ---------- */
+.z-\[9999\] > div {
+  background: var(--cs-menu, #233138) !important;
+  backdrop-filter: none !important;
+  border-radius: 8px !important; outline: none !important;
+  box-shadow: 0 4px 22px rgba(0,0,0,.45) !important;
+  padding: 7px 0 !important; min-width: 212px !important;
+  font-size: 14.5px !important;
+}
+.z-\[9999\] [role='button'], .z-\[9999\] > div > div {
+  display: flex !important; align-items: center !important;
+  gap: 14px !important; padding: 10px 17px !important;
+  height: auto !important; border-radius: 0 !important;
+}
+.z-\[9999\] [role='button']:hover { background: var(--cs-menu-hov, #182229) !important; }
+.z-\[9999\] span { font-size: 14.5px !important; }
+.z-\[9999\] svg { width: 19px !important; height: 19px !important; }
+.z-\[9999\] hr { margin: 6px 0 !important; border-color: var(--cs-ln, #222E35) !important; }
+
+/* CS-CBAR-END */

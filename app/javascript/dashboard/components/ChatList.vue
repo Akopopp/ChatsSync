@@ -76,6 +76,10 @@ const activeAssigneeTab = ref(wootConstants.ASSIGNEE_TYPE.ME);
 const activeStatus = ref(wootConstants.STATUS_TYPE.OPEN);
 const activeSortBy = ref(wootConstants.SORT_BY_TYPE.LAST_ACTIVITY_AT_DESC);
 const showAdvancedFilters = ref(false);
+// WhatsApp jaisi search + channel filter
+const searchQuery = ref('');
+const activeChannel = ref(null);
+const onlyUnread = ref(false);
 // chatsOnView is to store the chats that are currently visible on the screen,
 // which mirrors the conversationList.
 const chatsOnView = ref([]);
@@ -176,7 +180,7 @@ const userPermissions = computed(() => {
 });
 
 const assigneeTabItems = computed(() => {
-  return filterItemsByPermission(
+  const items = filterItemsByPermission(
     ASSIGNEE_TYPE_TAB_PERMISSIONS,
     userPermissions.value,
     item => item.permissions
@@ -185,6 +189,10 @@ const assigneeTabItems = computed(() => {
     name: t(`CHAT_LIST.ASSIGNEE_TYPE_TABS.${key}`),
     count: conversationStats.value[countKey] || 0,
   }));
+  const order = { all: 0, me: 1, unassigned: 2 };
+  return items
+    .slice()
+    .sort((a, b) => (order[a.key] ?? 9) - (order[b.key] ?? 9));
 });
 
 const showAssigneeInConversationCard = computed(() => {
@@ -293,7 +301,7 @@ const pageTitle = computed(() => {
   if (hasActiveFolders.value) {
     return activeFolder.value.name;
   }
-  return t('CHAT_LIST.TAB_HEADING');
+  return 'Chats';
 });
 
 function filterByAssigneeTab(conversations) {
@@ -334,6 +342,28 @@ const conversationList = computed(() => {
     const { payload } = activeFolder.value.query;
     localConversationList = localConversationList.filter(conversation => {
       return matchesFilters(conversation, payload);
+    });
+  }
+
+  if (onlyUnread.value) {
+    localConversationList = localConversationList.filter(
+      c => (c.unread_count || 0) > 0
+    );
+  }
+
+  if (activeChannel.value) {
+    localConversationList = localConversationList.filter(
+      c => c.inbox_id === activeChannel.value
+    );
+  }
+
+  const q = searchQuery.value.trim().toLowerCase();
+  if (q) {
+    localConversationList = localConversationList.filter(c => {
+      const name = c.meta?.sender?.name || '';
+      const msgs = c.messages || [];
+      const last = msgs.length ? msgs[msgs.length - 1]?.content || '' : '';
+      return `${name} ${last}`.toLowerCase().includes(q);
     });
   }
 
@@ -911,6 +941,20 @@ watch(conversationFilters, (newVal, oldVal) => {
       @close="onCloseDeleteFoldersModal"
     />
 
+    <div class="cs-search">
+      <span class="cs-search__ic i-lucide-search" />
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search chats, contacts or messages"
+      />
+      <span
+        v-if="searchQuery"
+        class="cs-search__x i-lucide-x"
+        @click="searchQuery = ''"
+      />
+    </div>
+
     <ChatTypeTabs
       v-if="!hasAppliedFiltersOrActiveFolders"
       :items="assigneeTabItems"
@@ -918,6 +962,35 @@ watch(conversationFilters, (newVal, oldVal) => {
       is-compact
       @chat-tab-change="updateAssigneeTab"
     />
+
+    <div class="cs-pills cs-pills--ch">
+      <button
+        type="button"
+        class="cs-pill"
+        :class="{ 'cs-pill--on': onlyUnread }"
+        @click="onlyUnread = !onlyUnread"
+      >
+        Unread
+      </button>
+      <button
+        type="button"
+        class="cs-pill"
+        :class="{ 'cs-pill--on': !activeChannel }"
+        @click="activeChannel = null"
+      >
+        All channels
+      </button>
+      <button
+        v-for="ib in inboxesList"
+        :key="ib.id"
+        type="button"
+        class="cs-pill"
+        :class="{ 'cs-pill--on': activeChannel === ib.id }"
+        @click="activeChannel = ib.id"
+      >
+        {{ ib.name }}
+      </button>
+    </div>
 
     <p
       v-if="!chatListLoading && !conversationList.length"

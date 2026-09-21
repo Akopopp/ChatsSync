@@ -40,93 +40,179 @@ const allChats = useMapGetter('getAllConversations');
 /* server ka ASAL total — pills ki ginti isi se */
 const convStats = useMapGetter('conversationStats/getStats');
 
-/* ===== PAGINATION — bilkul Chatwoot ki naqal =====
-   Chatwoot ki ChatList.vue ka poora pagination sirf ITNA hai:
+/* ===== PAGE KI GINTI =====
+   PEHLE yahan conversationPage ke do getters istemal kiye the:
+     conversationPage/getCurrentPageFilter
+     conversationPage/getHasEndReached
+   Woh GHALAT tha. Chatwoot inhein useFunctionGetter se leta hai —
+   yani ye FUNCTION getters hain, inhein filter key deni paRti hai.
+   useMapGetter se .value ek function nikalta hai, value nahi.
 
-     function fetchConversations() {
-       store.dispatch('updateChatListFilters', conversationFilters.value);
-       store.dispatch('fetchAllConversations').then(emitConversationLoaded);
-     }
+   Nateeja: JS mein function hamesha truthy hota hai, to
+     if (loadingMore || cwEndReached) return;
+   hamesha return kar jaata tha — loadMoreChats kabhi chalta hi nahi
+   tha. Aur button bhi "!cwEndReached" par tha, isliye kabhi dikha hi
+   nahi. Page bhi Number(function)+1 = NaN ban jaata tha.
 
-     function loadMoreConversations() {
-       if (hasCurrentPageEndReached.value || chatListLoading.value) return;
-       fetchConversations();
-     }
-
-   aur conversationFilters mein:
-     page: currentPage.value + 1
-
-   Yani page KHUD BA KHUD barhta hai — store ka currentPage
-   fetchAllConversations ke andar update hota hai, aur agli baar
-   conversationFilters naya page bana deta hai. Apni ginti rakhne ki
-   zaroorat hi nahi.
-
-   MERI TEEN GHALTIYAN:
-     1. store.dispatch('updateChatListFilters', ...) par .then() lagaya.
-        Chatwoot ismein .then NAHI lagata — woh action promise nahi
-        lautata. Usi se poora screen khali ho gaya tha.
-     2. apni chatPage ginti rakhi — Chatwoot currentPage+1 leta hai.
-     3. useMapGetter istemal kiya jabke ye FUNCTION getters hain
-        (filter key chahiye: 'all', 'me', 'unassigned').
-   Ab bilkul wahi, apna kuch nahi. */
-const PAGE_FILTER = 'all';
-
-/* Chatwoot ka chatListLoading — store se aata hai, apna nahi.
-   PEHLE ye dono kahin define hi nahi the magar template aur
-   loadMoreChats dono mein istemal ho rahe the. Usi se poora screen
-   khali ho jaata tha. */
+   Ab koi getter nahi. Store mein kitni chats hain, usi se page nikal
+   aata hai (25 per page). Aur "khatam" ka faisla server ke total se. */
+const PER_PAGE = 25;
+const loadedCount = computed(() => (allChats.value || []).length);
+const currentChat = useMapGetter('getSelectedChat');
+const currentUser = useMapGetter('getCurrentUser');
+const inboxesList = useMapGetter('inboxes/getInboxes');
+const accountId = useMapGetter('getCurrentAccountId');
 const listLoading = useMapGetter('getChatListLoadingStatus');
+const agentsList = useMapGetter('agents/getAgents');
+const teamsList = useMapGetter('teams/getTeams');
+const typingGetter = useMapGetter('conversationTypingStatus/getUserList');
+
+const typingNames = computed(() => {
+  try {
+    const u = typingGetter.value?.(currentChat.value?.id) || [];
+    return u.map(x => x.name).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+});
+
+/* ---------------- local state ---------------- */
+const q = ref('');
+const filt = ref('all');
+const draft = ref('');
+const isRecording = ref(false);
+const recState = ref('');
+const recTime = ref('0:00');
+const sendAfterRec = ref(false);
+const pendingFiles = ref([]);
+const failed = ref([]);
+let failId = 0;
+
+const retryFail = f => {
+  failed.value = failed.value.filter(x => x.id !== f.id);
+  pushMessage(f.payload)
+    .then(scrollDown)
+    .catch(() => {
+      failed.value.push(f);
+      toast('Still failing', 'err');
+    });
+};
+const threadRef = ref(null);
+const loadingOlder = ref(false);
 const loadingMore = ref(false);
+const showDown = ref(false);
+const firstUnreadId = ref(null);
 
-/* ye function getters hain — key ke saath hi kaam karte hain */
-const currentChatPage = computed(() => {
-  try {
-    const g = store.getters['conversationPage/getCurrentPageFilter'];
-    return Number(g(PAGE_FILTER)) || 0;
-  } catch (e) {
-    return 0;
+const atBottom = ref(true);
+const noMoreOlder = ref(false);
+let lastFetch = 0;
+
+const onThreadScroll = e => {
+  const el = e.target;
+  const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+  atBottom.value = gap < 80;
+  showDown.value = gap > 320;
+
+  if (
+    el.scrollTop < 120 &&
+    !loadingOlder.value &&
+    !noMoreOlder.value &&
+    Date.now() - lastFetch > 900 &&
+    messages.value.length >= 15
+  ) {
+    lastFetch = Date.now();
+    loadingOlder.value = true;
+    const before = messages.value[0]?.id;
+    const h0 = el.scrollHeight;
+    const t0 = el.scrollTop;
+    // smooth scroll ko band karo warna position bahal karte waqt
+    // browser animate karta hai aur chat upar-neeche koodti hai
+    el.style.scrollBehavior = 'auto';
+    const n0 = messages.value.length;
+    const done = () => {
+      nextTick(() => {
+        requestAnimationFrame(() => {
+          // kuch naya nahi aaya -> aur purane hain hi nahi, ab mat poochho
+          if (messages.value.length === n0) noMoreOlder.value = true;
+          el.scrollTop = t0 + (el.scrollHeight - h0);
+          el.style.scrollBehavior = '';
+          loadingOlder.value = false;
+        });
+      });
+    };
+    const r = safeD('fetchPreviousMessages', {
+      conversationId: currentChat.value.id,
+      before,
+    });
+    if (r && r.finally) r.finally(done);
+    else setTimeout(done, 400);
   }
-});
-
-const chatListEndReached = computed(() => {
-  try {
-    const g = store.getters['conversationPage/getHasEndReached'];
-    return !!g(PAGE_FILTER);
-  } catch (e) {
-    return false;
-  }
-});
-
-/* Chatwoot ka conversationFilters — page hamesha currentPage + 1 */
-const chatFilters = () => ({
-  assigneeType: PAGE_FILTER,
-  status: 'all',
-  page: currentChatPage.value + 1,
-});
-
-/* Chatwoot ka fetchConversations — koi .then nahi lagana
-   updateChatListFilters par */
-const fetchChats = () => {
-  store.dispatch('updateChatListFilters', chatFilters());
-  safeD('fetchAllConversations');
 };
 
-/* Chatwoot ka loadMoreConversations */
+const noMoreChats = ref(false);
+
+/* ===== PAGINATION — bilkul Chatwoot ka apna tareeqa =====
+   Chatwoot ki ChatList.vue page khud nahi ginti: store ka
+   conversationPage module rakhta hai (getCurrentPageFilter), aur wahi
+   batata hai ke list khatam hui (getHasEndReached).
+   Khulte hi sirf 25, aur agla page SIRF tab jab banda neeche pahunche.
+
+   Meri purani koshishein — apni page ginti, apni list, mount par saare
+   page khenchna — sab hata di gayi hain. Un se do masle bane the:
+   pills mein hamesha 25, aur 25 ke baad wali chat khulti hi nahi thi. */
+const FETCH_PARAMS = { status: 'all', assigneeType: 'all' };
+
+const resetChatList = () => {
+  safeD('conversationPage/reset');
+  noMoreChats.value = false;
+};
+
+/* server ka asal total — pills aur "aur baqi hain?" dono isi se */
+const totalCount = computed(() => Number(convStats.value?.allCount || 0));
+
+const hasMoreChats = computed(() => {
+  if (noMoreChats.value) return false;
+  if (!totalCount.value) return loadedCount.value >= PER_PAGE;
+  return loadedCount.value < totalCount.value;
+});
+
+/* pills ki ginti — server ka ASAL total, meri list se nahi.
+   Chatwoot ki ChatList.vue bhi yehi karti hai. */
+const statCount = key => Number(convStats.value?.[key] || 0);
+
+/* button sirf tab dikhe jab list ke bilkul neeche ho */
+const atListEnd = ref(false);
+
 const loadMoreChats = () => {
-  if (chatListEndReached.value || listLoading.value || loadingMore.value)
-    return;
+  if (loadingMore.value || !hasMoreChats.value) return;
   loadingMore.value = true;
-  fetchChats();
-  // chatListLoading ka apna flag nahi hai, isliye thoRi der baad khol do
-  setTimeout(() => {
-    loadingMore.value = false;
-  }, 800);
+
+  const page = Math.floor(loadedCount.value / PER_PAGE) + 1;
+
+  /* AHEM: fetchAllConversations BHEJE HUE params ko chhoo-ta hi nahi.
+     Woh hamesha state.conversationFilters se page uthata hai
+     (actions.js: const params = state.conversationFilters). Isi liye
+     safeD('fetchAllConversations', {page}) se page kabhi nahi badla —
+     har click par page 1 hi jaata tha aur wahi 25 wapas aati thin.
+     Chatwoot ka sahi tareeqa: PEHLE filter update, PHIR fetch. */
+  store.dispatch('updateChatListFilters', { ...FETCH_PARAMS, page });
+
+  safeD('fetchAllConversations')
+    .catch(() => {})
+    .finally(() => {
+      loadingMore.value = false;
+    });
+  /* noMoreChats yahan set NAHI karte — ek khali jawab par button
+     hamesha ke liye gayab ho jaata tha. Faisla sirf server ke total
+     se: hasMoreChats khud dekhta hai (loaded < total). */
 };
 
-/* neeche pahunchte hi agla page */
+/* neeche pahunchte hi agla page — chupchaap, bina shor ke */
 const onListScroll = e => {
   const el = e.target;
-  if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMoreChats();
+  const near = el.scrollHeight - el.scrollTop - el.clientHeight < 400;
+  atListEnd.value = near;
+  if (near) loadMoreChats();
 };
 
 /* List ke aakhir mein ek chhota sa nishan rakhte hain. Jab woh nazar
@@ -143,7 +229,9 @@ const watchListEnd = () => {
   if (!endRef.value) return;
   endObs = new IntersectionObserver(
     entries => {
-      if (entries.some(en => en.isIntersecting)) loadMoreChats();
+      const vis = entries.some(en => en.isIntersecting);
+      atListEnd.value = vis;
+      if (vis) loadMoreChats();
     },
     { root: null, rootMargin: '300px', threshold: 0 }
   );
@@ -378,11 +466,10 @@ const pills = computed(() => {
      loaded list se nahi — warna har baar 25 dikhta tha aur scroll
      karne par barhta jaata tha. Chatwoot bhi yehi karta hai
      (conversationStats/getStats). */
-  const st = convStats.value || {};
   const serverTotal = {
-    all: Number(st.allCount || 0),
-    mine: Number(st.mineCount || 0),
-    unassigned: Number(st.unAssignedCount || 0),
+    all: statCount('allCount'),
+    mine: statCount('mineCount'),
+    unassigned: statCount('unAssignedCount'),
   };
 
   return base.map(p => ({
@@ -1414,50 +1501,173 @@ const addEmoji = e => {
   draft.value += e;
 };
 
+/* Sirf APPROVED templates. Meta pending/rejected template bhejne hi
+   nahi deta — list mein rakhne se sirf failed message bante the. */
 const templates = computed(() => {
   const ib = (inboxesList.value || []).find(
     i => i.id === currentChat.value?.inbox_id
   );
-  return ib?.message_templates || [];
+  return (ib?.message_templates || []).filter(
+    t => String(t?.status || '').toUpperCase() === 'APPROVED'
+  );
 });
 
-/* ===== TEMPLATE BHEJNA =====
-   PEHLE ye sirf template ka TEXT draft mein daal deta tha, aur phir
-   woh aam message ki tarah jaata tha. Isi liye:
-     - 24-ghante ki window KHULI ho to chala jaata tha (aam text allowed)
-     - window BAND ho to Meta rok deta tha — jabke template ka poora
-       maqsad hi yehi hai ke band window mein bhi ja sake
+/* Template bhejna. PEHLE sirf text draft mein daal deta tha, isi liye
+   band window mein Meta rok deta tha. Ab:
+     window khuli + sada template -> aam message (MUFT)
+     warna                        -> template ki tarah (paise) */
+/* ===== TEMPLATE VARIABLES ({{1}}, {{2}}) =====
+   Sirf BODY ke variables. Template chunte hi chhota sa form khulta
+   hai, har khaane ki qeemat bharo, phir bhejo. Chatwoot inhein
+   processed_params mein leta hai: { "1": "...", "2": "..." }. */
+const tplVars = ref({ open: false, t: null, name: '', text: '', vals: [] });
 
-   Ab Chatwoot ke apne tareeqe se jaata hai: message ke saath
-   template_params — jis se Chatwoot Meta ko `type: template` bhejta
-   hai, aam text nahi. */
-const tplVarCount = t => {
-  const body = (t.components || []).find(c => c.type === 'BODY');
-  const txt = body?.text || '';
-  const found = txt.match(/\{\{\s*(\d+)\s*\}\}/g) || [];
-  return found.length;
+const tplVarIdx = txt => {
+  const out = [];
+  const re = /\{\{\s*(\d+)\s*\}\}/g;
+  let mm = re.exec(txt);
+  while (mm) {
+    out.push(Number(mm[1]));
+    mm = re.exec(txt);
+  }
+  return out;
 };
+
+const tplBodyText = t => {
+  const b = ((t && t.components) || []).find(
+    c => String(c.type || '').toUpperCase() === 'BODY'
+  );
+  return (b && b.text) || '';
+};
+
+/* variables sirf BODY mein hon — header/button wale abhi nahi */
+const tplBodyOnlyVars = t => {
+  const comps = (t && t.components) || [];
+  const re = /\{\{\s*\d+\s*\}\}/;
+  const bad = comps.some(
+    c =>
+      String(c.type || '').toUpperCase() !== 'BODY' &&
+      re.test(String(c.text || ''))
+  );
+  return !bad && re.test(tplBodyText(t));
+};
+
+const tplVarLabel = i => '{' + '{' + (i + 1) + '}' + '}';
+
+const tplVarsPreview = computed(() => {
+  let out = tplVars.value.text || '';
+  (tplVars.value.vals || []).forEach((v, i) => {
+    const val = String(v || '').trim();
+    if (!val) return;
+    out = out.replace(
+      new RegExp('\\{\\{\\s*' + (i + 1) + '\\s*\\}\\}', 'g'),
+      val
+    );
+  });
+  return out;
+});
+
+const tplVarsReady = computed(() => {
+  const v = tplVars.value.vals || [];
+  return v.length > 0 && v.every(x => String(x || '').trim());
+});
+
+const openTplVars = t => {
+  const text = tplBodyText(t);
+  const idx = tplVarIdx(text);
+  const n = idx.length ? Math.max(...idx) : 0;
+  tplVars.value = {
+    open: true,
+    t,
+    name: t.name || '',
+    text,
+    vals: Array.from({ length: n }, () => ''),
+  };
+};
+
+const closeTplVars = () => {
+  tplVars.value = { open: false, t: null, name: '', text: '', vals: [] };
+};
+
+const sendTplVars = () => {
+  const st = tplVars.value;
+  if (!st.t || !currentChat.value?.id || !tplVarsReady.value) return;
+  const params = {};
+  st.vals.forEach((v, i) => {
+    params[String(i + 1)] = String(v).trim();
+  });
+  const text = tplVarsPreview.value;
+  const t = st.t;
+  closeTplVars();
+  /* variables wali template hamesha template ki tarah jaati hai */
+  pushMessage({
+    conversationId: currentChat.value.id,
+    message: text,
+    private: false,
+    templateParams: {
+      name: t.name,
+      category: t.category || 'UTILITY',
+      language: t.language || 'en_US',
+      namespace: t.namespace || undefined,
+      processed_params: params,
+    },
+  })
+    .then(() => {
+      try {
+        scrollDown();
+      } catch (e) {
+        /* ignore */
+      }
+    })
+    .catch(e => {
+      console.error('[ChatsSync] template send fail', e);
+      toast('Template could not be sent', 'err');
+    });
+};
+
+const tplIsPlain = t => {
+  const comps = (t && t.components) || [];
+  if (!comps.length) return false;
+  const types = comps.map(c => String(c.type || '').toUpperCase());
+  if (types.some(x => x !== 'BODY')) return false;
+  const body = comps.find(c => String(c.type || '').toUpperCase() === 'BODY');
+  const txt = (body && body.text) || '';
+  if (!txt.trim()) return false;
+  if (/\{\{\s*\d+\s*\}\}/.test(txt)) return false;
+  return true;
+};
+
+const tplHasVars = t =>
+  ((t && t.components) || []).some(c =>
+    /\{\{\s*\d+\s*\}\}/.test(String(c.text || ''))
+  );
 
 const useTemplate = t => {
   showTpl.value = false;
   if (!t || !currentChat.value?.id) return;
 
-  const body = (t.components || []).find(c => c.type === 'BODY');
-  const text = body?.text || t.name || '';
-
-  /* Jin templates mein {{1}} jaisi jagahein hain, unke liye qeemat
-     chahiye. Filhal khali bhej dete hain — Meta unhein reject kar
-     dega, isliye pehle warn karte hain. */
-  const vars = tplVarCount(t);
-  if (vars > 0) {
-    toast(
-      `Is template mein ${vars} variable hain — abhi wo bharne ka option nahi`,
-      'err'
-    );
+  if (tplHasVars(t)) {
+    if (tplBodyOnlyVars(t)) {
+      openTplVars(t);
+      return;
+    }
+    toast('Variables in the header or buttons are not supported yet', 'err');
     return;
   }
 
-  const payload = {
+  const body = (t.components || []).find(
+    c => String(c.type || '').toUpperCase() === 'BODY'
+  );
+  const text = (body && body.text) || t.name || '';
+
+  const windowOpen = currentChat.value?.can_reply !== false;
+  if (windowOpen && tplIsPlain(t)) {
+    draft.value = text;
+    return;
+  }
+
+  draft.value = '';
+  pushMessage({
     conversationId: currentChat.value.id,
     message: text,
     private: false,
@@ -1468,22 +1678,139 @@ const useTemplate = t => {
       namespace: t.namespace || undefined,
       processed_params: {},
     },
-  };
-
-  draft.value = '';
-  scrollDown();
-
-  pushMessage(payload)
-    .then(scrollDown)
+  })
+    .then(() => { try { scrollDown(); } catch (e) {} })
     .catch(e => {
       console.error('[ChatsSync] template send fail', e);
-      toast('Template nahi gaya — dobara koshish karein', 'err');
+      toast('Template could not be sent', 'err');
     });
 };
 
 const phoneOf = c => {
   const sn = c?.meta?.sender || c || {};
   return sn.phone_number || sn.identifier || '';
+};
+
+/* Failed message ki wajah — Meta ka asal jawab, saaf alfaz mein.
+   Pehle sirf laal nishan aata tha aur wajah logs mein dhoondni
+   paRti thi. */
+const FAIL_TEXT = {
+  /* connection / account */
+  0: 'WhatsApp connection problem — please reconnect this number',
+  3: 'This number does not have permission for this action',
+  10: 'Permission denied — please reconnect this number',
+  190: 'WhatsApp connection has expired — please reconnect this number',
+  200: 'Permission missing — please reconnect this number',
+  368: 'Account temporarily blocked by Meta for policy violations',
+  131005: 'Access denied — please reconnect this number',
+  131031: 'This WhatsApp account has been locked by Meta',
+  131057: 'This WhatsApp account is in maintenance mode',
+  130497: 'This account cannot message users in this country',
+  131042: 'Payment issue on Meta — add a payment method in Business Manager',
+  /* sending limits */
+  4: 'Too many requests — please wait a moment and try again',
+  80007: 'Messaging limit reached — please wait and try again',
+  130429: 'Sending too fast — please wait a moment and try again',
+  131048: 'Sending restricted — too many messages were reported as spam',
+  131056: 'Too many messages to this contact — please wait and try again',
+  /* recipient */
+  131021: 'You cannot send a message to your own number',
+  131026: 'Message undeliverable — the number may not be on WhatsApp or has blocked you',
+  131047: 'More than 24 hours since the customer last replied — send a template instead',
+  131049: 'Meta did not deliver this message to protect user experience — try again later',
+  131050: 'This contact has opted out of marketing messages',
+  /* message / media */
+  100: 'Invalid request — please check the message and try again',
+  131008: 'Required information is missing from the message',
+  131009: 'The message contains an invalid value',
+  131051: 'This message type is not supported',
+  131052: 'The media file could not be downloaded',
+  131053: 'The media file could not be uploaded — check the file type and size',
+  /* templates */
+  131058: 'hello_world can only be sent from Meta test numbers',
+  132000: 'Template variables are missing',
+  132001: 'Template name or language not found on Meta',
+  132005: 'Template text is too long',
+  132007: 'Template blocked by Meta policy',
+  132012: 'Template variable format is invalid',
+  132015: 'Template is paused due to low quality',
+  132016: 'Template has been disabled',
+  132068: 'This WhatsApp Flow is blocked',
+  132069: 'This WhatsApp Flow is throttled — try again later',
+  /* number registration */
+  133000: 'Number registration is incomplete — please reconnect this number',
+  133004: 'WhatsApp is temporarily unavailable — try again shortly',
+  133006: 'This number needs to be verified again',
+  133010: 'This number is not registered on the WhatsApp Cloud API',
+  /* WhatsApp side */
+  1: 'WhatsApp returned an unknown error — please try again',
+  2: 'WhatsApp is temporarily unavailable — try again shortly',
+  131000: 'Something went wrong on WhatsApp — please try again',
+  131016: 'WhatsApp is temporarily unavailable — try again shortly',
+  135000: 'The message could not be sent — please try again',
+};
+/* error code nikaalo: "(#131058) ...", "131042: ...", "#100 ..." */
+const errCode = raw => {
+  const mm =
+    raw.match(/^\(#(\d+)\)/) ||
+    raw.match(/^(\d+)\s*:/) ||
+    raw.match(/#(\d+)/) ||
+    raw.match(/\b(\d{5,6})\b/);
+  return mm ? Number(mm[1]) : null;
+};
+
+const failReason = m => {
+  if (!m || m.status !== 'failed') return '';
+  const raw = String(
+    (m.content_attributes && m.content_attributes.external_error) || ''
+  ).trim();
+  if (!raw) return 'Message failed — please try again';
+
+  const code = errCode(raw);
+  if (code !== null && FAIL_TEXT[code]) return FAIL_TEXT[code];
+
+  /* code na mile to alfaz se pehchano */
+  if (/timeout|timed out|ECONN|ETIMEDOUT|ENOTFOUND|Net::|SocketError|network/i.test(raw))
+    return 'Connection problem — could not reach WhatsApp. Please try again.';
+  if (/token|oauth|authori[sz]|session has expired/i.test(raw))
+    return 'WhatsApp connection has expired — please reconnect this number';
+  if (/blocked|restricted|banned|disabled|locked/i.test(raw))
+    return 'This WhatsApp account is restricted by Meta';
+
+  return raw.replace(/^\(#?\d+\)\s*/, '').replace(/^\d+\s*:\s*/, '');
+};
+
+/* nishan par kya dikhana hai: failed ki wajah, ya der se atka hua */
+const tickInfo = m => {
+  if (!m || m.message_type !== 1) return '';
+  if (m.status === 'failed') return failReason(m);
+  const st = m.status || 'sent';
+  if (st === 'progress' || st === 'pending') {
+    const age = Date.now() - Number(m.created_at || 0) * 1000;
+    if (age > 60000) return 'Not sent yet — please check your internet connection';
+  }
+  return '';
+};
+
+/* PC: hover par (title). Mobile: tap par ye chhota sa bubble. */
+const tickTip = ref({ id: null, text: '' });
+const toggleTickTip = m => {
+  const text = tickInfo(m);
+  if (!text) return;
+  if (tickTip.value.id === m.id) {
+    tickTip.value = { id: null, text: '' };
+    return;
+  }
+  tickTip.value = { id: m.id, text };
+  setTimeout(() => {
+    document.addEventListener(
+      'click',
+      () => {
+        tickTip.value = { id: null, text: '' };
+      },
+      { once: true }
+    );
+  }, 0);
 };
 
 /* asli tick: Chatwoot/WhatsApp ka status field
@@ -2341,13 +2668,19 @@ onMounted(() => {
   store.dispatch('labels/get');
   store.dispatch('agents/get');
   store.dispatch('setActiveInbox', props.inboxId || null);
+  store.dispatch('updateChatListFilters', {
+    assigneeType: 'all',
+    status: 'all',
+    page: 1,
+  });
   store.dispatch('setChatStatusFilter', 'all');
-  // Chatwoot ka resetAndFetchData: reset -> empty -> fetch
-  safeD('conversationPage/reset');
-  safeD('emptyAllConversations');
-  fetchChats();
+  // params wahi jo loadMoreChats bhejta hai — warna page 2 wahi 25
+  // wapas de deta tha
+  resetChatList();
+  // sirf pehla page — baqi tab jab banda neeche pahunche
+  safeD('fetchAllConversations', { ...FETCH_PARAMS, page: 1 });
   // server ka asal total — pills ki ginti isi se
-  safeD('conversationStats/get', { assigneeType: 'all', status: 'all' });
+  safeD('conversationStats/get', FETCH_PARAMS);
   nextTick(watchListEnd);
   fitHeight();
   // pehla render sambhal jaye, phir dobara naapo
@@ -2871,6 +3204,7 @@ watch(
                 v-if="lastOf(c) && tickOf(lastOf(c))"
                 class="cs-tick"
                 :class="[tickOf(lastOf(c)).i, tickOf(lastOf(c)).c]"
+                :title="tickInfo(lastOf(c)) || null"
               />
               <span
                 v-else-if="chipFor(c.inbox_id)"
@@ -2905,7 +3239,22 @@ watch(
 
         <!-- list ka aakhir — yahan pahunchte hi agla page aa jaata hai -->
         <div ref="endRef" class="cs-end" />
-        <div v-if="loadingMore" class="cs-loadmore">Loading more…</div>
+      </div>
+
+      <!-- List ke BAHAR, panel ke neeche — hamesha nazar mein.
+           Pehle ye list ke ANDAR tha, aur list scroll hi nahi karti
+           thi, to button kabhi pahunch mein hi nahi aata tha. -->
+      <div
+        v-if="!q && hasMoreChats && rows.length && atListEnd"
+        class="cs-loadbar"
+        :class="{ busy: loadingMore }"
+        @click="loadMoreChats"
+      >
+        <template v-if="loadingMore">Loading…</template>
+        <template v-else>
+          <span>Load more</span>
+          <span class="cs-loadn">{{ loadedCount }} / {{ totalCount }}</span>
+        </template>
       </div>
     </div>
 
@@ -3313,8 +3662,17 @@ watch(
                 <span
                   v-if="tickOf(b.m)"
                   class="cs-tick"
-                  :class="[tickOf(b.m).i, tickOf(b.m).c]"
+                  :class="[tickOf(b.m).i, tickOf(b.m).c, { tap: !!tickInfo(b.m) }]"
+                  :title="tickInfo(b.m) || null"
+                  @click.stop="toggleTickTip(b.m)"
                 />
+                <span
+                  v-if="tickTip.id === b.m.id"
+                  class="cs-ttip"
+                  @click.stop
+                >
+                  {{ tickTip.text }}
+                </span>
               </div>
             </div>
           </div>
@@ -3774,6 +4132,39 @@ watch(
     </div>
 
     <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
+
+    <!-- template ke variables — sirf BODY wale -->
+    <div v-if="tplVars.open" class="cs-tvm" @click.self="closeTplVars">
+      <div class="cs-tvb">
+        <div class="cs-tvh">
+          <span class="i-lucide-layout-template" />
+          <span class="cs-tvn">{{ tplVars.name }}</span>
+          <span class="cs-tvx i-lucide-x" @click="closeTplVars" />
+        </div>
+        <div class="cs-tvp">{{ tplVarsPreview }}</div>
+        <label v-for="(v, i) in tplVars.vals" :key="i" class="cs-tvf">
+          <span class="cs-tvk" v-text="tplVarLabel(i)" />
+          <input
+            v-model="tplVars.vals[i]"
+            class="cs-tvi"
+            :placeholder="'Value ' + (i + 1)"
+          />
+        </label>
+        <div class="cs-tva">
+          <button type="button" class="cs-tvc" @click="closeTplVars">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="cs-tvs"
+            :disabled="!tplVarsReady"
+            @click="sendTplVars"
+          >
+            Send template
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ============ TOASTS ============ -->
     <div class="cs-toasts">
@@ -4605,11 +4996,31 @@ watch(
 }
 /* panel ke neeche chipki hui patti — list scroll kare ya na kare,
    ye hamesha nazar mein rehti hai */
-.cs-loadmore {
-  text-align: center;
-  font-size: 12px;
+.cs-loadbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 0;
+  border-top: 1px solid var(--ln);
+  background: var(--panel);
+  color: var(--g);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cs-loadbar:hover {
+  background: var(--hov);
+}
+.cs-loadbar.busy {
   color: var(--tx3);
-  padding: 12px 0;
+  cursor: default;
+}
+.cs-loadn {
+  color: var(--tx3);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 .cs-empty-list {
   padding: 40px 20px;
@@ -7509,6 +7920,153 @@ watch(
   .cs-cmenu {
     animation: none;
   }
+}
+
+
+/* template variables ka form */
+.cs-tvm {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.cs-tvb {
+  width: 100%;
+  max-width: 440px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--panel);
+  color: var(--tx);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+}
+.cs-tvh {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.cs-tvh span[class*='i-'] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.cs-tvn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-tvx {
+  cursor: pointer;
+  opacity: 0.7;
+}
+.cs-tvp {
+  background: var(--fld);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+  color: var(--tx2);
+}
+.cs-tvf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.cs-tvk {
+  width: 44px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--tx3);
+  font-family: monospace;
+}
+.cs-tvi {
+  flex: 1;
+  min-width: 0;
+  background: var(--fld);
+  border: 1px solid var(--ln);
+  color: var(--tx);
+  border-radius: 9px;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.cs-tvi:focus {
+  border-color: var(--g);
+}
+.cs-tva {
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.cs-tvc,
+.cs-tvs {
+  border: 0;
+  border-radius: 18px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cs-tvc {
+  background: var(--fld);
+  color: var(--tx);
+}
+.cs-tvs {
+  background: var(--g);
+  color: #fff;
+}
+.cs-tvs:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* failed message ki wajah, bubble ke neeche */
+.cs-merr {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #ef4444;
+  margin-top: 3px;
+  text-align: end;
+}
+
+
+/* nishan par hover (PC) / tap (mobile) — wajah dikhane ke liye */
+.cs-mt {
+  position: relative;
+}
+.cs-tick.tap {
+  cursor: pointer;
+  padding: 3px;
+  margin: -3px;
+}
+.cs-ttip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  width: max-content;
+  max-width: 250px;
+  background: #111b21;
+  color: #e9edef;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  padding: 7px 10px;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 </style>

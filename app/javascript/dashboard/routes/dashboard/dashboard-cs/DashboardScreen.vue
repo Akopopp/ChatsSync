@@ -1,9 +1,8 @@
 <script setup>
 /* =====================================================================
-   DashboardScreen.vue  —  ChatsSync ka Dashboard tab
-   Har account ka apna data. Sab kuch Chatwoot ke apne endpoints se —
-   koi backend kaam nahi. Har card alag se load hota hai, ek fail ho
-   to baqi phir bhi bharte hain.
+   DashboardScreen.vue  —  ChatsSync Dashboard
+   Flat cards, saaf typography, sparklines. Koi gradient banner nahi.
+   Data Chatwoot ke apne endpoints se — koi backend kaam nahi.
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
@@ -15,6 +14,18 @@ const currentUser = useMapGetter('getCurrentUser');
 const currentAccount = useMapGetter('getCurrentAccount');
 
 /* ---------------- API ---------------- */
+/* ===================================================================
+   AUTH
+   Ek daur mein ise bare `axios` par le gaya tha — woh ghalti thi: us
+   import par Chatwoot ke auth headers lagte hi nahi, isliye Contacts,
+   Inbox aur Dashboard teeno 401 par gir gaye.
+   Ab wapas cookie ke headers, magar do sudhaar ke saath:
+     1. token HAR call par taaza parha jaata hai
+     2. 401 aaye to 250ms ruk kar EK baar dobara — devise-token-auth har
+        request par token badalta hai, aur kabhi kabhi hum purana token
+        pakad lete hain. Dobara koshish par cookie mein naya token aa
+        chuka hota hai.
+   =================================================================== */
 const authHeaders = () => {
   const h = { 'Content-Type': 'application/json' };
   try {
@@ -26,50 +37,69 @@ const authHeaders = () => {
       if (txt.charAt(0) === 'j' && txt.charAt(1) === ':') txt = txt.slice(2);
       const sess = JSON.parse(txt);
       if (sess['access-token']) {
+        /* SIRF ye paanch headers — bilkul wahi jo Chatwoot ka apna
+           APIHelper.js bhejta hai.
+           `api_access_token` YAHAN NAHI BHEJNA. Chatwoot ka usool ye hai
+           ke woh header maujood ho to session ki parwah nahi karta —
+           usay ek alag long-lived API token samajh kar check karta hai
+           (authenticate_access_token!). Hum us mein devise ka session
+           token bhej rahe the, jo API token hai hi nahi, isliye server
+           foran 401 "Invalid Access Token" de deta tha. */
         h['access-token'] = sess['access-token'];
         h['token-type'] = sess['token-type'] || 'Bearer';
         h.client = sess.client;
         h.expiry = sess.expiry;
         h.uid = sess.uid;
-        h.api_access_token = sess['access-token'];
       }
     }
   } catch (e) {
     /* ignore */
   }
-  const tok = currentUser.value?.access_token;
-  if (tok) h.api_access_token = tok;
   return h;
 };
 
-const call = (ver, path) =>
-  fetch(`/api/${ver}/accounts/${accountId.value}${path}`, {
-    credentials: 'same-origin',
-    headers: authHeaders(),
-  }).then(r => {
-    if (!r.ok) throw new Error(`${path} → ${r.status}`);
-    return r.json();
+const rawFetch = (url, opts = {}) =>
+  fetch(url, { credentials: 'same-origin', ...opts, headers: authHeaders() });
+
+/* 401 par ek baar dobara — token rotate ho chuka hota hai */
+const httpJson = (url, opts = {}) =>
+  rawFetch(url, opts).then(r => {
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    return new Promise(res => setTimeout(res, 250))
+      .then(() => rawFetch(url, opts))
+      .then(r2 => {
+        if (!r2.ok) throw new Error(`${opts.method || 'GET'} ${url} → ${r2.status}`);
+        return r2.status === 204 ? null : r2.json().catch(() => null);
+      });
   });
+
+const call = (ver, path) =>
+  httpJson(`/api/${ver}/accounts/${accountId.value}${path}`);
 const v1 = p => call('v1', p);
 const v2 = p => call('v2', p);
-/* har card apne aap gir sakta hai, poora page nahi */
-const soft = (p, fallback = null) => p.catch(() => fallback);
+const soft = (p, fb = null) => p.catch(() => fb);
 
 /* ---------------- state ---------------- */
 const RANGES = [
-  { k: 7, n: 'Last 7 days' },
-  { k: 30, n: 'Last 30 days' },
-  { k: 90, n: 'Last 90 days' },
+  { k: 7, n: '7D' },
+  { k: 30, n: '30D' },
+  { k: 90, n: '90D' },
 ];
 const range = ref(30);
 const loading = ref(true);
 const isLight = ref(false);
-const rangeMenu = ref(false);
+const isMobile = ref(window.innerWidth <= 768);
 const lastSync = ref(null);
 
 const summary = ref(null);
+const prevSummary = ref(null);
 const series = ref([]);
-const live = ref({ open: 0, unattended: 0, unassigned: 0, pending: 0 });
+const inSeries = ref([]);
+const outSeries = ref([]);
+const live = ref({ open: 0, pending: 0, unassigned: 0, unattended: 0 });
 const agents = ref([]);
 const agentStats = ref([]);
 const inboxes = ref([]);
@@ -81,10 +111,13 @@ const cannedCount = ref(0);
 const contactCount = ref(0);
 const recent = ref([]);
 
+const openRail = () => {
+  window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
+};
+
 /* ---------------- helpers ---------------- */
 const now = () => Math.floor(Date.now() / 1000);
 const since = () => now() - range.value * 86400;
-
 const num = v => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -95,48 +128,35 @@ const fmtNum = v => {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return String(n);
 };
-const fmtDur = secs => {
-  const s = num(secs);
-  if (!s) return '—';
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
-  return `${(s / 86400).toFixed(1)}d`;
+const fmtDur = s => {
+  const v = num(s);
+  if (!v) return '—';
+  if (v < 60) return `${Math.round(v)}s`;
+  if (v < 3600) return `${Math.round(v / 60)}m`;
+  if (v < 86400) return `${(v / 3600).toFixed(1)}h`;
+  return `${(v / 86400).toFixed(1)}d`;
 };
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const shortDate = ts => {
   const d = new Date(num(ts) * 1000);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return `${d.getDate()} ${MON[d.getMonth()]}`;
 };
 const agoOf = ts => {
   if (!ts) return '';
-  const mins = Math.floor((Date.now() - num(ts) * 1000) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
-  return `${Math.floor(mins / 1440)}d ago`;
+  const m = Math.floor((Date.now() - num(ts) * 1000) / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  if (m < 1440) return `${Math.floor(m / 60)}h`;
+  return `${Math.floor(m / 1440)}d`;
 };
-
-const greeting = computed(() => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-});
-const firstName = computed(
-  () => String(currentUser.value?.name || '').split(' ')[0] || 'there'
-);
-const accountName = computed(
-  () => currentAccount.value?.name || 'your workspace'
+const accountName = computed(() => currentAccount.value?.name || 'Workspace');
+const rangeLabel = computed(() =>
+  range.value === 7 ? 'last 7 days' : range.value === 30 ? 'last 30 days' : 'last 90 days'
 );
 
 const CH_COLOR = {
   wa: '#25D366', fb: '#0866FF', ig: '#E1306C', sms: '#7C4DFF',
-  tg: '#26A5E4', em: '#F59E0B', web: '#0EA5E9', api: '#94A3B8',
-  other: '#8696A0',
+  tg: '#26A5E4', em: '#F59E0B', web: '#0EA5E9', api: '#94A3B8', other: '#8696A0',
 };
 const chKind = t => {
   const s = String(t || '');
@@ -150,144 +170,189 @@ const chKind = t => {
   if (/Api/i.test(s)) return 'api';
   return 'other';
 };
-const initials = name =>
-  (name || '?')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase();
-const AV = ['#7F77DD', '#E5793A', '#12A150', '#D9455F', '#2F7FD1', '#C247A8'];
+const initials = n =>
+  (n || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(w => w[0]).join('').toUpperCase();
+const AV = ['#7F77DD','#E5793A','#12A150','#D9455F','#2F7FD1','#C247A8'];
 const avColor = i => AV[Math.abs(Number(i) || 0) % AV.length];
+const delta = (a, b) => {
+  const x = num(a);
+  const y = num(b);
+  if (!y) return null;
+  return Math.round(((x - y) / y) * 100);
+};
 
 /* ---------------- derived ---------------- */
-const cards = computed(() => {
-  const s = summary.value || {};
-  return [
-    {
-      k: 'conv',
-      n: 'Conversations',
-      v: fmtNum(s.conversations_count),
-      i: 'i-lucide-messages-square',
-      c: '#00A884',
-    },
-    {
-      k: 'in',
-      n: 'Incoming messages',
-      v: fmtNum(s.incoming_messages_count),
-      i: 'i-lucide-arrow-down-left',
-      c: '#0EA5E9',
-    },
-    {
-      k: 'out',
-      n: 'Outgoing messages',
-      v: fmtNum(s.outgoing_messages_count),
-      i: 'i-lucide-arrow-up-right',
-      c: '#8B5CF6',
-    },
-    {
-      k: 'res',
-      n: 'Resolved',
-      v: fmtNum(s.resolutions_count),
-      i: 'i-lucide-check-check',
-      c: '#22C55E',
-    },
-    {
-      k: 'frt',
-      n: 'Avg first reply',
-      v: fmtDur(s.avg_first_response_time),
-      i: 'i-lucide-timer',
-      c: '#F59E0B',
-    },
-    {
-      k: 'rt',
-      n: 'Avg resolution',
-      v: fmtDur(s.avg_resolution_time),
-      i: 'i-lucide-clock-3',
-      c: '#EC4899',
-    },
-  ];
-});
+const s0 = computed(() => summary.value || {});
+const p0 = computed(() => prevSummary.value || {});
 
-const setupCards = computed(() => [
-  { n: 'Agents', v: agents.value.length, i: 'i-lucide-square-user', to: 'agent_list' },
-  { n: 'Inboxes', v: inboxes.value.length, i: 'i-lucide-inbox', to: 'settings_inbox_list' },
-  { n: 'Chatbots', v: bots.value.length, i: 'i-lucide-bot', to: 'agent_bots' },
-  { n: 'Teams', v: teams.value.length, i: 'i-lucide-users', to: 'settings_teams_list' },
-  { n: 'Labels', v: labels.value.length, i: 'i-lucide-tags', to: 'labels_list' },
-  { n: 'Contacts', v: contactCount.value, i: 'i-lucide-contact', to: 'contacts_dashboard_index' },
+/* sparkline path (KPI cards ke liye) */
+const spark = pts => {
+  const vals = (pts || []).map(p => num(p.value));
+  if (vals.length < 2) return '';
+  const max = Math.max(1, ...vals);
+  const W = 100;
+  const H = 26;
+  return vals
+    .map((v, i) => {
+      const x = (i / (vals.length - 1)) * W;
+      const y = H - (v / max) * (H - 3) - 1.5;
+      return `${i ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+};
+
+const kpis = computed(() => [
   {
-    n: 'Canned replies',
-    v: cannedCount.value,
-    i: 'i-lucide-message-square-quote',
-    to: 'canned_list',
+    k: 'conv', n: 'Conversations', v: fmtNum(s0.value.conversations_count),
+    d: delta(s0.value.conversations_count, p0.value.conversations_count),
+    i: 'i-lucide-messages-square', c: '#00A884', sp: spark(series.value),
+  },
+  {
+    k: 'res', n: 'Resolved', v: fmtNum(s0.value.resolutions_count),
+    d: delta(s0.value.resolutions_count, p0.value.resolutions_count),
+    i: 'i-lucide-circle-check-big', c: '#2F6BEB', sp: '',
+  },
+  {
+    k: 'in', n: 'Incoming', v: fmtNum(s0.value.incoming_messages_count),
+    d: delta(s0.value.incoming_messages_count, p0.value.incoming_messages_count),
+    i: 'i-lucide-arrow-down-left', c: '#0EA5E9', sp: spark(inSeries.value),
+  },
+  {
+    k: 'out', n: 'Outgoing', v: fmtNum(s0.value.outgoing_messages_count),
+    d: delta(s0.value.outgoing_messages_count, p0.value.outgoing_messages_count),
+    i: 'i-lucide-arrow-up-right', c: '#8B5CF6', sp: spark(outSeries.value),
   },
 ]);
 
-/* chart — SVG khud banate hain, koi library nahi */
-const CH_W = 720;
-const CH_H = 190;
-const chart = computed(() => {
-  const pts = series.value;
+const queue = computed(() => [
+  { n: 'Open', v: live.value.open, c: '#00A884' },
+  { n: 'Pending', v: live.value.pending, c: '#F59E0B' },
+  { n: 'Unassigned', v: live.value.unassigned, c: '#0EA5E9' },
+  { n: 'Needs reply', v: live.value.unattended, c: '#EF4444' },
+]);
+
+/* ---- main chart ---- */
+const CW = 800;
+const CHH = 260;
+const PADL = 42;
+const PADT = 16;
+const PADB = 28;
+const chartMax = computed(() =>
+  Math.max(
+    1,
+    ...series.value.map(p => num(p.value)),
+    ...inSeries.value.map(p => num(p.value)),
+    ...outSeries.value.map(p => num(p.value))
+  )
+);
+const buildLine = pts => {
   if (!pts.length) return null;
-  const max = Math.max(1, ...pts.map(p => num(p.value)));
-  const gap = 4;
-  const bw = Math.max(3, CH_W / pts.length - gap);
-  const bars = pts.map((p, i) => {
-    const val = num(p.value);
-    const h = Math.max(val > 0 ? 3 : 0, (val / max) * (CH_H - 26));
-    return {
-      x: i * (bw + gap),
-      y: CH_H - 22 - h,
-      w: bw,
-      h,
-      val,
-      label: shortDate(p.timestamp),
-    };
-  });
-  const step = Math.ceil(pts.length / 6);
+  const vals = pts.map(p => num(p.value));
+  const max = chartMax.value;
+  const n = pts.length;
+  const xAt = i => PADL + (n === 1 ? (CW - PADL) / 2 : (i / (n - 1)) * (CW - PADL - 10));
+  const yAt = v => CHH - PADB - (v / max) * (CHH - PADT - PADB);
+  const co = vals.map((v, i) => [xAt(i), yAt(v)]);
+  let d = `M ${co[0][0]} ${co[0][1]}`;
+  for (let i = 1; i < co.length; i += 1) {
+    const [px, py] = co[i - 1];
+    const [cx, cy] = co[i];
+    const mx = (px + cx) / 2;
+    d += ` C ${mx} ${py} ${mx} ${cy} ${cx} ${cy}`;
+  }
+  const step = Math.max(1, Math.ceil(n / (isMobile.value ? 4 : 8)));
   return {
-    max,
-    bars,
-    ticks: bars.filter((b, i) => i % step === 0),
-    total: pts.reduce((a, p) => a + num(p.value), 0),
-    peak: max,
+    line: d,
+    area: `${d} L ${co[co.length - 1][0]} ${CHH - PADB} L ${co[0][0]} ${CHH - PADB} Z`,
+    dots: co.map(([cx, cy], i) => ({ cx, cy, v: vals[i], l: shortDate(pts[i].timestamp) })),
+    ticks: co.map(([cx], i) => ({ x: cx, l: shortDate(pts[i].timestamp), i }))
+      .filter(o => o.i % step === 0),
+    total: vals.reduce((a, b) => a + b, 0),
   };
+};
+const chart = computed(() => buildLine(series.value));
+const chartIn = computed(() => buildLine(inSeries.value));
+const chartOut = computed(() => buildLine(outSeries.value));
+const yTicks = computed(() => {
+  const max = chartMax.value;
+  return Array.from({ length: 5 }, (_, i) => ({
+    v: Math.round((max / 4) * (4 - i)),
+    y: PADT + ((CHH - PADT - PADB) / 4) * i,
+  }));
 });
+
+/* ---- donut ---- */
+const donut = computed(() => {
+  const parts = [
+    { n: 'Open', v: num(live.value.open), c: '#00A884' },
+    { n: 'Pending', v: num(live.value.pending), c: '#F59E0B' },
+    { n: 'Resolved', v: num(s0.value.resolutions_count), c: '#2F6BEB' },
+  ].filter(p => p.v > 0);
+  const total = parts.reduce((a, p) => a + p.v, 0);
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  if (!total) return { total: 0, parts: [], segs: [], R, C };
+  let acc = 0;
+  const segs = parts.map(p => {
+    const frac = p.v / total;
+    const seg = { c: p.c, dash: `${Math.max(0, frac * C - 4)} ${C}`, off: -acc * C, pct: Math.round(frac * 100) };
+    acc += frac;
+    return seg;
+  });
+  return { total, parts, segs, R, C };
+});
+
+/* ---- performance bars ---- */
+const perf = computed(() => {
+  const conv = num(s0.value.conversations_count);
+  const res = num(s0.value.resolutions_count);
+  const inc = num(s0.value.incoming_messages_count);
+  const out = num(s0.value.outgoing_messages_count);
+  const bot = num(s0.value.bot_resolutions_count);
+  const pct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
+  return [
+    { n: 'Resolution rate', v: `${pct(res, conv)}%`, p: pct(res, conv), c: '#00A884', s: `${res} of ${conv}` },
+    { n: 'Reply ratio', v: `${pct(out, inc + out)}%`, p: pct(out, inc + out), c: '#2F6BEB', s: `${out} sent · ${inc} in` },
+    { n: 'Handled by bot', v: `${pct(bot, conv)}%`, p: pct(bot, conv), c: '#F59E0B', s: bot ? `${bot} auto` : 'no bot activity' },
+    { n: 'First reply', v: fmtDur(s0.value.avg_first_response_time), p: null, c: '#8B5CF6', s: `resolution ${fmtDur(s0.value.avg_resolution_time)}` },
+  ];
+});
+
+const speeds = computed(() => [
+  { n: 'First reply', v: fmtDur(s0.value.avg_first_response_time), i: 'i-lucide-zap', c: '#F59E0B' },
+  { n: 'Resolution', v: fmtDur(s0.value.avg_resolution_time), i: 'i-lucide-flag', c: '#00A884' },
+  { n: 'Reply time', v: fmtDur(s0.value.reply_time), i: 'i-lucide-timer', c: '#0EA5E9' },
+]);
 
 const inboxRows = computed(() => {
   const rows = inboxes.value.map(ib => ({
-    id: ib.id,
-    name: ib.name,
-    kind: chKind(ib.channel_type),
+    id: ib.id, name: ib.name, kind: chKind(ib.channel_type),
     v: num(inboxCounts.value[ib.id]),
   }));
   const max = Math.max(1, ...rows.map(r => r.v));
-  return rows
-    .sort((a, b) => b.v - a.v)
+  return rows.sort((a, b) => b.v - a.v)
     .map(r => ({ ...r, pct: Math.round((r.v / max) * 100) }));
 });
-
-const topAgents = computed(() => {
-  const max = Math.max(1, ...agentStats.value.map(a => a.v));
-  return [...agentStats.value]
-    .sort((a, b) => b.v - a.v)
-    .slice(0, 6)
-    .map(a => ({ ...a, pct: Math.round((a.v / max) * 100) }));
-});
+const topAgents = computed(() =>
+  [...agentStats.value].sort((a, b) => b.v - a.v).slice(0, 5)
+);
+const setupCards = computed(() => [
+  { n: 'Agents', v: agents.value.length, i: 'i-lucide-square-user', c: '#8B5CF6', to: 'agent_list' },
+  { n: 'Inboxes', v: inboxes.value.length, i: 'i-lucide-inbox', c: '#0EA5E9', to: 'settings_inbox_list' },
+  { n: 'Chatbots', v: bots.value.length, i: 'i-lucide-bot', c: '#00A884', to: 'agent_bots' },
+  { n: 'Teams', v: teams.value.length, i: 'i-lucide-users', c: '#F59E0B', to: 'settings_teams_list' },
+  { n: 'Labels', v: labels.value.length, i: 'i-lucide-tags', c: '#EC4899', to: 'labels_list' },
+  { n: 'Contacts', v: contactCount.value, i: 'i-lucide-contact', c: '#14B8A6', to: 'contacts_dashboard_index' },
+  { n: 'Canned', v: cannedCount.value, i: 'i-lucide-message-square-quote', c: '#F97316', to: 'canned_list' },
+]);
 
 /* ---------------- load ---------------- */
 const loadStatic = () =>
   Promise.all([
-    soft(v1('/agents'), []),
-    soft(v1('/inboxes'), null),
-    soft(v1('/teams'), []),
-    soft(v1('/labels'), null),
-    soft(v1('/agent_bots'), []),
-    soft(v1('/canned_responses'), []),
-    soft(v1('/contacts?page=1'), null),
+    soft(v1('/agents'), []), soft(v1('/inboxes'), null), soft(v1('/teams'), []),
+    soft(v1('/labels'), null), soft(v1('/agent_bots'), []),
+    soft(v1('/canned_responses'), []), soft(v1('/contacts?page=1'), null),
   ]).then(([ag, ib, tm, lb, bt, cn, ct]) => {
     agents.value = Array.isArray(ag) ? ag : ag?.payload || [];
     inboxes.value = ib?.payload || (Array.isArray(ib) ? ib : []);
@@ -313,21 +378,29 @@ const loadLive = () =>
   });
 
 const loadReports = () => {
-  const s = since();
   const u = now();
+  const s = since();
+  const span = range.value * 86400;
   const qs = `since=${s}&until=${u}&type=account`;
   return Promise.all([
     soft(v2(`/reports/summary?${qs}`), null),
+    soft(v2(`/reports/summary?since=${s - span}&until=${s}&type=account`), null),
     soft(v2(`/reports?metric=conversations_count&${qs}&group_by=day`), []),
-  ]).then(([sum, ser]) => {
+    soft(v2(`/reports?metric=incoming_messages_count&${qs}&group_by=day`), []),
+    soft(v2(`/reports?metric=outgoing_messages_count&${qs}&group_by=day`), []),
+  ]).then(([sum, prev, a, b, c]) => {
     summary.value = sum;
-    series.value = Array.isArray(ser) ? ser : ser?.payload || [];
+    prevSummary.value = prev;
+    const arr = x => (Array.isArray(x) ? x : x?.payload || []);
+    series.value = arr(a);
+    inSeries.value = arr(b);
+    outSeries.value = arr(c);
   });
 };
 
 const loadAgentStats = () => {
-  const s = since();
   const u = now();
+  const s = since();
   const list = agents.value.slice(0, 10);
   if (!list.length) {
     agentStats.value = [];
@@ -335,18 +408,15 @@ const loadAgentStats = () => {
   }
   return Promise.all(
     list.map(a =>
-      soft(
-        v2(
-          `/reports/summary?since=${s}&until=${u}&type=agent&id=${a.id}`
-        ),
-        null
-      ).then(r => ({
-        id: a.id,
-        name: a.name || a.available_name || a.email,
-        thumbnail: a.thumbnail,
-        v: num(r?.conversations_count),
-        resolved: num(r?.resolutions_count),
-      }))
+      soft(v2(`/reports/summary?since=${s}&until=${u}&type=agent&id=${a.id}`), null)
+        .then(r => ({
+          id: a.id,
+          name: a.name || a.available_name || a.email,
+          thumbnail: a.thumbnail,
+          v: num(r?.conversations_count),
+          resolved: num(r?.resolutions_count),
+          frt: fmtDur(r?.avg_first_response_time),
+        }))
     )
   ).then(rows => {
     agentStats.value = rows;
@@ -354,16 +424,14 @@ const loadAgentStats = () => {
 };
 
 const loadInboxCounts = () => {
-  const s = since();
   const u = now();
+  const s = since();
   const list = inboxes.value.slice(0, 10);
   if (!list.length) return Promise.resolve();
   return Promise.all(
     list.map(ib =>
-      soft(
-        v2(`/reports/summary?since=${s}&until=${u}&type=inbox&id=${ib.id}`),
-        null
-      ).then(r => [ib.id, num(r?.conversations_count)])
+      soft(v2(`/reports/summary?since=${s}&until=${u}&type=inbox&id=${ib.id}`), null)
+        .then(r => [ib.id, num(r?.conversations_count)])
     )
   ).then(pairs => {
     const out = {};
@@ -383,7 +451,8 @@ const loadRecent = () =>
 const refresh = (full = false) => {
   if (full) loading.value = true;
   const jobs = [loadReports(), loadLive(), loadRecent()];
-  if (full) jobs.push(loadStatic().then(() => Promise.all([loadAgentStats(), loadInboxCounts()])));
+  if (full)
+    jobs.push(loadStatic().then(() => Promise.all([loadAgentStats(), loadInboxCounts()])));
   else jobs.push(loadAgentStats(), loadInboxCounts());
   return Promise.all(jobs)
     .catch(() => {})
@@ -395,10 +464,8 @@ const refresh = (full = false) => {
 
 const pickRange = k => {
   range.value = k;
-  rangeMenu.value = false;
   refresh(false);
 };
-
 const go = name => {
   router.push({ name, params: { accountId: accountId.value } }).catch(() => {});
 };
@@ -409,264 +476,346 @@ const openConv = c => {
     params: { accountId: accountId.value, conversation_id: c.id },
   });
 };
+const lastMsg = c => {
+  const m = c?.messages || [];
+  return m.length ? m[m.length - 1]?.content || 'Attachment' : 'No message yet';
+};
 
 /* ---------------- lifecycle ---------------- */
 let themeObs = null;
+let themePoll = null;
 let timer = null;
-const readTheme = () => {
-  isLight.value = !(
+/* Chatwoot ki apni themed surface ka asli rang dekh kar faisla.
+   Pehle html.dark aur Tailwind probe try kiye the — dono is fork mein
+   bharosay ke laaiq nahi nikle. Rang har tareeqe ke saath sahi rehta hai. */
+const THEME_SEL =
+  '[class*="bg-n-background"],[class*="bg-n-solid"],[class*="bg-n-alpha"],main';
+const detectDark = () => {
+  try {
+    const els = document.querySelectorAll(THEME_SEL);
+    for (let i = 0; i < els.length && i < 14; i += 1) {
+      const el = els[i];
+      if (el.closest('.cs-rail') || el.closest('.cs-app') || el.closest('.cs-dash'))
+        continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && m.length >= 3 && (m.length < 4 || Number(m[3]) > 0.2)) {
+        const lum = 0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2];
+        return lum < 128;
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return (
     document.documentElement.classList.contains('dark') ||
     document.body.classList.contains('dark') ||
     !!document.querySelector('.dark')
   );
 };
-const closeMenus = () => {
-  rangeMenu.value = false;
+const readTheme = () => {
+  const l = !detectDark();
+  if (l !== isLight.value) isLight.value = l;
+};
+const onThemeEvent = e => {
+  isLight.value = !e?.detail?.dark;
+};
+const onResize = () => {
+  isMobile.value = window.innerWidth <= 768;
 };
 
 onMounted(() => {
+  document.body.classList.add('cs-own-header');
   readTheme();
+  window.addEventListener('chatssync:theme', onThemeEvent);
+  themePoll = setInterval(readTheme, 1000);
   themeObs = new MutationObserver(readTheme);
-  themeObs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-    subtree: true,
-  });
-  document.addEventListener('click', closeMenus);
+  themeObs.observe(document.documentElement, { attributes: true });
+  themeObs.observe(document.body, { attributes: true });
+  window.addEventListener('resize', onResize);
   refresh(true);
-  // data khud taaza hota rehta hai
   timer = setInterval(() => {
     if (!document.hidden) refresh(false);
   }, 60000);
 });
-
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeMenus);
+  document.body.classList.remove('cs-own-header');
+  window.removeEventListener('chatssync:theme', onThemeEvent);
+  window.removeEventListener('resize', onResize);
+  clearInterval(themePoll);
   if (themeObs) {
     themeObs.disconnect();
     themeObs = null;
   }
   clearInterval(timer);
 });
-
 watch(accountId, () => refresh(true));
 </script>
 
 <template>
   <section class="cs-dash" :class="{ lite: isLight }">
-    <div class="cs-dscroll">
-      <!-- hero -->
-      <div class="cs-hero">
-        <div class="cs-hb">
-          <div class="cs-hg">{{ greeting }}, {{ firstName }}</div>
-          <h1>Welcome to ChatsSync</h1>
-          <p>
-            Here is how {{ accountName }} is doing. Everything below is live
-            data from this account and refreshes on its own.
-          </p>
+    <div class="cs-scroll">
+      <!-- header -->
+      <header class="cs-top">
+        <span v-if="isMobile" class="cs-ham" @click.stop="openRail">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
+          </svg>
+        </span>
+        <div class="cs-tt">
+          <h1>Overview</h1>
+          <span class="cs-today">{{ accountName }} · {{ rangeLabel }}</span>
         </div>
-        <div class="cs-hact">
-          <div class="cs-rg" @click.stop="rangeMenu = !rangeMenu">
-            <span class="i-lucide-calendar" />
-            <span>{{ RANGES.find(r => r.k === range).n }}</span>
-            <span class="i-lucide-chevron-down" />
-            <div v-if="rangeMenu" class="cs-rgm" @click.stop>
-              <div
-                v-for="r in RANGES"
-                :key="r.k"
-                class="cs-rgi"
-                :class="{ on: r.k === range }"
-                @click="pickRange(r.k)"
-              >
-                {{ r.n }}
-              </div>
-            </div>
-          </div>
-          <span class="cs-ic" title="Refresh" @click="refresh(true)">
-            <span class="i-lucide-rotate-cw" />
-          </span>
+        <div class="cs-seg">
+          <button
+            v-for="r in RANGES"
+            :key="r.k"
+            :class="{ on: r.k === range }"
+            @click="pickRange(r.k)"
+          >
+            {{ r.n }}
+          </button>
         </div>
-      </div>
+        <button class="cs-icb" title="Refresh" @click="refresh(true)">
+          <span class="i-lucide-rotate-cw" />
+        </button>
+      </header>
 
-      <!-- stat cards -->
-      <div class="cs-grid">
-        <div v-for="c in cards" :key="c.k" class="cs-card stat">
-          <div class="cs-sic" :style="{ background: c.c + '22', color: c.c }">
-            <span :class="c.i" />
-          </div>
-          <div class="cs-sv">
-            <span v-if="loading" class="cs-shim w60" />
-            <template v-else>{{ c.v }}</template>
-          </div>
-          <div class="cs-sn">{{ c.n }}</div>
-        </div>
-      </div>
-
-      <!-- live strip -->
-      <div class="cs-live">
-        <div class="cs-lvi" @click="go('home')">
-          <span class="cs-dot g" /><b>{{ live.open }}</b><span>Open now</span>
-        </div>
-        <div class="cs-lvi" @click="go('home')">
-          <span class="cs-dot a" /><b>{{ live.pending }}</b><span>Pending</span>
-        </div>
-        <div class="cs-lvi" @click="go('home')">
-          <span class="cs-dot b" /><b>{{ live.unassigned }}</b
-          ><span>Unassigned</span>
-        </div>
-        <div class="cs-lvi" @click="go('home')">
-          <span class="cs-dot r" /><b>{{ live.unattended }}</b
-          ><span>Needs reply</span>
-        </div>
-      </div>
-
-      <!-- chart -->
-      <div class="cs-card">
-        <div class="cs-ch">
-          <div>
-            <h3>Conversations over time</h3>
-            <span class="cs-sub">
-              {{ chart ? chart.total : 0 }} total · peak
-              {{ chart ? chart.peak : 0 }} in a day
-            </span>
-          </div>
-        </div>
-        <div v-if="loading" class="cs-shim tall" />
-        <div v-else-if="!chart" class="cs-empty">
-          <span class="i-lucide-chart-column" />
-          <span>No conversation data for this range yet</span>
-        </div>
-        <svg
-          v-else
-          class="cs-svg"
-          :viewBox="`0 0 ${CH_W} ${CH_H}`"
-          preserveAspectRatio="none"
+      <!-- KPI -->
+      <div class="cs-kpis">
+        <div
+          v-for="k in kpis"
+          :key="k.k"
+          class="cs-card cs-kpi"
+          :style="{ color: k.c }"
         >
-          <g v-for="(b, i) in chart.bars" :key="i">
-            <rect
-              :x="b.x"
-              :y="b.y"
-              :width="b.w"
-              :height="b.h"
-              rx="2"
-              class="cs-bar"
-            />
-            <title>{{ b.label }} · {{ b.val }}</title>
-          </g>
-        </svg>
-        <div v-if="!loading && chart" class="cs-xax">
-          <span v-for="(tk, i) in chart.ticks" :key="i">{{ tk.label }}</span>
+          <div class="cs-kh">
+            <span class="cs-kic" :style="{ background: k.c + '1a', color: k.c }">
+              <span :class="k.i" />
+            </span>
+            <span class="cs-kn">{{ k.n }}</span>
+          </div>
+          <div class="cs-kbody">
+            <div class="cs-kv">
+              <span v-if="loading" class="cs-shim w60" />
+              <template v-else>{{ k.v }}</template>
+            </div>
+            <svg v-if="k.sp && !loading" class="cs-spark" viewBox="0 0 100 26" preserveAspectRatio="none">
+              <path :d="k.sp" fill="none" :stroke="k.c" stroke-width="2" vector-effect="non-scaling-stroke" />
+            </svg>
+          </div>
+          <div v-if="!loading" class="cs-kf">
+            <span v-if="k.d !== null" class="cs-pill" :class="k.d >= 0 ? 'up' : 'dn'">
+              <span :class="k.d >= 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'" />
+              {{ Math.abs(k.d) }}%
+            </span>
+            <span class="cs-kfp">vs previous period</span>
+          </div>
         </div>
       </div>
 
-      <div class="cs-two">
-        <!-- inboxes -->
+      <!-- queue strip -->
+      <div class="cs-card cs-queue">
+        <div v-for="q in queue" :key="q.n" class="cs-qi" @click="go('home')">
+          <span class="cs-qdot" :style="{ background: q.c }" />
+          <b>{{ q.v }}</b>
+          <span>{{ q.n }}</span>
+        </div>
+        <span class="cs-qlnk" @click="go('home')">Open Chats →</span>
+      </div>
+
+      <!-- chart + donut -->
+      <div class="cs-row b">
         <div class="cs-card">
           <div class="cs-ch">
-            <h3>Conversations by inbox</h3>
+            <div>
+              <h3>Activity</h3>
+              <span class="cs-sub">{{ chart ? chart.total : 0 }} conversations · {{ rangeLabel }}</span>
+            </div>
+            <div class="cs-leg">
+              <span><i style="background:#00A884" />Conversations</span>
+              <span><i style="background:#0EA5E9" />Incoming</span>
+              <span><i style="background:#8B5CF6" />Outgoing</span>
+            </div>
+          </div>
+          <div v-if="loading" class="cs-shim tall" />
+          <div v-else-if="!chart" class="cs-empty">
+            <span class="i-lucide-chart-spline" /><span>No data for this range</span>
+          </div>
+          <svg v-else class="cs-svg" :viewBox="`0 0 ${CW} ${CHH}`">
+            <defs>
+              <linearGradient id="csDA" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00A884" stop-opacity=".22" />
+                <stop offset="100%" stop-color="#00A884" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <g v-for="(tk, i) in yTicks" :key="'y' + i">
+              <line class="cs-gl" :x1="PADL" :y1="tk.y" :x2="CW - 6" :y2="tk.y" />
+              <text class="cs-yt" :x="PADL - 10" :y="tk.y + 4">{{ tk.v }}</text>
+            </g>
+            <path :d="chart.area" fill="url(#csDA)" />
+            <path v-if="chartIn" :d="chartIn.line" fill="none" stroke="#0EA5E9" stroke-width="1.8" />
+            <path v-if="chartOut" :d="chartOut.line" fill="none" stroke="#8B5CF6" stroke-width="1.8" stroke-dasharray="5 4" />
+            <path :d="chart.line" fill="none" stroke="#00A884" stroke-width="2.4" />
+            <g v-for="(d, i) in chart.dots" :key="'d' + i">
+              <circle :cx="d.cx" :cy="d.cy" r="3.2" class="cs-dotc" />
+              <title>{{ d.l }} · {{ d.v }}</title>
+            </g>
+            <text v-for="(tk, i) in chart.ticks" :key="'x' + i" class="cs-xt" :x="tk.x" :y="CHH - 7">
+              {{ tk.l }}
+            </text>
+          </svg>
+        </div>
+
+        <div class="cs-card">
+          <div class="cs-ch"><h3>Status</h3></div>
+          <div v-if="!donut.total" class="cs-empty sm">
+            <span class="i-lucide-chart-pie" /><span>Nothing yet</span>
+          </div>
+          <template v-else>
+            <div class="cs-dwrap">
+              <svg viewBox="0 0 136 136" class="cs-donut">
+                <circle cx="68" cy="68" :r="donut.R" class="cs-dtrack" />
+                <circle
+                  v-for="(sg, i) in donut.segs" :key="i"
+                  cx="68" cy="68" :r="donut.R" fill="none"
+                  :stroke="sg.c" stroke-width="13" stroke-linecap="round"
+                  :stroke-dasharray="sg.dash" :stroke-dashoffset="sg.off"
+                  transform="rotate(-90 68 68)"
+                />
+              </svg>
+              <div class="cs-dmid"><b>{{ fmtNum(donut.total) }}</b><span>total</span></div>
+            </div>
+            <div class="cs-dleg">
+              <div v-for="(p, i) in donut.parts" :key="p.n">
+                <i :style="{ background: p.c }" />
+                <span class="cs-dn">{{ p.n }}</span>
+                <b>{{ p.v }}</b>
+                <em>{{ donut.segs[i].pct }}%</em>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- performance + channels + speed -->
+      <div class="cs-row c3">
+        <div class="cs-card">
+          <div class="cs-ch"><h3>Performance</h3></div>
+          <div v-for="p in perf" :key="p.n" class="cs-prow">
+            <div class="cs-pl">
+              <span class="cs-pn">{{ p.n }}</span>
+              <span class="cs-ps">{{ p.s }}</span>
+            </div>
+            <div v-if="p.p !== null" class="cs-ptrack">
+              <div class="cs-pfill" :style="{ width: p.p + '%', background: p.c }" />
+            </div>
+            <b class="cs-pv" :style="{ color: p.c }">{{ p.v }}</b>
+          </div>
+        </div>
+
+        <div class="cs-card">
+          <div class="cs-ch">
+            <h3>Channels</h3>
             <span class="cs-lnk" @click="go('settings_inbox_list')">Manage</span>
           </div>
           <div v-if="!inboxRows.length" class="cs-empty sm">
-            <span class="i-lucide-inbox" /><span>No inboxes connected yet</span>
+            <span class="i-lucide-inbox" /><span>No inboxes connected</span>
           </div>
           <div v-for="r in inboxRows" :key="r.id" class="cs-brow">
-            <span class="cs-bdot" :style="{ background: CH_COLOR[r.kind] }" />
-            <span class="cs-bnm">{{ r.name }}</span>
+            <span class="cs-bnm"><i :style="{ background: CH_COLOR[r.kind] }" />{{ r.name }}</span>
             <div class="cs-btrack">
-              <div
-                class="cs-bfill"
-                :style="{ width: r.pct + '%', background: CH_COLOR[r.kind] }"
-              />
+              <div class="cs-bfill" :style="{ width: r.pct + '%', background: CH_COLOR[r.kind] }" />
             </div>
-            <span class="cs-bval">{{ r.v }}</span>
+            <b>{{ r.v }}</b>
           </div>
         </div>
 
-        <!-- agents -->
         <div class="cs-card">
-          <div class="cs-ch">
-            <h3>Top agents</h3>
-            <span class="cs-lnk" @click="go('agent_list')">Manage</span>
-          </div>
-          <div v-if="!topAgents.length" class="cs-empty sm">
-            <span class="i-lucide-square-user" /><span>No agent activity yet</span>
-          </div>
-          <div v-for="a in topAgents" :key="a.id" class="cs-arow">
-            <div class="cs-aav" :style="{ background: avColor(a.id) }">
-              <img v-if="a.thumbnail" :src="a.thumbnail" alt="" />
-              <template v-else>{{ initials(a.name) }}</template>
-            </div>
-            <div class="cs-ab">
-              <div class="cs-anm">{{ a.name }}</div>
-              <div class="cs-atrack">
-                <div class="cs-afill" :style="{ width: a.pct + '%' }" />
+          <div class="cs-ch"><h3>Response speed</h3></div>
+          <div class="cs-speed">
+            <div v-for="sp in speeds" :key="sp.n" class="cs-sp">
+              <span class="cs-spic" :style="{ background: sp.c + '1a', color: sp.c }">
+                <span :class="sp.i" />
+              </span>
+              <div>
+                <b>{{ sp.v }}</b>
+                <span>{{ sp.n }}</span>
               </div>
-            </div>
-            <div class="cs-aval">
-              <b>{{ a.v }}</b>
-              <span>{{ a.resolved }} resolved</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="cs-two">
-        <!-- recent -->
+      <!-- agents table + recent -->
+      <div class="cs-row b">
         <div class="cs-card">
           <div class="cs-ch">
-            <h3>Recent conversations</h3>
-            <span class="cs-lnk" @click="go('home')">Open Chats</span>
+            <h3>Team performance</h3>
+            <span class="cs-lnk" @click="go('agent_list')">Manage</span>
+          </div>
+          <div v-if="!topAgents.length" class="cs-empty sm">
+            <span class="i-lucide-square-user" /><span>No agent activity</span>
+          </div>
+          <table v-else class="cs-tbl">
+            <thead>
+              <tr><th>Agent</th><th>Chats</th><th>Resolved</th><th>First reply</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="a in topAgents" :key="a.id">
+                <td>
+                  <div class="cs-tag">
+                    <span class="cs-av" :style="{ background: avColor(a.id) }">
+                      <img v-if="a.thumbnail" :src="a.thumbnail" alt="" />
+                      <template v-else>{{ initials(a.name) }}</template>
+                    </span>
+                    <span class="cs-tnm">{{ a.name }}</span>
+                  </div>
+                </td>
+                <td><b>{{ a.v }}</b></td>
+                <td>{{ a.resolved }}</td>
+                <td>{{ a.frt }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cs-card">
+          <div class="cs-ch">
+            <h3>Recent</h3>
+            <span class="cs-lnk" @click="go('home')">All</span>
           </div>
           <div v-if="!recent.length" class="cs-empty sm">
-            <span class="i-lucide-message-circle" /><span>Nothing open right now</span>
+            <span class="i-lucide-message-circle" /><span>Nothing open</span>
           </div>
-          <div
-            v-for="c in recent"
-            :key="c.id"
-            class="cs-rrow"
-            @click="openConv(c)"
-          >
-            <div class="cs-aav sm" :style="{ background: avColor(c.id) }">
+          <div v-for="c in recent" :key="c.id" class="cs-rrow" @click="openConv(c)">
+            <span class="cs-av sm" :style="{ background: avColor(c.id) }">
               {{ initials(c.meta?.sender?.name) }}
-            </div>
-            <div class="cs-rb">
-              <div class="cs-rnm">
-                {{ c.meta?.sender?.name || 'Unknown' }}
-                <span class="cs-rid">#{{ c.id }}</span>
-              </div>
-              <div class="cs-rms">
-                {{ c.messages?.[c.messages.length - 1]?.content || 'No message' }}
-              </div>
+            </span>
+            <div class="cs-rrb">
+              <div class="cs-rnm">{{ c.meta?.sender?.name || 'Unknown' }}</div>
+              <div class="cs-rms">{{ lastMsg(c) }}</div>
             </div>
             <span class="cs-rtm">{{ agoOf(c.timestamp) }}</span>
           </div>
         </div>
+      </div>
 
-        <!-- setup -->
-        <div class="cs-card">
-          <div class="cs-ch">
-            <h3>Your workspace</h3>
-          </div>
-          <div class="cs-sgrid">
-            <div
-              v-for="s in setupCards"
-              :key="s.n"
-              class="cs-scell"
-              @click="go(s.to)"
-            >
-              <span class="cs-scic" :class="s.i" />
-              <b>{{ s.v }}</b>
-              <span>{{ s.n }}</span>
-            </div>
+      <!-- workspace -->
+      <div class="cs-card">
+        <div class="cs-ch"><h3>Workspace</h3></div>
+        <div class="cs-sgrid">
+          <div v-for="sc in setupCards" :key="sc.n" class="cs-scell" @click="go(sc.to)">
+            <span class="cs-scic" :class="sc.i" :style="{ background: sc.c + '1a', color: sc.c }" />
+            <b>{{ sc.v }}</b>
+            <span>{{ sc.n }}</span>
           </div>
         </div>
       </div>
 
+    <span ref="probeEl" class="cs-probe hidden dark:block" aria-hidden="true" />
+
       <div class="cs-foot">
-        <span v-if="lastSync">
-          Updated {{ agoOf(Math.floor(lastSync / 1000)) }} · refreshes every
-          minute
-        </span>
+        <span v-if="lastSync">Updated {{ agoOf(Math.floor(lastSync / 1000)) }} ago · auto refresh</span>
       </div>
     </div>
   </section>
@@ -674,17 +823,15 @@ watch(accountId, () => refresh(true));
 
 <style scoped>
 .cs-dash {
-  --panel: #111b21;
+  --panel: #131f26;
   --tx: #e9edef;
   --tx2: #aebac1;
-  --tx3: #8696a0;
-  --ln: #222e35;
-  --hov: #202c33;
-  --fld: #202c33;
+  --tx3: #7d8f99;
+  --ln: #223039;
+  --hov: #1a272f;
+  --fld: #1a272f;
   --g: #00a884;
-  --g-tint: #103529;
-  --menu: #233138;
-  --content: #0b141a;
+  --content: #0d171d;
 
   width: 100%;
   height: 100%;
@@ -696,214 +843,366 @@ watch(accountId, () => refresh(true));
 }
 .cs-dash.lite {
   --panel: #ffffff;
-  --tx: #0a1519;
-  --tx2: #3d4f57;
-  --tx3: #55666e;
-  --ln: #c7d1d6;
-  --hov: #eceff1;
-  --fld: #e3e9eb;
+  --tx: #0f1c24;
+  --tx2: #465962;
+  --tx3: #6b7d86;
+  --ln: #e4eaec;
+  --hov: #f3f6f7;
+  --fld: #f1f5f6;
   --g: #00755f;
-  --g-tint: #c8e8db;
-  --menu: #ffffff;
-  --content: #e3e8ea;
+  --content: #f6f8f9;
 }
 .cs-dash * {
   box-sizing: border-box;
 }
-.cs-dscroll {
+.cs-scroll {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 22px 24px 40px;
+  padding: 20px 22px 32px;
 }
 
-/* hero */
-.cs-hero {
+/* header */
+.cs-top {
   display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  margin-bottom: 20px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
 }
-.cs-hb {
+.cs-ham {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--tx2);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-inline-start: -6px;
+}
+.cs-ham:hover {
+  background: var(--hov);
+}
+.cs-ham svg {
+  width: 21px;
+  height: 21px;
+}
+.cs-tt {
   flex: 1;
   min-width: 0;
 }
-.cs-hg {
-  font-size: 13px;
-  color: var(--g);
-  margin-bottom: 5px;
+.cs-top h1 {
+  font-size: 21px;
+  font-weight: 650;
+  margin: 0 0 2px;
+  letter-spacing: -0.01em;
 }
-.cs-hero h1 {
-  font-size: 25px;
-  font-weight: 600;
-  margin: 0 0 7px;
-}
-.cs-hero p {
-  margin: 0;
-  font-size: 13.5px;
+.cs-today {
+  font-size: 12px;
   color: var(--tx3);
-  line-height: 1.55;
-  max-width: 620px;
 }
-.cs-hact {
+.cs-seg {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  background: var(--fld);
+  border: 1px solid var(--ln);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
   flex-shrink: 0;
 }
-.cs-rg {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.cs-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--tx3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 13px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.cs-seg button.on {
   background: var(--panel);
-  border: 1px solid var(--ln);
-  border-radius: 9px;
-  padding: 9px 13px;
-  font-size: 13.5px;
-  cursor: pointer;
-  color: var(--tx2);
-  white-space: nowrap;
-}
-.cs-rg:hover {
-  background: var(--hov);
-}
-.cs-rg span[class*='i-'] {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-.cs-rgm {
-  position: absolute;
-  top: 106%;
-  inset-inline-end: 0;
-  background: var(--menu);
-  border: 1px solid var(--ln);
-  border-radius: 9px;
-  padding: 5px 0;
-  min-width: 160px;
-  z-index: 40;
-  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.35);
-}
-.cs-rgi {
-  padding: 9px 14px;
-  cursor: pointer;
-  color: var(--tx);
-}
-.cs-rgi:hover {
-  background: var(--hov);
-}
-.cs-rgi.on {
   color: var(--g);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
-.cs-ic {
-  width: 40px;
-  height: 40px;
+.cs-icb {
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 10px;
   border: 1px solid var(--ln);
   background: var(--panel);
   color: var(--tx2);
   cursor: pointer;
   flex-shrink: 0;
 }
-.cs-ic:hover {
+.cs-icb:hover {
   background: var(--hov);
 }
-.cs-ic span {
-  width: 17px;
-  height: 17px;
+.cs-icb span {
+  width: 16px;
+  height: 16px;
 }
 
 /* cards */
 .cs-card {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--ln);
-  border-radius: 13px;
-  padding: 17px 18px;
-  margin-bottom: 16px;
+  border-radius: 14px;
+  padding: 16px 17px;
+  margin-bottom: 13px;
+  /* halka sa upar uthta hai — flat nahi lagta */
+  transition: transform 0.18s ease, box-shadow 0.18s ease,
+    border-color 0.18s ease;
+  animation: csRise 0.42s cubic-bezier(0.22, 0.8, 0.3, 1) both;
 }
-.cs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+.cs-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--g) 40%, var(--ln));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
-.cs-card.stat {
-  margin: 0;
-  padding: 16px;
+.cs-dash.lite .cs-card:hover {
+  box-shadow: 0 10px 26px rgba(15, 28, 36, 0.09);
 }
-.cs-sic {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 12px;
+@keyframes csRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.cs-sic span {
-  width: 17px;
-  height: 17px;
-}
-.cs-sv {
-  font-size: 25px;
-  font-weight: 600;
-  line-height: 1.1;
-  margin-bottom: 4px;
-}
-.cs-sn {
-  font-size: 12.5px;
-  color: var(--tx3);
-}
-
-/* live */
-.cs-live {
+/* thoda thoda kar ke aate hain */
+.cs-kpis .cs-card:nth-child(1) { animation-delay: 0.02s; }
+.cs-kpis .cs-card:nth-child(2) { animation-delay: 0.07s; }
+.cs-kpis .cs-card:nth-child(3) { animation-delay: 0.12s; }
+.cs-kpis .cs-card:nth-child(4) { animation-delay: 0.17s; }
+.cs-queue { animation-delay: 0.2s; }
+.cs-row.b { animation: none; }
+.cs-row.b > .cs-card:nth-child(1) { animation-delay: 0.24s; }
+.cs-row.b > .cs-card:nth-child(2) { animation-delay: 0.29s; }
+.cs-row.c3 > .cs-card:nth-child(1) { animation-delay: 0.3s; }
+.cs-row.c3 > .cs-card:nth-child(2) { animation-delay: 0.34s; }
+.cs-row.c3 > .cs-card:nth-child(3) { animation-delay: 0.38s; }
+/* GRID ki jagah FLEX. auto-fit grid wide screen par khali track
+   chhoR deti thi (isi liye dashboard mein itni khali jagah lag rahi thi).
+   flex-wrap + flex-grow har haal mein poori chauRai bhar deta hai, aur
+   viewport nahi balke asli jagah dekh kar toot-ta hai — mobile par bhi
+   theek. */
+.cs-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 13px;
+  margin-bottom: 13px;
+  align-items: stretch;
 }
-.cs-lvi {
-  flex: 1;
-  min-width: 150px;
+.cs-row > .cs-card {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+/* chart wala card doguna chauRa */
+.cs-row.b > .cs-card:first-child {
+  flex: 2.2 1 420px;
+}
+.cs-row.c3 > .cs-card {
+  flex: 1 1 250px;
+}
+
+/* speed card */
+.cs-speed {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.cs-sp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--fld);
+  border-radius: 11px;
+  padding: 12px 13px;
+}
+.cs-spic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.cs-spic span {
+  width: 16px;
+  height: 16px;
+}
+.cs-sp b {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.cs-sp > div > span {
+  font-size: 11px;
+  color: var(--tx3);
+}
+.cs-row > .cs-card {
+  margin-bottom: 0;
+}
+
+/* KPI */
+.cs-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-bottom: 13px;
+}
+.cs-kpis > .cs-card {
+  flex: 1 1 190px;
+  min-width: 0;
+}
+.cs-kpi {
+  margin-bottom: 0;
+  padding: 15px 16px;
+  overflow: hidden;
+}
+/* upar patli rangeen lakeer — hover par chamakti hai */
+.cs-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.25;
+  transition: opacity 0.18s;
+}
+.cs-kpi:hover::before {
+  opacity: 0.9;
+}
+.cs-kh {
   display: flex;
   align-items: center;
   gap: 9px;
-  background: var(--panel);
-  border: 1px solid var(--ln);
-  border-radius: 11px;
-  padding: 12px 15px;
-  cursor: pointer;
+  margin-bottom: 12px;
 }
-.cs-lvi:hover {
-  background: var(--hov);
+.cs-kic {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
 }
-.cs-lvi b {
-  font-size: 18px;
-  font-weight: 600;
+.cs-kic span {
+  width: 15px;
+  height: 15px;
 }
-.cs-lvi span:last-child {
-  font-size: 12.5px;
+.cs-kpi .cs-kv,
+.cs-kpi .cs-kfp {
+  color: var(--tx);
+}
+.cs-kpi .cs-kfp {
   color: var(--tx3);
 }
-.cs-dot {
+.cs-kn {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tx3);
+}
+.cs-kbody {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.cs-kv {
+  flex: 1;
+  min-width: 0;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.cs-spark {
+  width: 74px;
+  height: 26px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.cs-kf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-kfp {
+  font-size: 10.5px;
+  color: var(--tx3);
+}
+.cs-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 7px;
+}
+.cs-pill span {
+  width: 12px;
+  height: 12px;
+}
+.cs-pill.up {
+  background: rgba(34, 197, 94, 0.14);
+  color: #22c55e;
+}
+.cs-pill.dn {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+}
+
+/* queue */
+.cs-queue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 13px 17px;
+}
+.cs-qi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.cs-qi:hover {
+  background: var(--hov);
+}
+.cs-qdot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  flex-shrink: 0;
 }
-.cs-dot.g {
-  background: #22c55e;
+.cs-qi b {
+  font-size: 17px;
+  font-weight: 700;
 }
-.cs-dot.a {
-  background: #f59e0b;
+.cs-qi span:last-child {
+  font-size: 12px;
+  color: var(--tx3);
 }
-.cs-dot.b {
-  background: #0ea5e9;
-}
-.cs-dot.r {
-  background: #ef4444;
+.cs-qlnk {
+  margin-inline-start: auto;
+  font-size: 12.5px;
+  color: var(--g);
+  cursor: pointer;
+  font-weight: 500;
 }
 
 /* card head */
@@ -911,258 +1210,405 @@ watch(accountId, () => refresh(true));
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
 }
 .cs-ch h3 {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 650;
   margin: 0;
 }
 .cs-sub {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--tx3);
 }
 .cs-lnk {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--g);
   cursor: pointer;
   flex-shrink: 0;
+  font-weight: 500;
 }
-.cs-lnk:hover {
-  text-decoration: underline;
+.cs-leg {
+  display: flex;
+  gap: 11px;
+  font-size: 10.5px;
+  color: var(--tx3);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.cs-leg span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cs-leg i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 
 /* chart */
 .cs-svg {
   width: 100%;
-  height: 190px;
+  height: 260px;
   display: block;
 }
-.cs-bar {
-  fill: var(--g);
-  opacity: 0.85;
+/* line khud ban-ti hui aati hai */
+.cs-svg path[stroke] {
+  stroke-dasharray: 2200;
+  stroke-dashoffset: 2200;
+  animation: csDraw 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
 }
-.cs-bar:hover {
+@keyframes csDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.cs-svg path[fill^='url'] {
+  animation: csFade 0.7s ease 0.7s both;
+}
+@keyframes csFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* bars aur rings bhi bharte hue */
+@media (prefers-reduced-motion: reduce) {
+  .cs-card,
+  .cs-svg path[stroke],
+  .cs-svg path[fill^='url'] {
+    animation: none;
+  }
+}
+.cs-gl {
+  stroke: var(--ln);
+  stroke-width: 1;
+}
+.cs-yt {
+  fill: var(--tx3);
+  font-size: 10px;
+  text-anchor: end;
+}
+.cs-xt {
+  fill: var(--tx3);
+  font-size: 10px;
+  text-anchor: middle;
+}
+.cs-dotc {
+  fill: var(--panel);
+  stroke: #00a884;
+  stroke-width: 2.2;
+  opacity: 0;
+}
+.cs-svg:hover .cs-dotc {
   opacity: 1;
 }
-.cs-xax {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--tx3);
-  margin-top: 4px;
-}
 
-/* two col */
-.cs-two {
+/* donut */
+.cs-dwrap {
+  position: relative;
+  width: 152px;
+  margin: 4px auto 12px;
+}
+.cs-donut {
+  width: 100%;
+  display: block;
+}
+.cs-dtrack {
+  fill: none;
+  stroke: var(--fld);
+  stroke-width: 13;
+}
+.cs-dmid {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  place-content: center;
+  text-align: center;
 }
-.cs-two > .cs-card {
-  margin-bottom: 16px;
+.cs-dmid b {
+  display: block;
+  font-size: 23px;
+  font-weight: 700;
 }
-
-/* inbox bars */
-.cs-brow {
+.cs-dmid span {
+  font-size: 10.5px;
+  color: var(--tx3);
+}
+.cs-dleg > div {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 9px;
+  padding: 6px 0;
+  font-size: 12.5px;
 }
-.cs-bdot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+.cs-dleg i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
   flex-shrink: 0;
 }
-.cs-bnm {
-  width: 118px;
-  flex-shrink: 0;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cs-btrack {
+.cs-dn {
   flex: 1;
-  min-width: 0;
-  height: 7px;
-  border-radius: 4px;
-  background: var(--fld);
-  overflow: hidden;
-}
-.cs-bfill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s;
-}
-.cs-bval {
-  width: 42px;
-  text-align: end;
-  font-size: 13px;
   color: var(--tx2);
-  flex-shrink: 0;
+}
+.cs-dleg em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--tx3);
+  width: 32px;
+  text-align: end;
 }
 
-/* agents */
-.cs-arow {
+/* performance */
+.cs-prow {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 9px 0;
 }
-.cs-aav {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
+.cs-pl {
+  width: 132px;
   flex-shrink: 0;
-  overflow: hidden;
 }
-.cs-aav.sm {
-  width: 32px;
-  height: 32px;
+.cs-pn {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
 }
-.cs-aav img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.cs-ps {
+  font-size: 10.5px;
+  color: var(--tx3);
 }
-.cs-ab {
+.cs-ptrack {
   flex: 1;
   min-width: 0;
+  height: 7px;
+  border-radius: 5px;
+  background: var(--fld);
+  overflow: hidden;
 }
-.cs-anm {
-  font-size: 13.5px;
-  margin-bottom: 6px;
+.cs-pfill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+.cs-pv {
+  width: 52px;
+  text-align: end;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* channels */
+.cs-brow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+.cs-bnm {
+  width: 96px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cs-atrack {
-  height: 6px;
-  border-radius: 3px;
+.cs-bnm i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cs-btrack {
+  flex: 1;
+  min-width: 0;
+  height: 7px;
+  border-radius: 5px;
   background: var(--fld);
   overflow: hidden;
 }
-.cs-afill {
+.cs-bfill {
   height: 100%;
-  background: var(--g);
-  border-radius: 3px;
+  border-radius: 5px;
+  transition: width 0.4s ease;
 }
-.cs-aval {
+.cs-brow b {
+  width: 30px;
   text-align: end;
   flex-shrink: 0;
 }
-.cs-aval b {
-  display: block;
-  font-size: 15px;
+
+/* table */
+.cs-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
 }
-.cs-aval span {
-  font-size: 11px;
+.cs-tbl th {
+  text-align: start;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--tx3);
+  padding: 0 0 9px;
+  border-bottom: 1px solid var(--ln);
+}
+.cs-tbl th:not(:first-child),
+.cs-tbl td:not(:first-child) {
+  text-align: end;
+  width: 74px;
+}
+.cs-tbl td {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--ln);
+  color: var(--tx2);
+}
+.cs-tbl tr:last-child td {
+  border-bottom: none;
+}
+.cs-tbl td b {
+  color: var(--tx);
+  font-size: 13.5px;
+}
+.cs-tag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cs-tnm {
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-av {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.cs-av.sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.cs-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* recent */
 .cs-rrow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 0;
+  gap: 11px;
+  padding: 8px 0;
   cursor: pointer;
+  border-radius: 9px;
 }
 .cs-rrow:hover {
-  opacity: 0.75;
+  background: var(--hov);
 }
-.cs-rb {
+.cs-rrb {
   flex: 1;
   min-width: 0;
 }
 .cs-rnm {
-  font-size: 13.5px;
+  font-size: 13px;
   margin-bottom: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cs-rid {
-  color: var(--tx3);
-  font-size: 11.5px;
-  margin-inline-start: 5px;
-}
 .cs-rms {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--tx3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .cs-rtm {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--tx3);
   flex-shrink: 0;
 }
 
-/* workspace grid */
+/* workspace */
 .cs-sgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cs-sgrid > .cs-scell {
+  flex: 1 1 92px;
+  min-width: 0;
 }
 .cs-scell {
   background: var(--fld);
-  border-radius: 10px;
-  padding: 13px 10px;
+  border-radius: 12px;
+  padding: 13px 8px;
   text-align: center;
   cursor: pointer;
+  transition: transform 0.12s;
 }
 .cs-scell:hover {
-  background: var(--hov);
-  outline: 1px solid var(--g);
+  transform: translateY(-2px);
 }
 .cs-scic {
-  width: 17px;
-  height: 17px;
-  color: var(--tx3);
-  margin: 0 auto 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  margin: 0 auto 8px;
   display: block;
 }
 .cs-scell b {
   display: block;
-  font-size: 17px;
+  font-size: 16px;
   margin-bottom: 2px;
 }
 .cs-scell span {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--tx3);
 }
 
 /* empty + shimmer */
 .cs-empty {
-  padding: 34px 16px;
+  padding: 40px 16px;
   text-align: center;
   color: var(--tx3);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 .cs-empty.sm {
-  padding: 22px 12px;
+  padding: 24px 12px;
 }
 .cs-empty span[class*='i-'] {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   opacity: 0.45;
-  margin: 0 auto 10px;
+  margin: 0 auto 9px;
   display: block;
 }
 .cs-shim {
   display: block;
-  height: 22px;
+  height: 24px;
   border-radius: 6px;
   background: var(--fld);
   animation: csP 1.3s ease-in-out infinite;
@@ -1171,7 +1617,7 @@ watch(accountId, () => refresh(true));
   width: 60%;
 }
 .cs-shim.tall {
-  height: 190px;
+  height: 260px;
 }
 @keyframes csP {
   0%,
@@ -1184,38 +1630,55 @@ watch(accountId, () => refresh(true));
 }
 .cs-foot {
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--tx3);
-  padding: 6px 0 4px;
+  padding: 2px 0;
 }
 
-@media (max-width: 900px) {
-  .cs-two {
-    grid-template-columns: 1fr;
-  }
-}
+/* responsive */
+/* grid ab khud sambhalti hai — yahan sirf spacing/typography */
 @media (max-width: 768px) {
-  .cs-dscroll {
-    padding: 16px 14px 32px;
+  .cs-scroll {
+    padding: 14px 12px 28px;
   }
-  .cs-hero {
-    flex-direction: column;
-    gap: 14px;
+  .cs-top h1 {
+    font-size: 19px;
   }
-  .cs-hact {
-    width: 100%;
+  .cs-top {
+    flex-wrap: wrap;
   }
-  .cs-rg {
-    flex: 1;
+  .cs-tt {
+    flex: 1 1 60%;
   }
-  .cs-hero h1 {
-    font-size: 21px;
+  .cs-card {
+    padding: 14px 13px;
   }
-  .cs-grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  .cs-kv {
+    font-size: 23px;
+  }
+  .cs-svg {
+    height: 210px;
+  }
+  .cs-pl {
+    width: 108px;
   }
   .cs-bnm {
-    width: 84px;
+    width: 82px;
+  }
+  .cs-tbl th:nth-child(4),
+  .cs-tbl td:nth-child(4) {
+    display: none;
   }
 }
+
+.cs-probe {
+  position: fixed;
+  top: -20px;
+  inset-inline-start: -20px;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
 </style>

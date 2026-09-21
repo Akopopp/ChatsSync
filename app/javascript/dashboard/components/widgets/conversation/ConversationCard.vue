@@ -102,19 +102,17 @@ watch(
 
 <template>
   <div
-    class="relative flex items-start flex-grow-0 flex-shrink-0 w-auto max-w-full py-0 cursor-pointer conversation border-b border-n-slate-3 hover:border-n-surface-1 hover:bg-n-alpha-1 dark:hover:bg-n-alpha-3 group hover:z-[1] before:content-[none] before:absolute before:-top-px before:inset-x-0 before:h-px before:bg-n-surface-1 before:pointer-events-none hover:before:content-['']"
+    class="cs-row"
     :class="{
-      'active animate-card-select bg-n-background !border-n-surface-1':
-        isActiveChat,
-      'selected bg-n-slate-2 !border-n-surface-1': selected,
-      'px-0': compact,
-      'px-3': !compact,
+      'cs-row--on': isActiveChat,
+      'cs-row--sel': selected,
+      'cs-row--unread': hasUnread,
     }"
     @click="$emit('click', $event)"
     @contextmenu="$emit('contextmenu', $event)"
   >
     <div
-      class="relative"
+      class="cs-row__av"
       @mouseenter="onThumbnailHover"
       @mouseleave="onThumbnailLeave"
     >
@@ -122,9 +120,8 @@ watch(
         v-if="!hideThumbnail"
         :name="currentContact.name"
         :src="currentContact.thumbnail"
-        :size="32"
+        :size="49"
         :status="currentContact.availability_status"
-        :class="!showInboxName ? 'mt-4' : 'mt-8'"
         hide-offline-status
       >
         <template #overlay="{ size }">
@@ -139,91 +136,77 @@ watch(
         </template>
       </Avatar>
     </div>
-    <div class="px-0 py-3 flex-1 min-w-0 border-line">
-      <div
-        v-if="showMetaSection"
-        class="flex items-center min-w-0 gap-1"
-        :class="{
-          'ltr:ml-2 rtl:mr-2': !compact,
-          'mx-2': compact,
-        }"
-      >
-        <InboxName v-if="showInboxName" :inbox="inbox" class="flex-1 min-w-0" />
-        <div
-          class="flex items-baseline gap-2 flex-shrink-0"
-          :class="{
-            'flex-1 justify-between': !showInboxName,
-          }"
-        >
-          <span
-            v-if="showAssignee && assignee.name"
-            class="text-n-slate-11 text-xs font-medium leading-3 py-0.5 px-0 inline-flex items-center truncate"
-          >
-            <fluent-icon icon="person" size="12" class="text-n-slate-11" />
-            {{ assignee.name }}
-          </span>
-          <CardPriorityIcon
-            :priority="chat.priority"
-            class="flex-shrink-0 !size-3.5"
-          />
-        </div>
-      </div>
-      <h4
-        class="conversation--user text-sm my-0 mx-2 capitalize pt-0.5 text-ellipsis overflow-hidden whitespace-nowrap flex-1 min-w-0 ltr:pr-16 rtl:pl-16 text-n-slate-12"
-        :class="hasUnread ? 'font-semibold' : 'font-medium'"
-      >
-        {{ currentContact.name }}
-      </h4>
-      <VoiceCallStatus
-        v-if="voiceCallData.status"
-        key="voice-status-row"
-        :status="voiceCallData.status"
-        :direction="voiceCallData.direction"
-        :message-preview-class="messagePreviewClass"
-      />
-      <MessagePreview
-        v-else-if="lastMessageInChat"
-        key="message-preview"
-        :message="lastMessageInChat"
-        class="my-0 mx-2 leading-6 h-6 flex-1 min-w-0 text-sm"
-        :class="messagePreviewClass"
-      />
-      <p
-        v-else
-        key="no-messages"
-        class="text-n-slate-11 text-sm my-0 mx-2 leading-6 h-6 flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-        :class="messagePreviewClass"
-      >
-        <fluent-icon
-          size="16"
-          class="-mt-0.5 align-middle inline-block text-n-slate-10"
-          icon="info"
-        />
-        <span class="mx-0.5">
-          {{ $t(`CHAT_LIST.NO_MESSAGES`) }}
-        </span>
-      </p>
-      <div
-        class="absolute flex flex-col ltr:right-3 rtl:left-3"
-        :class="showMetaSection ? 'top-8' : 'top-4'"
-      >
-        <span class="ml-auto font-normal leading-4 text-xxs">
+
+    <div class="cs-row__body">
+      <div class="cs-row__l1">
+        <span class="cs-row__name">{{ currentContact.name }}</span>
+        <span class="cs-row__time">
           <TimeAgo
             :last-activity-timestamp="chat.timestamp"
             :created-at-timestamp="chat.created_at"
             :conversation-id="chat.id"
           />
         </span>
+      </div>
+
+      <div class="cs-row__l2">
+        <span
+          v-if="inbox && inbox.channel_type && /Whatsapp|FacebookPage|Instagram/.test(inbox.channel_type)"
+          class="cs-chip"
+          :class="{
+            'cs-chip--fb': inbox.channel_type.includes('FacebookPage'),
+            'cs-chip--ig': inbox.channel_type.includes('Instagram'),
+          }"
+        >
+          {{
+            inbox.channel_type.includes('Whatsapp')
+              ? 'WA'
+              : inbox.channel_type.includes('FacebookPage')
+                ? 'FB'
+                : inbox.channel_type.includes('Instagram')
+                  ? 'IG'
+                  : ''
+          }}
+        </span>
+        <VoiceCallStatus
+          v-if="voiceCallData.status"
+          key="voice-status-row"
+          :status="voiceCallData.status"
+          :direction="voiceCallData.direction"
+          :message-preview-class="messagePreviewClass"
+        />
+        <MessagePreview
+          v-else-if="lastMessageInChat"
+          key="message-preview"
+          :message="lastMessageInChat"
+          class="cs-row__prev"
+          :class="messagePreviewClass"
+        />
+        <span v-else key="no-messages" class="cs-row__prev">
+          {{ $t(`CHAT_LIST.NO_MESSAGES`) }}
+        </span>
+
+        <CardPriorityIcon
+          :priority="chat.priority"
+          class="flex-shrink-0 !size-3.5"
+        />
         <UnreadBadge
           v-if="hasUnread"
           :count="unreadCount"
-          class="ltr:ml-auto rtl:mr-auto mt-1"
+          class="cs-row__badge"
         />
       </div>
+
+      <InboxName
+        v-if="showInboxName"
+        :inbox="inbox"
+        class="mt-1 min-w-0 opacity-70"
+      />
+
       <CardLabels
         v-if="showLabelsSection"
         :conversation-labels="chat.labels"
-        class="mt-0.5 mx-2 mb-0"
+        class="mt-1"
       >
         <template v-if="hasSlaPolicyId" #before>
           <SLACardLabel :chat="chat" class="ltr:mr-1 rtl:ml-1" />
