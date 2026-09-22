@@ -131,6 +131,8 @@ export default {
     'selectWhatsappTemplate',
     'selectContentTemplate',
     'toggleQuotedReply',
+    'cancelAudio',
+    'finishAudio',
   ],
   setup(props) {
     const { setSignatureFlagForInbox, fetchSignatureFlagFromUISettings } =
@@ -276,17 +278,10 @@ export default {
 </script>
 
 <template>
-  <div class="flex justify-between p-3" :class="wrapClass">
-    <div class="left-wrap">
-      <NextButton
-        v-if="!isEditorDisabled"
-        v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.TIP_EMOJI_ICON')"
-        icon="i-ph-smiley-sticker"
-        slate
-        faded
-        sm
-        @click="toggleEmojiPicker"
-      />
+  <!-- WhatsApp composer:  📎 😊 [extra]  |  input  |  🎤 / ➤ -->
+  <div class="cs-composer" :class="wrapClass">
+    <!-- LEFT: attach, emoji, aur zaroori extras -->
+    <div v-if="!isRecordingAudio" class="cs-left">
       <FileUpload
         v-if="showAttachButton"
         ref="uploadRef"
@@ -304,69 +299,65 @@ export default {
         @input-file="onFileUpload"
       >
         <NextButton
-          v-if="showAttachButton"
           v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.TIP_ATTACH_ICON')"
           icon="i-ph-paperclip"
           slate
-          faded
+          ghost
           sm
         />
       </FileUpload>
+
       <NextButton
-        v-if="showAudioRecorderButton"
-        v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.TIP_AUDIORECORDER_ICON')"
-        :icon="!isRecordingAudio ? 'i-ph-microphone' : 'i-ph-microphone-slash'"
+        v-if="!isEditorDisabled"
+        v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.TIP_EMOJI_ICON')"
+        icon="i-ph-smiley"
         slate
-        faded
+        ghost
         sm
-        @click="toggleAudioRecorder"
+        @click="toggleEmojiPicker"
       />
+
       <NextButton
-        v-if="showAudioPlayStopButton"
-        :icon="audioRecorderPlayStopIcon"
+        v-if="enableWhatsAppTemplates"
+        v-tooltip.top-end="$t('CONVERSATION.FOOTER.WHATSAPP_TEMPLATES')"
+        icon="i-ph-list-dashes"
         slate
-        faded
+        ghost
         sm
-        :label="recordingAudioDurationText"
-        @click="toggleAudioRecorderPlayPause"
+        @click="$emit('selectWhatsappTemplate')"
       />
+
       <NextButton
-        v-if="showMessageSignatureButton"
-        v-tooltip.top-end="signatureToggleTooltip"
-        icon="i-ph-signature"
+        v-if="enableContentTemplates"
+        v-tooltip.top-end="'Content Templates'"
+        icon="i-ph-list-dashes"
         slate
-        faded
+        ghost
         sm
-        @click="toggleMessageSignature"
+        @click="$emit('selectContentTemplate')"
       />
+
       <NextButton
         v-if="showQuotedReplyToggle"
         v-tooltip.top-end="quotedReplyToggleTooltip"
         icon="i-ph-quotes"
-        :variant="quotedReplyEnabled ? 'solid' : 'faded'"
+        :variant="quotedReplyEnabled ? 'solid' : 'ghost'"
         color="slate"
         sm
         :aria-pressed="quotedReplyEnabled"
         @click="$emit('toggleQuotedReply')"
       />
+
       <NextButton
-        v-if="enableWhatsAppTemplates"
-        v-tooltip.top-end="$t('CONVERSATION.FOOTER.WHATSAPP_TEMPLATES')"
-        icon="i-ph-whatsapp-logo"
+        v-if="enableInsertArticleInReply"
+        v-tooltip.top-end="$t('HELP_CENTER.ARTICLE_SEARCH.OPEN_ARTICLE_SEARCH')"
+        icon="i-ph-article-ny-times"
         slate
-        faded
+        ghost
         sm
-        @click="$emit('selectWhatsappTemplate')"
+        @click="toggleInsertArticle"
       />
-      <NextButton
-        v-if="enableContentTemplates"
-        v-tooltip.top-end="'Content Templates'"
-        icon="i-ph-whatsapp-logo"
-        slate
-        faded
-        sm
-        @click="$emit('selectContentTemplate')"
-      />
+
       <VideoCallButton
         v-if="
           (isAWebWidgetInbox || isAPIInbox) &&
@@ -375,48 +366,148 @@ export default {
         "
         :conversation-id="conversationId"
       />
-      <transition name="modal-fade">
-        <div
-          v-show="uploadRef && uploadRef.dropActive"
-          class="flex fixed top-0 right-0 bottom-0 left-0 z-20 flex-col gap-2 justify-center items-center w-full h-full text-n-slate-12 bg-modal-backdrop-light dark:bg-modal-backdrop-dark"
-        >
-          <fluent-icon icon="cloud-backup" size="40" />
-          <h4 class="text-2xl break-words text-n-slate-12">
-            {{ $t('CONVERSATION.REPLYBOX.DRAG_DROP') }}
-          </h4>
-        </div>
-      </transition>
+    </div>
+
+    <!-- RECORDING: WhatsApp patti — delete, red dot, waqt, pause, send -->
+    <div v-if="isRecordingAudio" class="cs-rec">
       <NextButton
-        v-if="enableInsertArticleInReply"
-        v-tooltip.top-end="$t('HELP_CENTER.ARTICLE_SEARCH.OPEN_ARTICLE_SEARCH')"
-        icon="i-ph-article-ny-times"
-        slate
-        faded
+        v-tooltip.top-end="'Delete recording'"
+        icon="i-ph-trash"
+        ruby
+        ghost
         sm
-        @click="toggleInsertArticle"
+        @click="$emit('cancelAudio')"
+      />
+      <span
+        class="cs-rec__dot"
+        :class="{ 'cs-rec__dot--paused': recordingAudioState === 'recording-paused' }"
+      />
+      <span class="cs-rec__time">{{ recordingAudioDurationText || '0:00' }}</span>
+      <span class="cs-rec__spacer" />
+      <NextButton
+        v-tooltip.top-end="
+          recordingAudioState === 'recording-paused' ? 'Resume' : 'Pause'
+        "
+        :icon="
+          recordingAudioState === 'recording-paused'
+            ? 'i-ph-microphone'
+            : 'i-ph-pause'
+        "
+        slate
+        ghost
+        sm
+        @click="toggleAudioRecorderPlayPause"
+      />
+      <NextButton
+        v-tooltip.top-end="'Send voice message'"
+        icon="i-ph-paper-plane-right-fill"
+        teal
+        sm
+        class="cs-send"
+        @click="$emit('finishAudio')"
       />
     </div>
-    <div class="right-wrap">
+
+    <!-- RIGHT: mic YA send -->
+    <div v-else class="cs-right">
+
+      <!-- kuch likha nahi hai -> mic (WhatsApp) -->
       <NextButton
-        :label="sendButtonText"
+        v-if="showAudioRecorderButton && isSendDisabled"
+        v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.TIP_AUDIORECORDER_ICON')"
+        :icon="!isRecordingAudio ? 'i-ph-microphone' : 'i-ph-microphone-slash'"
+        :color="isRecordingAudio ? 'ruby' : 'slate'"
+        ghost
+        sm
+        @click="toggleAudioRecorder"
+      />
+
+      <!-- kuch likha hai -> gol hara send -->
+      <NextButton
+        v-if="!isSendDisabled"
+        v-tooltip.top-end="sendButtonText"
+        icon="i-ph-paper-plane-right-fill"
         type="submit"
         sm
-        :color="isNote ? 'amber' : 'blue'"
-        :disabled="isSendDisabled"
-        class="flex-shrink-0"
+        :color="isNote ? 'amber' : 'teal'"
+        class="cs-send"
         @click="onSend"
       />
     </div>
+
+    <transition name="modal-fade">
+      <div
+        v-show="uploadRef && uploadRef.dropActive"
+        class="flex fixed top-0 right-0 bottom-0 left-0 z-20 flex-col gap-2 justify-center items-center w-full h-full text-n-slate-12 bg-modal-backdrop-light dark:bg-modal-backdrop-dark"
+      >
+        <fluent-icon icon="cloud-backup" size="40" />
+        <h4 class="text-2xl break-words text-n-slate-12">
+          {{ $t('CONVERSATION.REPLYBOX.DRAG_DROP') }}
+        </h4>
+      </div>
+    </transition>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.left-wrap {
-  @apply items-center flex gap-2;
+.cs-composer {
+  @apply flex items-center justify-between gap-1 px-2 py-1;
 }
 
-.right-wrap {
-  @apply flex;
+.cs-left {
+  @apply flex items-center gap-0.5;
+}
+
+.cs-right {
+  @apply flex items-center gap-1;
+}
+
+.cs-rec {
+  @apply flex items-center gap-2 w-full px-1;
+}
+
+.cs-rec__dot {
+  @apply rounded-full flex-shrink-0;
+  width: 9px;
+  height: 9px;
+  background: #f15c6d;
+  animation: cs-blink 1.4s ease-in-out infinite;
+}
+
+.cs-rec__dot--paused {
+  animation: none;
+  opacity: 0.45;
+}
+
+@keyframes cs-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.cs-rec__time {
+  @apply text-sm tabular-nums flex-shrink-0;
+  min-width: 2.6rem;
+}
+
+.cs-rec__spacer {
+  @apply flex-1;
+}
+
+.cs-send {
+  @apply rounded-full;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:active {
+    transform: scale(0.92);
+  }
 }
 
 :deep(.file-uploads) {

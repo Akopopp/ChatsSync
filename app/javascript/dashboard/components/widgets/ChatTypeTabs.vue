@@ -46,19 +46,52 @@ useKeyboardEvents(keyboardEvents);
 </script>
 
 <template>
-  <woot-tabs
-    :index="activeTabIndex"
-    class="w-full px-3 -mt-1 py-0 [&_ul]:p-0 h-10"
-    @change="onTabChange"
-  >
-    <woot-tabs-item
+  <!-- WhatsApp filter pills -->
+  <div class="cs-pills">
+    <button
       v-for="(item, index) in items"
       :key="item.key"
-      class="text-sm [&_a]:font-medium"
-      :index="index"
-      :name="item.name"
-      :count="item.count"
-      is-compact
-    />
-  </woot-tabs>
+      type="button"
+      class="cs-pill"
+      :class="{ 'cs-pill--on': item.key === activeTab }"
+      @click="onTabChange(index)"
+    >
+      <span>{{ item.name }}</span>
+      <span v-if="item.count" class="cs-pill__count">{{ item.count }}</span>
+    </button>
+  </div>
 </template>
+
+<style scoped lang="scss">
+.cs-pills {
+  @apply flex items-center gap-2 px-3 pb-2 pt-0.5 overflow-x-auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.cs-pill {
+  @apply flex-shrink-0 flex items-center gap-1.5 rounded-full text-sm;
+  padding: 0.3rem 0.9rem;
+  background: rgb(var(--wa-hover, 245 246 246));
+  color: rgb(var(--wa-text2, 84 101 111));
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.12s ease;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &--on {
+    background: rgb(var(--wa-green, 0 128 105) / 0.16);
+    color: rgb(var(--wa-green, 0 128 105));
+    font-weight: 500;
+  }
+}
+
+.cs-pill__count {
+  @apply text-xs font-semibold;
+  opacity: 0.85;
+}
+</style>

@@ -5,8 +5,10 @@ import { useUISettings } from 'dashboard/composables/useUISettings';
 
 const SidebarControl = Symbol('SidebarControl');
 
-const DEFAULT_WIDTH = 200;
-const MIN_WIDTH = 56;
+// ChatsSync: WhatsApp rail — 62px par khulta hai.
+// 62 < COLLAPSED_THRESHOLD, isliye icon-only mode milta hai.
+const DEFAULT_WIDTH = 62;
+const MIN_WIDTH = 62;
 const COLLAPSED_THRESHOLD = 160;
 const MAX_WIDTH = 320;
 
@@ -17,7 +19,11 @@ let globalCloseTimeout = null;
 export function useSidebarResize() {
   const { uiSettings, updateUISettings } = useUISettings();
 
-  const sidebarWidth = ref(uiSettings.value.sidebar_width || DEFAULT_WIDTH);
+  // purani saved width ab bhi 160 se upar ho sakti hai; rail default rakho
+  const savedWidth = uiSettings.value.sidebar_width;
+  const sidebarWidth = ref(
+    savedWidth && savedWidth < COLLAPSED_THRESHOLD ? savedWidth : DEFAULT_WIDTH
+  );
   const isCollapsed = computed(() => sidebarWidth.value < COLLAPSED_THRESHOLD);
 
   const setSidebarWidth = width => {
@@ -34,8 +40,8 @@ export function useSidebarResize() {
   };
 
   const snapToExpanded = () => {
-    sidebarWidth.value = DEFAULT_WIDTH;
-    updateUISettings({ sidebar_width: DEFAULT_WIDTH });
+    sidebarWidth.value = 300;
+    updateUISettings({ sidebar_width: 300 });
   };
 
   return {

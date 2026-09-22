@@ -116,6 +116,7 @@ export default {
       attachedFiles: [],
       isRecordingAudio: false,
       recordingAudioState: '',
+      sendAfterRecording: false,
       recordingAudioDurationText: '',
       replyType: REPLY_EDITOR_MODES.REPLY,
       bccEmails: '',
@@ -981,11 +982,32 @@ export default {
     },
     toggleAudioRecorderPlayPause() {
       if (!this.$refs.audioRecorderInput) return;
-      if (!this.recordingAudioState) {
-        this.$refs.audioRecorderInput.stopRecording();
-      } else {
+      // WhatsApp jaisa: recording ke dauraan pause = recording rukti hai.
+      // Recording khatam hone ke baad hi playback hota hai.
+      if (this.recordingAudioState === 'stopped') {
         this.$refs.audioRecorderInput.playPause();
+      } else {
+        this.$refs.audioRecorderInput.pauseResumeRecording();
       }
+    },
+    cancelAudioRecording() {
+      this.sendAfterRecording = false;
+      if (this.$refs.audioRecorderInput) {
+        this.$refs.audioRecorderInput.cancelRecording();
+      }
+      this.isRecordingAudio = false;
+      this.recordingAudioState = '';
+      this.recordingAudioDurationText = '';
+      this.hasRecordedAudio = false;
+      this.resetAudioRecorderInput();
+    },
+    finishAudioRecording() {
+      // WhatsApp jaisa: send dabate hi recording ruke AUR message chala jaye.
+      // Recording rukne par record-end -> onFinishRecorder chalta hai,
+      // wahan flag dekh kar asal mein bheja jaata hai.
+      if (!this.$refs.audioRecorderInput) return;
+      this.sendAfterRecording = true;
+      this.$refs.audioRecorderInput.stopRecording();
     },
     hideEmojiPicker() {
       if (this.showEmojiPicker) {
@@ -1017,7 +1039,18 @@ export default {
         ...file,
         isVoiceMessage: true,
       };
-      return file && this.onFileUpload(autoRecordedFile);
+      if (!file) return undefined;
+      const uploaded = this.onFileUpload(autoRecordedFile);
+      if (this.sendAfterRecording) {
+        this.sendAfterRecording = false;
+        // attachment state settle hone ke baad bhejo
+        this.$nextTick(() => {
+          this.isRecordingAudio = false;
+          this.recordingAudioState = '';
+          this.onSendReply();
+        });
+      }
+      return uploaded;
     },
     onRecordError() {
       this.toggleAudioRecorder();
@@ -1307,6 +1340,9 @@ export default {
           @record-error="onRecordError"
           @play="recordingAudioState = 'playing'"
           @pause="recordingAudioState = 'paused'"
+          @record-pause="recordingAudioState = 'recording-paused'"
+          @record-resume="recordingAudioState = ''"
+          @record-cancel="isRecordingAudio = false"
         />
         <CopilotEditorSection
           v-if="copilot.isActive.value && !showAudioRecorderEditor"
@@ -1406,6 +1442,8 @@ export default {
         :inbox="inbox"
         :is-on-private-note="isOnPrivateNote"
         :is-recording-audio="isRecordingAudio"
+        @cancel-audio="cancelAudioRecording"
+        @finish-audio="finishAudioRecording"
         :is-send-disabled="isReplyButtonDisabled"
         :is-note="isPrivate"
         :is-editor-disabled="isEditorDisabled"
