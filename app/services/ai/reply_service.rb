@@ -22,8 +22,8 @@ class Ai::ReplyService
 
     question = texts.join("\n").presence || '(customer sent an image)'
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question),
-      messages: history(turn) + [{ role: 'user', text: mask(question) }],
+      system: prompt_builder.system_prompt(question) + earlier_messages(turn),
+      messages: [{ role: 'user', text: mask(question) }],
       images: images,
       within: 75
     )
@@ -82,9 +82,9 @@ class Ai::ReplyService
   # The customer's messages since the last reply. An AI reply remembers the last
   # message it answered, so messages that arrived while it was writing still get answered.
   def customer_turn
-    replies = conversation.messages.where(message_type: :outgoing, private: false).order(id: :desc).limit(20)
+    replies = conversation.messages.where(message_type: :outgoing, private: false).reorder(id: :desc).limit(20)
     boundary = replies.filter_map { |reply| reply.content_attributes&.dig('ai_answered_up_to')&.to_i || (reply.id if reply.id < message.id) }.max
-    conversation.messages.where(message_type: :incoming).where('id > ? AND id <= ?', boundary || 0, message.id).order(:id).last(5)
+    conversation.messages.where(message_type: :incoming).where('id > ? AND id <= ?', boundary || 0, message.id).reorder(:id).last(5)
   end
 
   def message_text(item, images)
@@ -103,14 +103,15 @@ class Ai::ReplyService
     parts.compact.join("\n").presence
   end
 
-  def history(turn)
-    conversation.messages.where(message_type: %i[incoming outgoing], private: false)
-                .where.not(id: turn.map(&:id)).order(id: :desc).limit(HISTORY_LIMIT).to_a.reverse
-                .filter_map do |item|
-      next if item.content.blank?
+  # Earlier messages go in as background text rather than as chat turns, so the AI answers
+  # the latest message instead of copying or repeating its earlier replies.
+  def earlier_messages(turn)
+    lines = conversation.messages.where(message_type: %i[incoming outgoing], private: false)
+                        .where.not(id: turn.map(&:id)).reorder(id: :desc).limit(HISTORY_LIMIT).to_a.reverse
+                        .filter_map { |item| "#{item.incoming? ? 'Customer' : 'You'}: #{mask(item.content.truncate(400))}" if item.content.present? }
+    return '' if lines.empty?
 
-      { role: item.incoming? ? 'user' : 'assistant', text: mask(item.content.truncate(400)) }
-    end
+    "\nEarlier messages in this chat, oldest first (already answered, for context only):\n#{lines.join("\n")}\n"
   end
 
   # Customer phone numbers and emails never leave ChatsSync.

@@ -141,7 +141,7 @@ class CsCopilot::Tools
       scope = scope.where(id: in_messages).or(scope.where(contact_id: in_contacts))
     end
     rows = scope.limit((args[:limit] || 15).to_i.clamp(1, 30)).map do |chat|
-      last = chat.messages.where(private: false).order(:id).last
+      last = chat.messages.where(private: false).reorder(:id).last
       { chat: chat.display_id, contact: chat.contact&.name, phone: short_phone(chat.contact&.phone_number), status: chat.status,
         inbox: chat.inbox&.name, assignee: chat.assignee&.name, labels: chat.label_list,
         last_message: last && "#{sender_label(last)}: #{last.content.to_s.truncate(120)}", last_activity: time(chat.last_activity_at) }
@@ -151,7 +151,7 @@ class CsCopilot::Tools
 
   def tool_get_conversation(args)
     chat = conversation(args[:conversation_id])
-    messages = chat.messages.where(message_type: %i[incoming outgoing]).order(id: :desc).limit(30).to_a.reverse
+    messages = chat.messages.where(message_type: %i[incoming outgoing]).reorder(id: :desc).limit(30).to_a.reverse
     { chat: chat.display_id, contact: chat.contact&.name, phone: short_phone(chat.contact&.phone_number), status: chat.status,
       assignee: chat.assignee&.name, labels: chat.label_list,
       messages: messages.map do |message|
