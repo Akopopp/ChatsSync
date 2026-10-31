@@ -36,6 +36,8 @@ en:
       image: '(sends the picture: %{name})'
   copilot:
     done: Done.
+    image_only: Please attach a picture (JPG, PNG or WebP).
+    image_too_big: This picture is too big. Please use one under 5 MB.
     too_many_steps: That needed too many steps. Please ask in a simpler way.
     unavailable: Copilot is busy or not set up right now. Please try again in a minute.
   hello: 'Hello world'

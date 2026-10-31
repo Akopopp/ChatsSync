@@ -1,12 +1,12 @@
 # Everything the Copilot can look up or do in ChatsSync, with the same permissions as the signed-in user.
 # Read tools run straight away; write tools are only proposed and run after the user confirms.
-class CsCopilot::Tools
+class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   class Error < StandardError; end
 
   TIMEZONE = 'Asia/Karachi'.freeze
   WRITE_TOOLS = %w[add_labels assign_conversation change_status add_private_note send_reply
-                   create_canned_response create_label add_faqs update_ai_agent].freeze
-  ADMIN_TOOLS = %w[create_canned_response create_label add_faqs update_ai_agent].freeze
+                   create_canned_response create_label add_faqs add_product_images update_ai_agent].freeze
+  ADMIN_TOOLS = %w[create_canned_response create_label add_faqs add_product_images update_ai_agent].freeze
 
   def self.fn(name, description, properties = {}, required = [])
     { type: 'function', function: { name: name, description: description,
@@ -45,6 +45,12 @@ class CsCopilot::Tools
        { title: { type: 'string' }, color: { type: 'string', description: 'Hex color like #1f93ff' } }, ['title']),
     fn('add_faqs', 'Add FAQs to the AI agent. Put several ways of asking in one question, separated by " / ".',
        { faqs: { type: 'array', items: { type: 'object', properties: { question: { type: 'string' }, answer: { type: 'string' } } } } }, ['faqs']),
+    fn('add_product_images', 'Save pictures the user attached as AI product images, so the AI can send them to customers.',
+       { images: { type: 'array', items: { type: 'object', properties: {
+         image: { type: 'string', description: 'Attached picture, like img1' },
+         name: { type: 'string', description: 'Product name' },
+         details: { type: 'string', description: 'Price and details' }
+       } } } }, ['images']),
     fn('update_ai_agent', 'Change AI agent settings.',
        { enabled: { type: 'boolean' }, reply_scope: { type: 'string', enum: %w[ad_leads all] },
          business_info_to_add: { type: 'string', description: 'Text to add at the end of the business information' },
@@ -76,10 +82,19 @@ class CsCopilot::Tools
     when 'create_canned_response' then "Save canned response /#{args[:short_code]}"
     when 'create_label' then "Create label \"#{args[:title]}\""
     when 'add_faqs' then "Add #{Array(args[:faqs]).size} FAQs to the AI agent"
+    when 'add_product_images' then "Save #{Array(args[:images]).size} product pictures for the AI: " \
+                                   "#{Array(args[:images]).pluck('name').compact.join(', ')}"
     when 'update_ai_agent' then "Change AI settings: #{args.except(:business_info_to_add).keys.join(', ')}" \
                                 "#{' and add business info' if args[:business_info_to_add].present?}"
     else name.humanize
     end
+  end
+
+  # Swaps the picture names the model uses (img1) for the stored uploads, so confirming saves the right files.
+  def with_uploads(name, args, uploads)
+    return args unless name == 'add_product_images'
+
+    args.merge('images' => Array(args['images']).map { |item| item.to_h.merge('signed_id' => uploads[item.to_h['image'].to_s]) })
   end
 
   private
@@ -268,6 +283,28 @@ class CsCopilot::Tools
       account.ai_knowledge_items.new(kind: 'faq', question: faq['question'], answer: faq['answer']).save
     end
     { done: true, added: created }
+  end
+
+  def tool_add_product_images(args)
+    errors = []
+    added = 0
+    Array(args[:images]).each do |item|
+      error = save_product_image(item)
+      error ? errors << error : added += 1
+    end
+    raise Error, errors.first if added.zero? && errors.any?
+
+    { done: true, added: added, problems: errors.presence }.compact
+  end
+
+  # Returns an error message, or nil when the picture was saved.
+  def save_product_image(item)
+    blob = ActiveStorage::Blob.find_signed(item['signed_id'].to_s)
+    return "#{item['image']}: picture not found, please attach it again" if blob.nil?
+
+    record = account.ai_knowledge_items.new(kind: 'image', question: item['name'].presence || blob.filename.base, answer: item['details'])
+    record.image.attach(blob)
+    record.save ? nil : record.errors.full_messages.to_sentence
   end
 
   def tool_update_ai_agent(args)

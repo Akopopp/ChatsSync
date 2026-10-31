@@ -7,8 +7,14 @@ class CopilotAPI extends ApiClient {
     super('copilot', { accountScoped: true });
   }
 
-  chat(messages) {
-    return axios.post(`${this.url}/chat`, { messages });
+  chat(messages, uploads = {}) {
+    return axios.post(`${this.url}/chat`, { messages, uploads });
+  }
+
+  upload(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return axios.post(`${this.url}/upload`, formData);
   }
 
   confirm(action) {

@@ -15,6 +15,11 @@ const draft = ref('');
 const isThinking = ref(false);
 const pendingAction = ref(null);
 const listRef = ref(null);
+const fileInput = ref(null);
+// Pictures picked but not sent yet: { file, preview }
+const pickedFiles = ref([]);
+// Pictures already sent in this chat: { img1: signedId }, so Copilot can save them later
+const uploads = ref({});
 
 const SUGGESTIONS = [
   'COPILOT.SUGGESTIONS.TODAY',
@@ -28,9 +33,37 @@ const scrollDown = async () => {
   if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight;
 };
 
-const addMessage = (role, content) => {
-  if (content) messages.value.push({ role, content });
+const addMessage = (role, content, images = []) => {
+  if (content) messages.value.push({ role, content, images });
   scrollDown();
+};
+
+const pickFiles = event => {
+  const files = [...event.target.files].filter(file =>
+    file.type.startsWith('image/')
+  );
+  pickedFiles.value.push(
+    ...files.map(file => ({ file, preview: URL.createObjectURL(file) }))
+  );
+  event.target.value = '';
+};
+
+const removePicked = index => {
+  pickedFiles.value.splice(index, 1);
+};
+
+// Uploads the picked pictures and returns the note Copilot reads, e.g. "img1 (shoe.jpg)".
+const uploadPicked = async () => {
+  const names = [];
+  await Promise.all(
+    pickedFiles.value.map(async ({ file }, index) => {
+      const label = `img${Object.keys(uploads.value).length + index + 1}`;
+      const { data } = await CopilotAPI.upload(file);
+      uploads.value[label] = data.signed_id;
+      names[index] = `${label} (${data.filename})`;
+    })
+  );
+  return names.length ? `[Attached images: ${names.join(', ')}]` : '';
 };
 
 const handleResult = data => {
@@ -39,14 +72,31 @@ const handleResult = data => {
 };
 
 const send = async text => {
-  const content = (text || draft.value).trim();
-  if (!content || isThinking.value) return;
-  draft.value = '';
-  pendingAction.value = null;
-  addMessage('user', content);
+  const typed = (text || draft.value).trim();
+  if ((!typed && !pickedFiles.value.length) || isThinking.value) return;
   isThinking.value = true;
+  pendingAction.value = null;
+  let note = '';
   try {
-    const response = await CopilotAPI.chat(messages.value);
+    note = await uploadPicked();
+  } catch (error) {
+    isThinking.value = false;
+    addMessage(
+      'assistant',
+      error?.response?.data?.error || t('COPILOT.UPLOAD_FAILED')
+    );
+    return;
+  }
+  const previews = pickedFiles.value.map(item => item.preview);
+  pickedFiles.value = [];
+  draft.value = '';
+  addMessage('user', [typed, note].filter(Boolean).join('\n'), previews);
+  try {
+    const history = messages.value.map(({ role, content }) => ({
+      role,
+      content,
+    }));
+    const response = await CopilotAPI.chat(history, uploads.value);
     handleResult(response.data);
   } catch (error) {
     addMessage('assistant', error?.response?.data?.error || t('COPILOT.ERROR'));
@@ -85,10 +135,12 @@ const openChat = event => {
   });
 };
 
-// Replies are plain text; drop any markdown bold markers the model still adds.
+// Replies are plain text; drop any markdown bold markers the model still adds,
+// and hide the attached-pictures note (the pictures themselves are shown).
 const parts = content =>
   content
     .replace(/\*\*/g, '')
+    .replace(/\n?\[Attached images: [^\]]*\]/g, '')
     .split(/(#\d+)/g)
     .map(text => ({ text, chat: /^#\d+$/.test(text) }));
 
@@ -135,6 +187,14 @@ const onKey = event => {
             : 'justify-self-start bg-n-alpha-2 text-n-slate-12'
         "
       >
+        <div v-if="message.images?.length" class="flex flex-wrap gap-2 mb-1">
+          <img
+            v-for="image in message.images"
+            :key="image"
+            :src="image"
+            class="size-20 object-cover rounded-lg"
+          />
+        </div>
         <template
           v-for="(part, partIndex) in parts(message.content)"
           :key="partIndex"
@@ -170,7 +230,40 @@ const onKey = event => {
       </div>
     </div>
 
+    <div v-if="pickedFiles.length" class="px-6 pt-3 flex flex-wrap gap-2">
+      <div
+        v-for="(item, index) in pickedFiles"
+        :key="item.preview"
+        class="relative"
+      >
+        <img :src="item.preview" class="size-16 object-cover rounded-lg" />
+        <button
+          class="absolute -top-2 -right-2 size-5 rounded-full bg-n-slate-12 text-n-background text-xs"
+          :title="$t('COPILOT.REMOVE_PICTURE')"
+          @click="removePicked(index)"
+        >
+          <span class="i-lucide-x size-3" />
+        </button>
+      </div>
+    </div>
+
     <footer class="px-6 py-3 border-t border-n-weak flex gap-2 items-end">
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/*"
+        multiple
+        class="hidden"
+        @change="pickFiles"
+      />
+      <ButtonV4
+        faded
+        slate
+        icon="i-lucide-image-plus"
+        :title="$t('COPILOT.ATTACH')"
+        :disabled="isThinking"
+        @click="fileInput.click()"
+      />
       <textarea
         v-model="draft"
         rows="2"

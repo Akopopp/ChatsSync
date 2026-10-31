@@ -65,6 +65,7 @@ Rails.application.routes.draw do
           resource :copilot, only: [], controller: 'copilot' do
             post :chat
             post :confirm
+            post :upload
           end
           resources :agents, only: [:index, :create, :update, :destroy] do
             post :bulk_create, on: :collection

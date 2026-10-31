@@ -10,7 +10,9 @@ class CsCopilot::Agent
   pattr_initialize [:account!, :user!]
 
   # history: [{ role: 'user' | 'assistant', content: '...' }] as shown in the Copilot panel
-  def run(history)
+  # uploads: { 'img1' => signed blob id } for pictures the user attached
+  def run(history, uploads = {})
+    @uploads = uploads
     recent = history.last(HISTORY_LIMIT).map { |item| { role: item[:role], content: item[:content].to_s } }
     messages = [{ role: 'system', content: system_prompt }] + recent
     deadline = Ai::LlmClient.clock + TIME_LIMIT
@@ -45,6 +47,7 @@ class CsCopilot::Agent
   end
 
   def pending(name, args, text)
+    args = tools.with_uploads(name, args, @uploads || {})
     { reply: text.to_s.strip.presence, pending_action: { tool: name, args: args, summary: tools.summary(name, args) } }
   end
 
@@ -77,6 +80,9 @@ class CsCopilot::Agent
       - Reply in the user's language and script (Roman Urdu in English letters, Urdu or English; never Hindi script).
       - Be short and clear. Write plain text with no markdown (no ** or # headings); use "- " for lists.
       - AI replies to customers come from "ChatsSync AI".
+      - Pictures the user attaches show as [Attached images: img1 (file name), ...]. To let the AI send them to customers,
+        call add_product_images with a product name and price/details for each. If the name or price is missing, ask first.
+      - Chatbot flows are built in the ChatsSync flow builder, not here.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end
