@@ -1,8 +1,18 @@
 # Sends a chat to the first AI model that answers. Free models come first, so a
 # rate limit (429) or an outage on one model just moves the request to the next.
+# A rate-limited model is skipped until its limit resets, so requests don't wait on it.
 # Models are "provider:model" pairs and can be changed with AI_TEXT_MODELS / AI_VISION_MODELS.
 class Ai::LlmClient
   class Error < StandardError; end
+
+  class RateLimited < Error
+    attr_reader :seconds
+
+    def initialize(message, seconds)
+      super(message)
+      @seconds = seconds
+    end
+  end
 
   GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/%<model>s:generateContent'.freeze
   GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'.freeze
@@ -11,6 +21,9 @@ class Ai::LlmClient
   DEFAULT_VISION_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
   KEYS = { 'gemini' => 'GEMINI_API_KEY', 'groq' => 'GROQ_API_KEY' }.freeze
   USAGE_KEY = 'chatssync:ai_usage:%<date>s:%<model>s'.freeze
+  PAUSE_KEY = 'chatssync:ai_paused:%<model>s'.freeze
+  # Google resets free daily limits at midnight Pacific time, so usage is counted per Pacific day.
+  QUOTA_TIMEZONE = 'America/Los_Angeles'.freeze
 
   # messages: [{ role: 'user' | 'assistant', text: '...' }]
   # images:   [{ mime: 'image/jpeg', data: <binary> }], added to the last user message
@@ -22,12 +35,53 @@ class Ai::LlmClient
     KEYS.values.any? { |name| ENV.fetch(name, nil).present? }
   end
 
-  # Today's request count per model, for the Super Admin AI meter.
+  # Today's request count and pause time left per model, for the Super Admin AI meter.
   def self.usage_today
-    date = Time.now.utc.to_date.iso8601
-    (parse_models(DEFAULT_TEXT_MODELS) + parse_models(DEFAULT_VISION_MODELS)).map(&:last).uniq.index_with do |model|
-      Redis::Alfred.get(format(USAGE_KEY, date: date, model: model)).to_i
+    models = parse_models(ENV.fetch('AI_TEXT_MODELS', DEFAULT_TEXT_MODELS)) + parse_models(ENV.fetch('AI_VISION_MODELS', DEFAULT_VISION_MODELS)) +
+             parse_models(ENV.fetch('COPILOT_MODELS', CsCopilot::Llm::DEFAULT_MODELS))
+    models.map(&:last).uniq.index_with do |model|
+      { used: Redis::Alfred.get(format(USAGE_KEY, date: quota_date, model: model)).to_i, paused_for: paused_for(model) }
     end
+  end
+
+  def self.quota_date
+    Time.now.in_time_zone(QUOTA_TIMEZONE).to_date.iso8601
+  end
+
+  def self.track(model)
+    key = format(USAGE_KEY, date: quota_date, model: model)
+    Redis::Alfred.incr(key)
+    Redis::Alfred.expire(key, 3.days.to_i)
+  end
+
+  def self.paused_for(model)
+    Redis::Alfred.ttl(format(PAUSE_KEY, model: model)).to_i.clamp(0, nil)
+  end
+
+  def self.pause(model, seconds)
+    Redis::Alfred.setex(format(PAUSE_KEY, model: model), 1, seconds)
+  end
+
+  # Raises RateLimited on 429 with how long the model should rest, Error on any other failure.
+  def self.check!(response)
+    return if response.is_a?(Net::HTTPSuccess)
+
+    message = "HTTP #{response.code} #{response.body.to_s.truncate(200)}"
+    raise RateLimited.new(message, rest_seconds(response)) if response.code == '429'
+
+    raise Error, message
+  end
+
+  def self.rest_seconds(response)
+    body = response.body.to_s
+    return response['retry-after'].to_i.clamp(10, 1.day.to_i) if response['retry-after'].present?
+
+    if body.include?('PerDay')
+      now = Time.now.in_time_zone(QUOTA_TIMEZONE)
+      return (now.end_of_day - now).to_i + 60
+    end
+
+    body[/"retryDelay":\s*"(\d+)/, 1].to_i.clamp(10, 600)
   end
 
   def self.parse_models(list)
@@ -40,11 +94,16 @@ class Ai::LlmClient
   def chat(system:, messages:, images: [], max_tokens: 500)
     errors = []
     models(images.present?).each do |provider, model|
+      next errors << "#{model}: paused" if self.class.paused_for(model).positive?
+
       text = provider == 'groq' ? groq_chat(model, system, messages, max_tokens) : gemini_chat(model, system, messages, images, max_tokens)
       next errors << "#{model}: empty reply" if text.blank?
 
-      track(model)
+      self.class.track(model)
       return text.strip
+    rescue RateLimited => e
+      self.class.pause(model, e.seconds)
+      errors << "#{model}: #{e.message.truncate(160)}"
     rescue StandardError => e
       errors << "#{model}: #{e.message.truncate(160)}"
     end
@@ -105,14 +164,8 @@ class Ai::LlmClient
     request = Net::HTTP::Post.new(uri, { 'Content-Type' => 'application/json' }.merge(headers))
     request.body = body.to_json
     response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 40) { |http| http.request(request) }
-    raise Error, "HTTP #{response.code} #{response.body.to_s.truncate(200)}" unless response.is_a?(Net::HTTPSuccess)
+    self.class.check!(response)
 
     JSON.parse(response.body)
-  end
-
-  def track(model)
-    key = format(USAGE_KEY, date: Time.now.utc.to_date.iso8601, model: model)
-    Redis::Alfred.incr(key)
-    Redis::Alfred.expire(key, 3.days.to_i)
   end
 end

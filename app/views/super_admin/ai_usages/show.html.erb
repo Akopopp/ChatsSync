@@ -12,18 +12,19 @@
   <% end %>
   <p class="mb-4">AI replies sent today (all clients): <b><%= @today_total %></b></p>
 
-  <h2 class="text-lg font-medium mb-2">Free model usage today (UTC day)</h2>
+  <h2 class="text-lg font-medium mb-2">Free model usage today</h2>
   <table class="mb-6">
-    <tr><th class="text-left pr-6">Model</th><th class="text-left pr-6">Requests today</th><th class="text-left">Free daily limit</th></tr>
+    <tr><th class="text-left pr-6">Model</th><th class="text-left pr-6">Requests today</th><th class="text-left pr-6">Free daily limit</th><th class="text-left">Status</th></tr>
     <% @models.each do |row| %>
       <tr>
         <td class="pr-6"><%= row[:model] %></td>
-        <td class="pr-6"><%= row[:used] %></td>
-        <td><%= row[:limit] ? number_with_delimiter(row[:limit]) : '—' %></td>
+        <td class="pr-6"><%= number_with_delimiter(row[:used]) %></td>
+        <td class="pr-6"><%= row[:limit] ? number_with_delimiter(row[:limit]) : '—' %></td>
+        <td><%= row[:paused_for].positive? ? "Limit hit, back in #{distance_of_time_in_words(row[:paused_for])}" : 'Ready' %></td>
       </tr>
     <% end %>
   </table>
-  <p class="mb-6 text-sm text-slate-600">Google resets its free limits at midnight Pacific time. When a model is used up, ChatsSync moves to the next one automatically.</p>
+  <p class="mb-6 text-sm text-slate-600">Google resets free daily limits at midnight Pacific time (12–1 pm Pakistan time). When a model hits a limit, ChatsSync skips it and uses the next one automatically.</p>
 
   <h2 class="text-lg font-medium mb-2">Clients using AI most (current month)</h2>
   <table>

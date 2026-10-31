@@ -92,6 +92,8 @@ const addFaq = async () => {
   }
 };
 
+const imageInput = ref(null);
+
 const addImage = async () => {
   if (!newImage.value.question || !newImage.value.file) return;
   try {
@@ -101,6 +103,7 @@ const addImage = async () => {
       image: newImage.value.file,
     });
     newImage.value = { question: '', answer: '', file: null };
+    imageInput.value.value = '';
     await fetchItems();
   } catch (error) {
     useAlert(errorMessage(error));
@@ -189,7 +192,11 @@ onMounted(fetchAll);
             <div class="grid gap-2">
               <span class="font-medium">{{ $t('AI_AGENT.SCOPE.TITLE') }}</span>
               <label class="flex items-center gap-2">
-                <input v-model="agent.reply_scope" type="radio" value="ad_leads" />
+                <input
+                  v-model="agent.reply_scope"
+                  type="radio"
+                  value="ad_leads"
+                />
                 {{ $t('AI_AGENT.SCOPE.AD_LEADS') }}
               </label>
               <label class="flex items-center gap-2">
@@ -210,7 +217,9 @@ onMounted(fetchAll);
               </span>
             </div>
             <div class="grid gap-2">
-              <span class="font-medium">{{ $t('AI_AGENT.INBOXES.TITLE') }}</span>
+              <span class="font-medium">{{
+                $t('AI_AGENT.INBOXES.TITLE')
+              }}</span>
               <span class="text-xs text-n-slate-11">
                 {{ $t('AI_AGENT.INBOXES.NOTE') }}
               </span>
@@ -284,7 +293,7 @@ onMounted(fetchAll);
           <template #action>
             <ButtonV4
               sm
-              faded
+              solid
               blue
               :is-loading="isGenerating"
               @click="generateFaqs"
@@ -305,7 +314,9 @@ onMounted(fetchAll);
               </div>
               <div class="flex gap-3 text-xs">
                 <button class="text-n-blue-11" @click="toggleItem(faq)">
-                  {{ faq.enabled ? $t('AI_AGENT.DISABLE') : $t('AI_AGENT.ENABLE') }}
+                  {{
+                    faq.enabled ? $t('AI_AGENT.DISABLE') : $t('AI_AGENT.ENABLE')
+                  }}
                 </button>
                 <button class="text-n-ruby-11" @click="removeItem(faq)">
                   {{ $t('AI_AGENT.DELETE') }}
@@ -349,15 +360,25 @@ onMounted(fetchAll);
                   :src="image.image_url"
                   class="w-full h-24 object-cover rounded"
                 />
-                <div class="font-medium text-n-slate-12">{{ image.question }}</div>
+                <div class="font-medium text-n-slate-12">
+                  {{ image.question }}
+                </div>
                 <div class="text-xs text-n-slate-11">{{ image.answer }}</div>
-                <button class="text-xs text-n-ruby-11 w-fit" @click="removeItem(image)">
+                <button
+                  class="text-xs text-n-ruby-11 w-fit"
+                  @click="removeItem(image)"
+                >
                   {{ $t('AI_AGENT.DELETE') }}
                 </button>
               </div>
             </div>
             <div class="grid gap-2 p-3 rounded-lg bg-n-alpha-1">
-              <input type="file" accept="image/*" @change="onImageSelected" />
+              <input
+                ref="imageInput"
+                type="file"
+                accept="image/*"
+                @change="onImageSelected"
+              />
               <input
                 v-model="newImage.question"
                 type="text"

@@ -9,8 +9,9 @@ class SuperAdmin::AiUsagesController < SuperAdmin::ApplicationController
 
   def show
     @configured = Ai::LlmClient.configured?
-    @models = Ai::LlmClient.usage_today.map { |model, used| { model: model, used: used, limit: FREE_DAILY_LIMITS[model] } }
-    @today_total = UsageCounter.where(metric: 'ai_replies', period: 'day', period_start: Time.current.in_time_zone(Plan::TIMEZONE).to_date).sum(:count)
+    @models = Ai::LlmClient.usage_today.map { |model, usage| usage.merge(model: model, limit: FREE_DAILY_LIMITS[model]) }
+    today = Time.current.in_time_zone(Plan::TIMEZONE).to_date
+    @today_total = UsageCounter.where(metric: 'ai_replies', period: 'day', period_start: today).sum(:count)
     @top_accounts = UsageCounter.where(metric: 'ai_replies', period: 'cycle').where('period_start > ?', 32.days.ago.to_date)
                                 .group(:account_id).sum(:count).sort_by { |_id, count| -count }.first(15)
     @account_names = Account.where(id: @top_accounts.map(&:first)).pluck(:id, :name).to_h

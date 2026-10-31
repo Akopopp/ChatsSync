@@ -11,8 +11,16 @@ class CsCopilot::Llm
   def self.chat(messages:, tools:)
     errors = []
     models.each do |provider, model|
+      next errors << "#{model}: paused" if Ai::LlmClient.paused_for(model).positive?
+
       message = request(provider, model, messages, tools)
-      return message if message.present?
+      next if message.blank?
+
+      Ai::LlmClient.track(model)
+      return message
+    rescue Ai::LlmClient::RateLimited => e
+      Ai::LlmClient.pause(model, e.seconds)
+      errors << "#{model}: #{e.message.truncate(160)}"
     rescue StandardError => e
       errors << "#{model}: #{e.message.truncate(160)}"
     end
@@ -34,7 +42,7 @@ class CsCopilot::Llm
     request = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{ENV.fetch(key_name)}")
     request.body = body.to_json
     response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 60) { |http| http.request(request) }
-    raise Ai::LlmClient::Error, "HTTP #{response.code} #{response.body.to_s.truncate(200)}" unless response.is_a?(Net::HTTPSuccess)
+    Ai::LlmClient.check!(response)
 
     JSON.parse(response.body).dig('choices', 0, 'message')
   end

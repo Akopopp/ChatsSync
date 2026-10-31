@@ -49,10 +49,7 @@ const send = async text => {
     const response = await CopilotAPI.chat(messages.value);
     handleResult(response.data);
   } catch (error) {
-    addMessage(
-      'assistant',
-      error?.response?.data?.error || t('COPILOT.ERROR')
-    );
+    addMessage('assistant', error?.response?.data?.error || t('COPILOT.ERROR'));
   } finally {
     isThinking.value = false;
     scrollDown();
@@ -67,10 +64,7 @@ const confirmAction = async () => {
     const response = await CopilotAPI.confirm(action);
     addMessage('assistant', response.data.reply);
   } catch (error) {
-    addMessage(
-      'assistant',
-      error?.response?.data?.error || t('COPILOT.ERROR')
-    );
+    addMessage('assistant', error?.response?.data?.error || t('COPILOT.ERROR'));
   } finally {
     isThinking.value = false;
   }
@@ -111,7 +105,10 @@ const onKey = event => {
       <p class="text-sm text-n-slate-11">{{ $t('COPILOT.DESCRIPTION') }}</p>
     </header>
 
-    <div ref="listRef" class="flex-1 overflow-y-auto px-6 py-4 grid content-start gap-3">
+    <div
+      ref="listRef"
+      class="flex-1 overflow-y-auto px-6 py-4 grid content-start gap-3"
+    >
       <div v-if="!messages.length" class="grid gap-2">
         <p class="text-sm text-n-slate-11">{{ $t('COPILOT.TRY') }}</p>
         <button
@@ -134,7 +131,10 @@ const onKey = event => {
             : 'justify-self-start bg-n-alpha-2 text-n-slate-12'
         "
       >
-        <template v-for="(part, partIndex) in parts(message.content)" :key="partIndex">
+        <template
+          v-for="(part, partIndex) in parts(message.content)"
+          :key="partIndex"
+        >
           <button
             v-if="part.chat && message.role === 'assistant'"
             class="text-n-blue-11 underline"
