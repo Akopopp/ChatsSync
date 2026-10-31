@@ -21,7 +21,7 @@
 # The ChatsSync AI agent that replies to customers for one account.
 class AiAgent < ApplicationRecord
   REPLY_SCOPES = %w[ad_leads all].freeze
-  CHANNEL_TYPES = %w[Channel::Whatsapp Channel::FacebookPage Channel::Instagram Channel::Api].freeze
+  CHANNEL_TYPES = %w[Channel::Whatsapp Channel::FacebookPage Channel::Instagram Channel::WebWidget Channel::Api].freeze
   BOT_NAME = 'ChatsSync AI'.freeze
 
   belongs_to :account

@@ -486,7 +486,7 @@
   "AI_AGENT": {
     "TITLE": "AI Agent",
     "LOADING": "Loading AI settings...",
-    "DESCRIPTION": "Let AI reply to your customers on WhatsApp, Facebook and Instagram using your business information, FAQs and product images.",
+    "DESCRIPTION": "Let AI reply to your customers on WhatsApp, Facebook, Instagram and your website chat using your business information, FAQs and product pictures and videos.",
     "NOT_CONFIGURED": "AI is not set up on this server yet. Contact ChatsSync to turn it on.",
     "SAVE": "Save",
     "SAVED": "AI settings saved",
@@ -508,7 +508,7 @@
     },
     "INBOXES": {
       "TITLE": "Inboxes",
-      "NOTE": "Leave all unticked to use every WhatsApp, Facebook and Instagram inbox."
+      "NOTE": "Leave all unticked to use every WhatsApp, Facebook, Instagram and website chat inbox."
     },
     "BUSINESS": {
       "TITLE": "Business information",
