@@ -1,11 +1,12 @@
 # Sends a chat to the first AI model that answers. Free models come first, so a
 # rate limit (429) or an outage on one model just moves the request to the next.
-# A rate-limited model is skipped until its limit resets, so requests don't wait on it.
+# A rate-limited or failing model is skipped for a while (until its limit resets, or a few
+# minutes after a server error or timeout), so requests don't wait on it.
 # Models are "provider:model" pairs and can be changed with AI_TEXT_MODELS / AI_VISION_MODELS.
 class Ai::LlmClient
   class Error < StandardError; end
 
-  class RateLimited < Error
+  class Unavailable < Error
     attr_reader :seconds
 
     def initialize(message, seconds)
@@ -16,7 +17,7 @@ class Ai::LlmClient
 
   GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/%<model>s:generateContent'.freeze
   GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'.freeze
-  DEFAULT_TEXT_MODELS = 'gemini:gemma-4-31b-it,gemini:gemma-4-26b-a4b-it,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,' \
+  DEFAULT_TEXT_MODELS = 'gemini:gemma-4-26b-a4b-it,gemini:gemma-4-31b-it,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,' \
                         'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b'.freeze
   DEFAULT_VISION_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
   KEYS = { 'gemini' => 'GEMINI_API_KEY', 'groq' => 'GROQ_API_KEY' }.freeze
@@ -24,6 +25,7 @@ class Ai::LlmClient
   PAUSE_KEY = 'chatssync:ai_paused:%<model>s'.freeze
   # Google resets free daily limits at midnight Pacific time, so usage is counted per Pacific day.
   QUOTA_TIMEZONE = 'America/Los_Angeles'.freeze
+  FAILURE_PAUSE = 3.minutes.to_i
 
   # messages: [{ role: 'user' | 'assistant', text: '...' }]
   # images:   [{ mime: 'image/jpeg', data: <binary> }], added to the last user message
@@ -62,14 +64,25 @@ class Ai::LlmClient
     Redis::Alfred.setex(format(PAUSE_KEY, model: model), 1, seconds)
   end
 
-  # Raises RateLimited on 429 with how long the model should rest, Error on any other failure.
+  # Raises Unavailable (with how long the model should rest) on a rate limit or server error,
+  # Error on any other failure, such as a bad request.
   def self.check!(response)
     return if response.is_a?(Net::HTTPSuccess)
 
     message = "HTTP #{response.code} #{response.body.to_s.truncate(200)}"
-    raise RateLimited.new(message, rest_seconds(response)) if response.code == '429'
+    raise Unavailable.new(message, rest_seconds(response)) if response.code == '429'
+    raise Unavailable.new(message, FAILURE_PAUSE) if response.code.start_with?('5')
 
     raise Error, message
+  end
+
+  # Sends the request; a timeout or dropped connection counts as the model being unavailable.
+  def self.post(uri, request, read_timeout:)
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: read_timeout) { |http| http.request(request) }
+    check!(response)
+    response
+  rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ECONNREFUSED, SocketError => e
+    raise Unavailable.new(e.message, FAILURE_PAUSE)
   end
 
   def self.rest_seconds(response)
@@ -101,7 +114,7 @@ class Ai::LlmClient
 
       self.class.track(model)
       return text.strip
-    rescue RateLimited => e
+    rescue Unavailable => e
       self.class.pause(model, e.seconds)
       errors << "#{model}: #{e.message.truncate(160)}"
     rescue StandardError => e
@@ -136,7 +149,9 @@ class Ai::LlmClient
     images.each do |image|
       contents.last[:parts] << { inline_data: { mime_type: image[:mime], data: Base64.strict_encode64(image[:data]) } }
     end
-    body = { contents: contents, generationConfig: { temperature: 0.4, maxOutputTokens: max_tokens } }
+    # Gemma always thinks before answering, and its thinking counts as output.
+    output_tokens = model.start_with?('gemma') ? max_tokens + 1500 : max_tokens
+    body = { contents: contents, generationConfig: { temperature: 0.4, maxOutputTokens: output_tokens } }
     if model.start_with?('gemma')
       # Gemma models on the Gemini API take no system instruction, so it goes in the first turn.
       contents.first[:parts].unshift({ text: "#{system}\n\n---\n" })
@@ -163,9 +178,6 @@ class Ai::LlmClient
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, { 'Content-Type' => 'application/json' }.merge(headers))
     request.body = body.to_json
-    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 40) { |http| http.request(request) }
-    self.class.check!(response)
-
-    JSON.parse(response.body)
+    JSON.parse(self.class.post(uri, request, read_timeout: 25).body)
   end
 end

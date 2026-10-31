@@ -7,7 +7,8 @@ class Ai::FaqGenerator
     faqs = parse(reply)
     agent.account.increment_plan_usage!(:copilot_tasks)
     faqs.filter_map do |faq|
-      item = agent.account.ai_knowledge_items.new(kind: 'faq', question: faq['question'].to_s.truncate(500), answer: faq['answer'].to_s.truncate(2000))
+      item = agent.account.ai_knowledge_items.new(kind: 'faq', question: faq['question'].to_s.truncate(500),
+                                                  answer: faq['answer'].to_s.truncate(2000))
       item if item.save
     end
   end

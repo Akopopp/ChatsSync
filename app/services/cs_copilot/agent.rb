@@ -9,7 +9,8 @@ class CsCopilot::Agent
 
   # history: [{ role: 'user' | 'assistant', content: '...' }] as shown in the Copilot panel
   def run(history)
-    messages = [{ role: 'system', content: system_prompt }] + history.last(HISTORY_LIMIT).map { |item| { role: item[:role], content: item[:content].to_s } }
+    recent = history.last(HISTORY_LIMIT).map { |item| { role: item[:role], content: item[:content].to_s } }
+    messages = [{ role: 'system', content: system_prompt }] + recent
     MAX_STEPS.times do
       reply = CsCopilot::Llm.chat(messages: messages, tools: CsCopilot::Tools::DEFINITIONS)
       calls = Array(reply['tool_calls'])
@@ -58,14 +59,16 @@ class CsCopilot::Agent
 
   def system_prompt
     role = account.account_users.find_by(user_id: user.id)&.role
+    now = Time.current.in_time_zone(CsCopilot::Tools::TIMEZONE).strftime('%A %d %B %Y, %I:%M %p')
     <<~PROMPT
       You are ChatsSync Copilot, the assistant inside the ChatsSync WhatsApp CRM for the business "#{account.name}".
-      You help #{user.name} (role: #{role}) run their customer chats. Today is #{Time.current.in_time_zone(CsCopilot::Tools::TIMEZONE).strftime('%A %d %B %Y, %I:%M %p')} (Pakistan time).
+      You help #{user.name} (role: #{role}) run their customer chats. Today is #{now} (Pakistan time).
 
       - Use the tools to look up real data before answering. Never guess numbers, names or messages.
       - To change anything, call the matching action tool. The user will see a confirm button, so do not ask "should I?" first.
       - Refer to chats as #number. Phone numbers are shortened for privacy.
-      - Reply in the user's language and script (Roman Urdu, Urdu or English). Be short and clear; use short bullet lists for data.
+      - Reply in the user's language and script (Roman Urdu in English letters, Urdu or English; never Hindi script).
+      - Be short and clear; use short bullet lists for data.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end

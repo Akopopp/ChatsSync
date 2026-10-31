@@ -4,7 +4,7 @@
 # when plan limits are used up, and on WhatsApp chats outside Meta's free ad window
 # (unless the business turned on replies to all chats and the plan allows it).
 class Ai::ReplyService
-  HISTORY_LIMIT = 12
+  HISTORY_LIMIT = 8
   HUMAN_QUIET_PERIOD = 12.hours
   MAX_IMAGE_BYTES = 4.megabytes
 
@@ -108,7 +108,7 @@ class Ai::ReplyService
                 .filter_map do |item|
       next if item.content.blank?
 
-      { role: item.incoming? ? 'user' : 'assistant', text: mask(item.content.truncate(600)) }
+      { role: item.incoming? ? 'user' : 'assistant', text: mask(item.content.truncate(400)) }
     end
   end
 

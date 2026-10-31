@@ -30,16 +30,19 @@ class CsCopilot::Tools
     fn('list_canned_responses', 'List saved canned responses.'),
     fn('plan_usage', 'Show the ChatsSync plan, end date and how much of each limit is used.'),
     fn('ai_settings', 'Show the AI agent settings and how many FAQs and images it has.'),
-    fn('add_labels', 'Add labels to a chat.', { conversation_id: CHAT, labels: { type: 'array', items: { type: 'string' } } }, %w[conversation_id labels]),
+    fn('add_labels', 'Add labels to a chat.', { conversation_id: CHAT, labels: { type: 'array', items: { type: 'string' } } },
+       %w[conversation_id labels]),
     fn('assign_conversation', 'Assign a chat to a team member and/or a team.',
        { conversation_id: CHAT, agent_id: { type: 'integer' }, team_id: { type: 'integer' } }, ['conversation_id']),
-    fn('change_status', 'Open, resolve or mark a chat pending.', { conversation_id: CHAT, status: { type: 'string', enum: %w[open resolved pending] } },
+    fn('change_status', 'Open, resolve or mark a chat pending.',
+       { conversation_id: CHAT, status: { type: 'string', enum: %w[open resolved pending] } },
        %w[conversation_id status]),
     fn('add_private_note', 'Add a private note to a chat (customers do not see it).', { conversation_id: CHAT, text: { type: 'string' } },
        %w[conversation_id text]),
     fn('send_reply', 'Send a message to the customer in a chat.', { conversation_id: CHAT, text: { type: 'string' } }, %w[conversation_id text]),
     fn('create_canned_response', 'Save a canned response.', { short_code: { type: 'string' }, content: { type: 'string' } }, %w[short_code content]),
-    fn('create_label', 'Create a new label.', { title: { type: 'string' }, color: { type: 'string', description: 'Hex color like #1f93ff' } }, ['title']),
+    fn('create_label', 'Create a new label.',
+       { title: { type: 'string' }, color: { type: 'string', description: 'Hex color like #1f93ff' } }, ['title']),
     fn('add_faqs', 'Add FAQs to the AI agent. Put several ways of asking in one question, separated by " / ".',
        { faqs: { type: 'array', items: { type: 'object', properties: { question: { type: 'string' }, answer: { type: 'string' } } } } }, ['faqs']),
     fn('update_ai_agent', 'Change AI agent settings.',
@@ -159,7 +162,8 @@ class CsCopilot::Tools
 
   def tool_search_contacts(args)
     like = "%#{ActiveRecord::Base.sanitize_sql_like(args[:query].to_s)}%"
-    contacts = account.contacts.where('name ILIKE ? OR phone_number ILIKE ? OR email ILIKE ?', like, like, like).order(last_activity_at: :desc).limit(15)
+    contacts = account.contacts.where('name ILIKE ? OR phone_number ILIKE ? OR email ILIKE ?', like, like, like)
+                      .order(last_activity_at: :desc).limit(15)
     { contacts: contacts.map do |contact|
       chats = conversations.where(contact_id: contact.id).order(last_activity_at: :desc).limit(3).pluck(:display_id)
       { name: contact.name, phone: short_phone(contact.phone_number), last_seen: time(contact.last_activity_at), chats: chats }
@@ -189,7 +193,7 @@ class CsCopilot::Tools
   end
 
   def tool_list_team(_args)
-    { members: account.account_users.includes(:user).map { |account_user| { id: account_user.user_id, name: account_user.user&.name, role: account_user.role } },
+    { members: account.account_users.includes(:user).map { |member| { id: member.user_id, name: member.user&.name, role: member.role } },
       teams: account.teams.map { |team| { id: team.id, name: team.name } },
       inboxes: user.assigned_inboxes.map { |inbox| { id: inbox.id, name: inbox.name, type: inbox.channel_type.demodulize } },
       labels: account.labels.pluck(:title) }
@@ -200,7 +204,8 @@ class CsCopilot::Tools
   end
 
   def tool_plan_usage(_args)
-    { plan: account.plan&.name || 'No plan (no limits)', ends: time(account.plan_ends_at), usage: account.plan_usage_summary.select { |_key, value| value[:limit] } }
+    { plan: account.plan&.name || 'No plan (no limits)', ends: time(account.plan_ends_at),
+      usage: account.plan_usage_summary.select { |_key, value| value[:limit] } }
   end
 
   def tool_ai_settings(_args)

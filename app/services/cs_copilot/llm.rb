@@ -18,7 +18,7 @@ class CsCopilot::Llm
 
       Ai::LlmClient.track(model)
       return message
-    rescue Ai::LlmClient::RateLimited => e
+    rescue Ai::LlmClient::Unavailable => e
       Ai::LlmClient.pause(model, e.seconds)
       errors << "#{model}: #{e.message.truncate(160)}"
     rescue StandardError => e
@@ -41,9 +41,6 @@ class CsCopilot::Llm
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{ENV.fetch(key_name)}")
     request.body = body.to_json
-    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 60) { |http| http.request(request) }
-    Ai::LlmClient.check!(response)
-
-    JSON.parse(response.body).dig('choices', 0, 'message')
+    JSON.parse(Ai::LlmClient.post(uri, request, read_timeout: 45).body).dig('choices', 0, 'message')
   end
 end

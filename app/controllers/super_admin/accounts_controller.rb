@@ -43,7 +43,9 @@ class SuperAdmin::AccountsController < SuperAdmin::ApplicationController
 
   def renew_plan
     # rubocop:disable Rails/I18nLocaleTexts
-    return redirect_back(fallback_location: [namespace, requested_resource], alert: 'Assign a plan to this account first') if requested_resource.plan.nil?
+    if requested_resource.plan.nil?
+      return redirect_back(fallback_location: [namespace, requested_resource], alert: 'Assign a plan to this account first')
+    end
 
     requested_resource.renew_plan!
     redirect_back(fallback_location: [namespace, requested_resource],

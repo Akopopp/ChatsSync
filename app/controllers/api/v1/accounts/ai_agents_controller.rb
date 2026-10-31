@@ -44,7 +44,9 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
     @agent.as_json(only: %i[enabled reply_scope inbox_ids business_name business_info instructions handoff_message]).merge(
       ai_configured: Ai::LlmClient.configured?,
       features: Plan::FEATURE_KEYS.index_with { |key| Current.account.plan_feature?(key) },
-      inboxes: Current.account.inboxes.where(channel_type: AiAgent::CHANNEL_TYPES).map { |inbox| { id: inbox.id, name: inbox.name, channel_type: inbox.channel_type } }
+      inboxes: Current.account.inboxes.where(channel_type: AiAgent::CHANNEL_TYPES).map do |inbox|
+        { id: inbox.id, name: inbox.name, channel_type: inbox.channel_type }
+      end
     )
   end
 end
