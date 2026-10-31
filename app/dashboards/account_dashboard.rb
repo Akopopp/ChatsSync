@@ -35,8 +35,10 @@ class AccountDashboard < Administrate::BaseDashboard
     status: Field::Select.with_options(collection: [%w[Active active], %w[Suspended suspended]]),
     account_users: Field::HasMany,
     custom_attributes: Field::String,
+    plan: Field::BelongsTo,
     plan_starts_at: Field::DateTime,
-    plan_ends_at: Field::DateTime
+    plan_ends_at: Field::DateTime,
+    plan_addons: PlanAddonsField
   }.merge(enterprise_attribute_types).freeze
 
   # COLLECTION_ATTRIBUTES
@@ -51,6 +53,8 @@ class AccountDashboard < Administrate::BaseDashboard
     users
     conversations
     status
+    plan
+    plan_ends_at
   ].freeze
 
   # SHOW_PAGE_ATTRIBUTES
@@ -70,8 +74,10 @@ class AccountDashboard < Administrate::BaseDashboard
     updated_at
     locale
     status
+    plan
     plan_starts_at
     plan_ends_at
+    plan_addons
     conversations
     account_users
   ] + enterprise_show_page_attributes).freeze
@@ -91,8 +97,10 @@ class AccountDashboard < Administrate::BaseDashboard
     name
     locale
     status
+    plan
     plan_starts_at
     plan_ends_at
+    plan_addons
   ] + enterprise_form_attributes).freeze
 
   # COLLECTION_FILTERS

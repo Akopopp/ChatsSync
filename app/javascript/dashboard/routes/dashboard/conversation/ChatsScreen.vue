@@ -1936,6 +1936,10 @@ const doSend = () => {
   const text = draft.value.trim();
   if (!text && !pendingFiles.value.length) return;
   if (!currentChat.value?.id) return;
+  if (currentChat.value.additional_attributes?.plan_locked && !isNote.value) {
+    toast('Contact limit reached — upgrade your plan to reply', 'err');
+    return;
+  }
   const payload = {
     conversationId: currentChat.value.id,
     message: text,
@@ -2487,6 +2491,13 @@ const isArchived = c =>
    (Free entry point ki 72 ghante wali riayat sirf PAISON par asar
    daalti hai, is 24-ghante ke qaide par nahi.) */
 const windowOpen = computed(() => currentChat.value?.can_reply !== false);
+/* Plan ki monthly contact limit poori: nayi chat lock, sirf private note */
+const planLocked = computed(
+  () => !!currentChat.value?.additional_attributes?.plan_locked
+);
+const openPlanPage = () => {
+  router.push({ name: 'plan_usage_index', params: { accountId: accountId.value } });
+};
 const lastInAt = computed(() => {
   const list = messages.value || [];
   for (let i = list.length - 1; i >= 0; i -= 1) {
@@ -3735,8 +3746,23 @@ watch(
           </div>
         </template>
 
+        <!-- plan ki contact limit poori: chat locked -->
+        <div v-if="planLocked && !isRecording && !isNote" class="cs-winbar">
+          <span class="i-lucide-lock" />
+          <div class="cs-winb">
+            <b>Chat locked</b>
+            <span>
+              Your monthly contact limit is reached. Upgrade your plan to reply
+              to this customer. Private notes still work.
+            </span>
+          </div>
+          <button class="cs-winbtn" @click.stop="openPlanPage">
+            Upgrade
+          </button>
+        </div>
+
         <!-- 24 ghante guzar gaye: sirf template -->
-        <div v-if="!windowOpen && !isRecording && !isNote" class="cs-winbar">
+        <div v-else-if="!windowOpen && !isRecording && !isNote" class="cs-winbar">
           <span class="i-lucide-clock-alert" />
           <div class="cs-winb">
             <b>24-hour window closed</b>
@@ -3870,11 +3896,13 @@ watch(
             v-model="draft"
             class="cs-cin"
             rows="1"
-            :disabled="!windowOpen && !isNote"
+            :disabled="(!windowOpen || planLocked) && !isNote"
             :placeholder="
               isNote
                 ? 'Private note...'
-                : windowOpen
+                : planLocked
+                  ? 'Chat locked — upgrade your plan to reply'
+                  : windowOpen
                   ? 'Type a message'
                   : 'Window closed — send a template instead'
             "

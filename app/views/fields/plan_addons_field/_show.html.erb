@@ -1,0 +1,12 @@
+<% if field.recurring.blank? && field.packs.blank? %>
+  None
+<% else %>
+  <% field.recurring.each do |key, value| %>
+    <%= PlanLimitsField.label(key) %>: +<%= value %> every month<br>
+  <% end %>
+  <% field.packs.each do |cycle, items| %>
+    <% items.each do |key, value| %>
+      <%= PlanLimitsField.label(key) %>: +<%= value %> for the month starting <%= cycle %><br>
+    <% end %>
+  <% end %>
+<% end %>

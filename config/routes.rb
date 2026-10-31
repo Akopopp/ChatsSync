@@ -56,6 +56,7 @@ Rails.application.routes.draw do
           end
           resource :bulk_actions, only: [:create]
           resource :onboarding, only: [:update]
+          resource :plan_usage, only: [:show]
           resources :agents, only: [:index, :create, :update, :destroy] do
             post :bulk_create, on: :collection
           end
@@ -679,7 +680,10 @@ Rails.application.routes.draw do
       resources :accounts, only: [:index, :new, :create, :show, :edit, :update, :destroy] do
         post :seed, on: :member
         post :reset_cache, on: :member
+        post :renew_plan, on: :member
+        post :add_plan_pack, on: :member
       end
+      resources :plans, only: [:index, :new, :create, :show, :edit, :update, :destroy]
       resources :users, only: [:index, :new, :create, :show, :edit, :update, :destroy] do
         delete :avatar, on: :member, action: :destroy_avatar
       end

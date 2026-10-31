@@ -1,5 +1,6 @@
 class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::Conversations::BaseController
   before_action :ensure_api_inbox, only: :update
+  before_action :ensure_conversation_not_plan_locked, only: :create
 
   def index
     @messages = message_finder.perform
@@ -76,5 +77,13 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   def ensure_api_inbox
     # Only API inboxes can update messages
     render json: { error: 'Message status update is only allowed for API inboxes' }, status: :forbidden unless @conversation.inbox.api?
+  end
+
+  # Private notes stay allowed; customer replies wait for a plan upgrade.
+  def ensure_conversation_not_plan_locked
+    return if ActiveModel::Type::Boolean.new.cast(params[:private])
+    return unless @conversation.additional_attributes&.dig('plan_locked')
+
+    render_payment_required(I18n.t('errors.plan.conversation_locked'))
   end
 end

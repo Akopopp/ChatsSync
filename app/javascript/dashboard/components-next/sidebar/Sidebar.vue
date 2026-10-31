@@ -369,7 +369,7 @@ const settingsItem = computed(() => ({
     'settings_inbox_new', 'settings_inbox_finish', 'settings_inboxes_page_channel',
     'settings_inboxes_add_agents', 'labels_list', 'attributes_list',
     'automation_list', 'agent_bots', 'macros_wrapper', 'canned_list',
-    'settings_applications',
+    'settings_applications', 'plan_usage_index',
   ],
   children: [
     { label: t('SIDEBAR.ACCOUNT_SETTINGS'), icon: 'i-lucide-briefcase', to: accountScopedRoute('general_settings_index') },
@@ -383,6 +383,9 @@ const settingsItem = computed(() => ({
     { label: t('SIDEBAR.MACROS'), icon: 'i-lucide-toy-brick', to: accountScopedRoute('macros_wrapper') },
     { label: t('SIDEBAR.CANNED_RESPONSES'), icon: 'i-lucide-message-square-quote', to: accountScopedRoute('canned_list') },
     { label: t('SIDEBAR.INTEGRATIONS'), icon: 'i-lucide-blocks', to: accountScopedRoute('settings_applications') },
+    ...(isAdmin.value
+      ? [{ label: t('SIDEBAR.PLAN_USAGE'), icon: 'i-lucide-gauge', to: accountScopedRoute('plan_usage_index') }]
+      : []),
   ],
 }));
 

@@ -323,6 +323,7 @@ class Message < ApplicationRecord
 
   def execute_after_create_commit_callbacks
     # rails issue with order of active record callbacks being executed https://github.com/rails/rails/issues/20911
+    lock_conversation_over_plan_contacts
     reopen_conversation
     mark_pending_conversation_as_open_for_human_response
     set_conversation_activity
@@ -334,6 +335,22 @@ class Message < ApplicationRecord
 
   def update_contact_activity
     sender.update(last_activity_at: DateTime.now) if sender.is_a?(Contact)
+  end
+
+  # A new contact beyond the plan's monthly contact limit gets a locked chat:
+  # the message is kept, but replies are blocked until the plan is upgraded.
+  def lock_conversation_over_plan_contacts
+    return unless incoming? && sender_type == 'Contact'
+    return if conversation.additional_attributes&.dig('plan_locked')
+
+    limit = account.plan_limit(:contacts_monthly)
+    return if limit.nil?
+
+    seen_this_cycle = account.messages.where(message_type: :incoming, sender_type: 'Contact', sender_id: sender_id,
+                                             created_at: account.plan_cycle_start..).where.not(id: id).exists?
+    return if seen_this_cycle || account.monthly_active_contacts_count <= limit
+
+    conversation.update!(additional_attributes: (conversation.additional_attributes || {}).merge('plan_locked' => true))
   end
 
   def update_waiting_since

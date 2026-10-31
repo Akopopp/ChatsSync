@@ -53,6 +53,7 @@ class Inbox < ApplicationRecord
   validates :out_of_office_message, length: { maximum: Limits::OUT_OF_OFFICE_MESSAGE_MAX_LENGTH }
   validates :greeting_message, length: { maximum: Limits::GREETING_MESSAGE_MAX_LENGTH }
   validate :ensure_valid_max_assignment_limit
+  validate :ensure_plan_channel_limit, on: :create
 
   belongs_to :account
   belongs_to :portal, optional: true
@@ -217,6 +218,21 @@ class Inbox < ApplicationRecord
   end
 
   private
+
+  def ensure_plan_channel_limit
+    key = plan_channel_limit_key
+    return if key.nil? || account.nil? || !account.plan_limit_reached?(key)
+
+    errors.add(:base, I18n.t('errors.plan.channel_limit', limit: account.plan_limit(key)))
+  end
+
+  def plan_channel_limit_key
+    case channel_type
+    when 'Channel::Whatsapp' then :whatsapp_numbers
+    when 'Channel::Instagram' then :instagram_accounts
+    when 'Channel::FacebookPage' then channel&.instagram_id.present? ? :instagram_accounts : :facebook_pages
+    end
+  end
 
   def default_name_for_blank_name
     email? ? display_name_from_email : ''

@@ -38,6 +38,7 @@ class Campaign < ApplicationRecord
   validate :validate_campaign_inbox
   validate :validate_url
   validate :prevent_completed_campaign_from_update, on: :update
+  validate :ensure_plan_campaign_limit, on: :create
   validate :sender_must_belong_to_account
   validate :inbox_must_belong_to_account
 
@@ -63,6 +64,12 @@ class Campaign < ApplicationRecord
   end
 
   private
+
+  def ensure_plan_campaign_limit
+    return if account.nil? || !account.plan_limit_reached?(:campaigns_monthly)
+
+    errors.add(:base, I18n.t('errors.plan.campaign_limit', limit: account.plan_limit(:campaigns_monthly)))
+  end
 
   def feature_enabled?
     inbox.inbox_type != 'Whatsapp' || account.feature_enabled?(:whatsapp_campaign)

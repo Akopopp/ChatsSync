@@ -1,0 +1,7 @@
+<% if field.values.blank? %>
+  Unlimited
+<% else %>
+  <% field.values.each do |key, value| %>
+    <%= PlanLimitsField.label(key) %>: <%= value == true ? 'Yes' : value == false ? 'No' : value %><br>
+  <% end %>
+<% end %>

@@ -1,0 +1,44 @@
+<% account = page.resource %>
+<section class="main-content__body">
+  <hr/>
+  <h2 class="text-lg font-medium mb-3">Plan &amp; usage</h2>
+  <% if account.plan %>
+    <p class="mb-1"><b><%= account.plan.name %></b> (Rs <%= account.plan.price %> / <%= account.plan.duration_days %> days)</p>
+  <% else %>
+    <p class="mb-1">No plan assigned (no limits). Pick a plan with Edit, then click Start / renew plan.</p>
+  <% end %>
+  <p class="mb-1 text-sm">Ends: <%= account.plan_ends_at ? account.plan_ends_at.in_time_zone(Plan::TIMEZONE).strftime('%d %b %Y, %I:%M %p') : '—' %></p>
+  <p class="mb-3 text-sm">This month started: <%= account.plan_cycle_start.in_time_zone(Plan::TIMEZONE).strftime('%d %b %Y') %> · Locked chats: <%= account.plan_locked_conversations.count %></p>
+
+  <table class="mb-4">
+    <thead><tr><th class="text-left pr-6">Limit</th><th class="text-left pr-6">Used</th><th class="text-left">Allowed</th></tr></thead>
+    <tbody>
+      <% account.plan_usage_summary.each do |key, value| %>
+        <% next if value[:limit].nil? && value[:used].nil? %>
+        <tr>
+          <td class="pr-6"><%= PlanLimitsField.label(key) %></td>
+          <td class="pr-6"><%= value[:used].nil? ? '—' : value[:used] %></td>
+          <td><%= value[:limit].nil? ? 'Unlimited' : value[:limit] %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <%= form_tag([:renew_plan, namespace, account], method: :post, class: 'form mb-4') do %>
+    <div class="form-actions">
+      <p class="pb-3">Starts the plan now if it has ended, otherwise adds one more period to the end date. Also re-activates a suspended account.</p>
+      <%= submit_tag 'Start / renew plan', disabled: account.plan.nil? %>
+    </div>
+  <% end %>
+
+  <%= form_tag([:add_plan_pack, namespace, account], method: :post, class: 'form') do %>
+    <div class="form-actions">
+      <p class="pb-3">Add a pack for this month only (after the client pays you).</p>
+      <div class="flex items-center gap-2">
+        <%= select_tag :pack_key, options_for_select(Plan::CYCLE_KEYS.map { |key| [PlanLimitsField.label(key), key] }) %>
+        <%= number_field_tag :pack_amount, 5000, min: 1, class: 'w-32' %>
+        <%= submit_tag 'Add pack' %>
+      </div>
+    </div>
+  <% end %>
+</section>

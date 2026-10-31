@@ -1,0 +1,12 @@
+<div class="field-unit__label">
+  <%= f.label field.attribute, 'Add-ons (every month)' %>
+</div>
+<div class="field-unit__field">
+  <p class="text-sm text-slate-600 mb-2">Extra on top of the plan, kept every month. Use "Add pack" on the account page for this month only.</p>
+  <% Plan::LIMIT_KEYS.each do |key| %>
+    <div class="flex items-center gap-2 mb-1">
+      <label class="w-56 text-sm" for="account_plan_addons_<%= key %>"><%= PlanLimitsField.label(key) %></label>
+      <%= number_field_tag "account[plan_addons][recurring][#{key}]", field.recurring[key], min: 0, id: "account_plan_addons_#{key}", class: 'w-40' %>
+    </div>
+  <% end %>
+</div>

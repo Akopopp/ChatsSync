@@ -327,6 +327,7 @@
     "INBOXES": "Inboxes",
     "NOTIFICATIONS": "Notifications",
     "CANNED_RESPONSES": "Canned Responses",
+    "PLAN_USAGE": "Plan & Usage",
     "INTEGRATIONS": "Integrations",
     "PROFILE_SETTINGS": "Profile Settings",
     "ACCOUNT_SETTINGS": "Account Settings",
@@ -430,6 +431,45 @@
     "API": {
       "SUCCESS": "Captain settings updated successfully.",
       "ERROR": "Failed to update Captain settings. Please try again."
+    }
+  },
+  "PLAN_USAGE": {
+    "TITLE": "Plan & Usage",
+    "DESCRIPTION": "See your ChatsSync plan, when it ends, and how much of each limit you have used this month.",
+    "NO_PLAN": "No plan assigned yet",
+    "PLAN_DESCRIPTION": "Your current plan. Contact ChatsSync on WhatsApp to renew or upgrade.",
+    "RENEW_BUTTON": "Renew or upgrade",
+    "RENEW_MESSAGE": "Hi, I want to renew or upgrade my ChatsSync plan.",
+    "ACCOUNT": "Account",
+    "PRICE": "Price",
+    "ENDS_ON": "Ends on",
+    "DAYS_LEFT": "Days left",
+    "USAGE_TITLE": "Usage this month",
+    "USAGE_DESCRIPTION": "Monthly limits reset on the same date each month.",
+    "UNLIMITED": "Unlimited",
+    "BUY_MORE": "Buy more",
+    "BUY_MORE_MESSAGE": "Hi, I want to buy more {item}.",
+    "LOCKED_CHATS": "{count} chat(s) are locked because the monthly contact limit is reached. Upgrade your plan to reply to them.",
+    "META_NOTE": "Meta (WhatsApp) message charges are not included in ChatsSync plans.",
+    "LIMITS": {
+      "AI_REPLIES_MONTHLY": "AI replies / month",
+      "AI_REPLIES_DAILY": "AI replies / day",
+      "COPILOT_TASKS_MONTHLY": "Copilot tasks / month",
+      "CONTACTS_MONTHLY": "Active contacts / month",
+      "AGENTS": "Team members",
+      "WHATSAPP_NUMBERS": "WhatsApp numbers",
+      "FACEBOOK_PAGES": "Facebook pages",
+      "INSTAGRAM_ACCOUNTS": "Instagram accounts",
+      "CAMPAIGNS_MONTHLY": "Campaigns / month",
+      "CHATBOT_FLOWS": "Chatbot flows",
+      "KB_FAQS": "AI knowledge FAQs",
+      "KB_FILES": "AI knowledge files"
+    },
+    "BANNER": {
+      "NEAR": "You have used over 80% of your {item} this month.",
+      "FULL": "You have used all of your {item} this month.",
+      "LOCKED": "Monthly contact limit reached: {count} new chat(s) are locked until you upgrade.",
+      "ACTION": "View plan"
     }
   },
   "BILLING_SETTINGS": {
