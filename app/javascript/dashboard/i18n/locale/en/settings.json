@@ -328,6 +328,8 @@
     "NOTIFICATIONS": "Notifications",
     "CANNED_RESPONSES": "Canned Responses",
     "PLAN_USAGE": "Plan & Usage",
+    "AI_AGENT": "AI Agent",
+    "COPILOT": "Copilot",
     "INTEGRATIONS": "Integrations",
     "PROFILE_SETTINGS": "Profile Settings",
     "ACCOUNT_SETTINGS": "Account Settings",
@@ -431,6 +433,85 @@
     "API": {
       "SUCCESS": "Captain settings updated successfully.",
       "ERROR": "Failed to update Captain settings. Please try again."
+    }
+  },
+  "COPILOT": {
+    "TITLE": "Copilot",
+    "DESCRIPTION": "Ask anything about your chats, team and AI, or tell Copilot what to do. You can write in English or Roman Urdu. It asks you before changing anything.",
+    "TRY": "Try asking:",
+    "SUGGESTIONS": {
+      "TODAY": "How many messages came today, and who replied to how many?",
+      "UNANSWERED": "Which open chats have not been answered yet?",
+      "TEAM": "How many chats did each agent resolve this week?",
+      "FAQS": "Make 10 FAQs for my AI from my business info"
+    },
+    "PLACEHOLDER": "Type your question or task...",
+    "SEND": "Send",
+    "THINKING": "Copilot is working...",
+    "CONFIRM": "Yes, do it",
+    "CANCEL": "Cancel",
+    "CANCELLED": "Okay, I did not change anything.",
+    "ERROR": "Copilot could not answer right now. Please try again."
+  },
+  "AI_AGENT": {
+    "TITLE": "AI Agent",
+    "LOADING": "Loading AI settings...",
+    "DESCRIPTION": "Let AI reply to your customers on WhatsApp, Facebook and Instagram using your business information, FAQs and product images.",
+    "NOT_CONFIGURED": "AI is not set up on this server yet. Contact ChatsSync to turn it on.",
+    "SAVE": "Save",
+    "SAVED": "AI settings saved",
+    "ERROR": "Something went wrong. Please try again.",
+    "ENABLE": "Turn on",
+    "DISABLE": "Turn off",
+    "DELETE": "Delete",
+    "STATUS": {
+      "TITLE": "AI replies",
+      "DESCRIPTION": "When a team member replies in a chat, the AI stays quiet in that chat for 12 hours.",
+      "ENABLED": "Let AI reply to customers"
+    },
+    "SCOPE": {
+      "TITLE": "Which WhatsApp chats should AI answer?",
+      "AD_LEADS": "Only customers who came from a Meta ad (free Meta window)",
+      "ALL": "All WhatsApp chats",
+      "ALL_NOTE": "Replies outside the free ad window can cost Meta message charges.",
+      "NOT_IN_PLAN": "Replying to all chats is not included in your plan."
+    },
+    "INBOXES": {
+      "TITLE": "Inboxes",
+      "NOTE": "Leave all unticked to use every WhatsApp, Facebook and Instagram inbox."
+    },
+    "BUSINESS": {
+      "TITLE": "Business information",
+      "DESCRIPTION": "The AI only answers from what you write here and in your FAQs.",
+      "NAME": "Business name",
+      "INFO": "About your business",
+      "INFO_PLACEHOLDER": "Products, prices, delivery areas and charges, timings, payment methods, return policy, address...",
+      "INSTRUCTIONS": "Extra instructions (optional)",
+      "INSTRUCTIONS_PLACEHOLDER": "For example: Always greet with Assalam o Alaikum. Ask for the city before telling delivery charges.",
+      "HANDOFF": "Message when the AI passes the chat to your team",
+      "HANDOFF_PLACEHOLDER": "Thank you! Our team will reply to you shortly."
+    },
+    "FAQS": {
+      "TITLE": "FAQs",
+      "DESCRIPTION": "Questions customers ask and the exact answers. Add several ways of asking in one question, separated by /.",
+      "GENERATE": "Generate FAQs from business info",
+      "GENERATED": "{count} FAQs added. Review them below.",
+      "QUESTION": "Question, e.g. What is the price? / How much is it?",
+      "ANSWER": "Answer",
+      "ADD": "Add FAQ"
+    },
+    "IMAGES": {
+      "TITLE": "Product images",
+      "DESCRIPTION": "The AI can send these pictures when a customer asks about the product.",
+      "NAME": "Product name",
+      "DETAILS": "Price and details",
+      "ADD": "Add image"
+    },
+    "PREVIEW": {
+      "TITLE": "Try your AI",
+      "DESCRIPTION": "Type a customer message to see how the AI would reply. Nothing is sent to anyone.",
+      "PLACEHOLDER": "e.g. What is the price of this shirt?",
+      "BUTTON": "Get reply"
     }
   },
   "PLAN_USAGE": {

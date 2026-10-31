@@ -8,7 +8,6 @@ module AccountPlan
     belongs_to :plan, optional: true
     has_many :usage_counters, dependent: :delete_all
 
-    before_save :sync_plan_agent_limit, if: -> { will_save_change_to_plan_id? || will_save_change_to_plan_addons? }
     after_update_commit :unlock_plan_conversations,
                         if: -> { saved_change_to_plan_id? || saved_change_to_plan_addons? || saved_change_to_plan_ends_at? }
   end
@@ -60,6 +59,8 @@ module AccountPlan
     when 'ai_replies_monthly' then usage_count('ai_replies', 'cycle')
     when 'ai_replies_daily' then usage_count('ai_replies', 'day')
     when 'copilot_tasks_monthly' then usage_count('copilot_tasks', 'cycle')
+    when 'kb_faqs' then ai_knowledge_items.faqs.count
+    when 'kb_files' then ai_knowledge_items.images.count
     end
   end
 
@@ -123,13 +124,6 @@ module AccountPlan
   def facebook_inboxes(instagram:)
     pages = instagram ? Channel::FacebookPage.where.not(instagram_id: nil) : Channel::FacebookPage.where(instagram_id: nil)
     inboxes.where(channel_type: 'Channel::FacebookPage', channel_id: pages.select(:id))
-  end
-
-  def sync_plan_agent_limit
-    agent_limit = plan_limit(:agents)
-    new_limits = (limits || {}).except('agents')
-    new_limits['agents'] = agent_limit if agent_limit
-    self.limits = new_limits
   end
 
   def unlock_plan_conversations

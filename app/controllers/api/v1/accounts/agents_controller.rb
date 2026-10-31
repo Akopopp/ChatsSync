@@ -90,15 +90,23 @@ class Api::V1::Accounts::AgentsController < Api::V1::Accounts::BaseController
   def validate_limit_for_bulk_create
     limit_available = params[:emails].count <= available_agent_count
 
-    render_payment_required('Account limit exceeded. Please purchase more licenses') unless limit_available
+    render_payment_required(agent_limit_message) unless limit_available
   end
 
   def validate_limit
-    render_payment_required('Account limit exceeded. Please purchase more licenses') unless can_add_agent?
+    render_payment_required(agent_limit_message) unless can_add_agent?
   end
 
+  # ChatsSync plans set the team size; accounts without a plan keep the old limit.
   def available_agent_count
-    Current.account.usage_limits[:agents] - agents.count
+    (Current.account.plan_limit(:agents) || Current.account.usage_limits[:agents]) - agents.count
+  end
+
+  def agent_limit_message
+    plan_limit = Current.account.plan_limit(:agents)
+    return 'Account limit exceeded. Please purchase more licenses' if plan_limit.nil?
+
+    I18n.t('errors.plan.agent_limit', limit: plan_limit)
   end
 
   def can_add_agent?

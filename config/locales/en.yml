@@ -30,6 +30,10 @@
 # available at https://guides.rubyonrails.org/i18n.html.
 
 en:
+  copilot:
+    done: Done.
+    too_many_steps: That needed too many steps. Please ask in a simpler way.
+    unavailable: Copilot is busy or not set up right now. Please try again in a minute.
   hello: 'Hello world'
   inbox:
     reauthorization:
@@ -48,9 +52,14 @@ en:
     inbox_deletetion_response: Your inbox deletion request will be processed in some time.
 
   errors:
+    ai:
+      business_info_missing: Add your business information first, then generate FAQs from it.
+      copilot_limit: Your plan's monthly AI assistant limit is used up. Upgrade your plan or buy a pack.
     plan:
       channel_limit: Your plan allows %{limit} of these connections. Upgrade your plan or contact ChatsSync to add more.
       campaign_limit: Your plan allows %{limit} campaigns per month. Upgrade your plan or contact ChatsSync to add more.
+      agent_limit: Your plan allows %{limit} team members. Upgrade your plan or contact ChatsSync to add more.
+      knowledge_limit: Your plan allows %{limit} of these AI knowledge items. Upgrade your plan or contact ChatsSync to add more.
       conversation_locked: Your monthly contact limit is reached, so this chat is locked. Upgrade your plan to reply.
     account:
       reporting_timezone:

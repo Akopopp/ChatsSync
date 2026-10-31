@@ -4,6 +4,7 @@ import InboxDetailView from './InboxView.vue';
 import InboxEmptyStateView from './InboxEmptyState.vue';
 // ChatsSync ka apna Dashboard tab
 import DashboardScreen from '../dashboard-cs/DashboardScreen.vue';
+import CopilotScreen from '../copilot-cs/CopilotScreen.vue';
 import {
   ROLES,
   CONVERSATION_PERMISSIONS,
@@ -38,6 +39,14 @@ export const routes = [
     path: frontendURL('accounts/:accountId/insights'),
     name: 'chatssync_dashboard',
     component: DashboardScreen,
+    meta: {
+      permissions: [...ROLES, ...CONVERSATION_PERMISSIONS],
+    },
+  },
+  {
+    path: frontendURL('accounts/:accountId/copilot'),
+    name: 'chatssync_copilot',
+    component: CopilotScreen,
     meta: {
       permissions: [...ROLES, ...CONVERSATION_PERMISSIONS],
     },

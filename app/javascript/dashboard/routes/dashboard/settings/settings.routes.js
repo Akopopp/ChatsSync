@@ -26,6 +26,7 @@ import security from './security/security.routes';
 import conversationWorkflow from './conversationWorkflow/conversationWorkflow.routes';
 import captain from './captain/captain.routes';
 import plan from './plan/plan.routes';
+import aiAgent from './aiAgent/aiAgent.routes';
 export default {
   routes: [
     {
@@ -66,5 +67,6 @@ export default {
     ...conversationWorkflow.routes,
     ...captain.routes,
     ...plan.routes,
+    ...aiAgent.routes,
   ],
 };

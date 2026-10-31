@@ -1,0 +1,38 @@
+<% content_for(:title) do %>
+  AI Usage
+<% end %>
+<header class="main-content__header" role="banner">
+  <h1 class="main-content__page-title" id="page-title">
+    <%= content_for(:title) %>
+  </h1>
+</header>
+<section class="main-content__body">
+  <% unless @configured %>
+    <p class="mb-4 text-red-600">No AI key is set. Add GEMINI_API_KEY and GROQ_API_KEY in Coolify environment variables, then redeploy.</p>
+  <% end %>
+  <p class="mb-4">AI replies sent today (all clients): <b><%= @today_total %></b></p>
+
+  <h2 class="text-lg font-medium mb-2">Free model usage today (UTC day)</h2>
+  <table class="mb-6">
+    <tr><th class="text-left pr-6">Model</th><th class="text-left pr-6">Requests today</th><th class="text-left">Free daily limit</th></tr>
+    <% @models.each do |row| %>
+      <tr>
+        <td class="pr-6"><%= row[:model] %></td>
+        <td class="pr-6"><%= row[:used] %></td>
+        <td><%= row[:limit] ? number_with_delimiter(row[:limit]) : '—' %></td>
+      </tr>
+    <% end %>
+  </table>
+  <p class="mb-6 text-sm text-slate-600">Google resets its free limits at midnight Pacific time. When a model is used up, ChatsSync moves to the next one automatically.</p>
+
+  <h2 class="text-lg font-medium mb-2">Clients using AI most (current month)</h2>
+  <table>
+    <tr><th class="text-left pr-6">Account</th><th class="text-left">AI replies</th></tr>
+    <% @top_accounts.each do |account_id, count| %>
+      <tr>
+        <td class="pr-6"><%= link_to "##{account_id} #{@account_names[account_id]}", super_admin_account_path(account_id) %></td>
+        <td><%= count %></td>
+      </tr>
+    <% end %>
+  </table>
+</section>

@@ -57,6 +57,15 @@ Rails.application.routes.draw do
           resource :bulk_actions, only: [:create]
           resource :onboarding, only: [:update]
           resource :plan_usage, only: [:show]
+          resource :ai_agent, only: [:show, :update] do
+            post :preview
+            post :generate_faqs
+          end
+          resources :ai_knowledge_items, only: [:index, :create, :update, :destroy]
+          resource :copilot, only: [], controller: 'copilot' do
+            post :chat
+            post :confirm
+          end
           resources :agents, only: [:index, :create, :update, :destroy] do
             post :bulk_create, on: :collection
           end
@@ -157,6 +166,7 @@ Rails.application.routes.draw do
               post :unmute
               post :transcript
               post :toggle_status
+              post :toggle_ai
               post :toggle_priority
               post :toggle_typing_status
               post :update_last_seen
@@ -684,6 +694,7 @@ Rails.application.routes.draw do
         post :add_plan_pack, on: :member
       end
       resources :plans, only: [:index, :new, :create, :show, :edit, :update, :destroy]
+      resource :ai_usage, only: [:show]
       resources :users, only: [:index, :new, :create, :show, :edit, :update, :destroy] do
         delete :avatar, on: :member, action: :destroy_avatar
       end

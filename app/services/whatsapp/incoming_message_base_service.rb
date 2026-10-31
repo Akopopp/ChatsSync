@@ -183,9 +183,22 @@ class Whatsapp::IncomingMessageBaseService
                       @contact_inbox.conversations
                                     .where.not(status: :resolved).last
                     end
-    return if @conversation
+    @conversation ||= ::Conversation.create!(conversation_params)
+    mark_ad_lead
+  end
 
-    @conversation = ::Conversation.create!(conversation_params)
+  # A message from a Click-to-WhatsApp ad or a Page button carries a `referral`.
+  # The AI agent uses this to reply inside Meta's free entry point window.
+  def mark_ad_lead
+    referral = messages_data&.first&.dig(:referral)
+    return if referral.blank? || outgoing_echo
+
+    attrs = (@conversation.additional_attributes || {}).merge(
+      'cs_ad_lead' => true,
+      'cs_ad_lead_at' => Time.current.to_i,
+      'cs_ad_source' => referral[:source_type].to_s
+    )
+    @conversation.update!(additional_attributes: attrs)
   end
 
   def attach_files

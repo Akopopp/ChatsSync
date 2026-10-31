@@ -324,6 +324,7 @@ class Message < ApplicationRecord
   def execute_after_create_commit_callbacks
     # rails issue with order of active record callbacks being executed https://github.com/rails/rails/issues/20911
     lock_conversation_over_plan_contacts
+    schedule_ai_reply
     reopen_conversation
     mark_pending_conversation_as_open_for_human_response
     set_conversation_activity
@@ -335,6 +336,13 @@ class Message < ApplicationRecord
 
   def update_contact_activity
     sender.update(last_activity_at: DateTime.now) if sender.is_a?(Contact)
+  end
+
+  # Waits a few seconds so several quick customer messages get one AI answer.
+  def schedule_ai_reply
+    return unless incoming? && sender_type == 'Contact' && account.ai_agent&.enabled
+
+    Ai::ReplyJob.set(wait: 6.seconds).perform_later(id)
   end
 
   # A new contact beyond the plan's monthly contact limit gets a locked chat:

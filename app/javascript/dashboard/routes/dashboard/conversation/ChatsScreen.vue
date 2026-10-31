@@ -2495,6 +2495,24 @@ const windowOpen = computed(() => currentChat.value?.can_reply !== false);
 const planLocked = computed(
   () => !!currentChat.value?.additional_attributes?.plan_locked
 );
+/* AI ne chat team ko de di: yahan se dobara on ho sakta hai */
+const aiOff = computed(
+  () => !!currentChat.value?.additional_attributes?.ai_off
+);
+const turnAiOn = async () => {
+  const chat = currentChat.value;
+  if (!chat?.id) return;
+  try {
+    await window.axios.post(
+      `/api/v1/accounts/${accountId.value}/conversations/${chat.id}/toggle_ai`,
+      { enabled: true }
+    );
+    chat.additional_attributes = { ...chat.additional_attributes, ai_off: false };
+    toast('AI turned on for this chat');
+  } catch (e) {
+    toast('Could not turn AI on', 'err');
+  }
+};
 const openPlanPage = () => {
   router.push({ name: 'plan_usage_index', params: { accountId: accountId.value } });
 };
@@ -3745,6 +3763,16 @@ watch(
             <span class="cs-snd2 i-lucide-send" @click="finishRec" />
           </div>
         </template>
+
+        <!-- AI ne ye chat team ko de di -->
+        <div v-if="aiOff && !planLocked && !isRecording && !isNote" class="cs-winbar">
+          <span class="i-lucide-bot-off" />
+          <div class="cs-winb">
+            <b>AI is off in this chat</b>
+            <span>The AI passed this chat to your team. Turn it back on if you want it to keep replying.</span>
+          </div>
+          <button class="cs-winbtn" @click.stop="turnAiOn">Turn AI on</button>
+        </div>
 
         <!-- plan ki contact limit poori: chat locked -->
         <div v-if="planLocked && !isRecording && !isNote" class="cs-winbar">
