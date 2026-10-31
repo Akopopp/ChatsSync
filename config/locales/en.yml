@@ -34,10 +34,10 @@ en:
     preview:
       handoff: '(The AI would pass this chat to your team and send: "%{message}")'
       image: '(sends the picture: %{name})'
+      video: '(sends the video: %{name})'
   copilot:
     done: Done.
-    image_only: Please attach a picture (JPG, PNG or WebP).
-    image_too_big: This picture is too big. Please use one under 5 MB.
+    image_only: Please attach a picture (JPG or PNG) or a video (MP4).
     too_many_steps: That needed too many steps. Please ask in a simpler way.
     unavailable: Copilot is busy or not set up right now. Please try again in a minute.
   hello: 'Hello world'
@@ -61,6 +61,9 @@ en:
     ai:
       business_info_missing: Add your business information first, then generate FAQs from it.
       copilot_limit: Your plan's monthly AI assistant limit is used up. Upgrade your plan or buy a pack.
+      image_too_big: This picture is too big. Please use one under 5 MB.
+      video_too_big: This video is too big. WhatsApp allows videos up to 16 MB, so please use a shorter or smaller MP4.
+      media_type: Please use a picture (JPG or PNG) or a video (MP4).
     plan:
       channel_limit: Your plan allows %{limit} of these connections. Upgrade your plan or contact ChatsSync to add more.
       campaign_limit: Your plan allows %{limit} campaigns per month. Upgrade your plan or contact ChatsSync to add more.

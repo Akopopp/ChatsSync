@@ -437,7 +437,7 @@
   },
   "COPILOT": {
     "TITLE": "Copilot",
-    "DESCRIPTION": "Ask anything about your chats, team and AI, or tell Copilot what to do. You can write in English or Roman Urdu, and attach product pictures for your AI. It asks you before changing anything.",
+    "DESCRIPTION": "Ask anything about your chats, team and AI, or tell Copilot what to do. You can write in English or Roman Urdu, and attach product pictures or videos for your AI. It asks you before changing anything.",
     "TRY": "Try asking:",
     "SUGGESTIONS": {
       "TODAY": "How many messages came today, and who replied to how many?",
@@ -447,9 +447,9 @@
     },
     "PLACEHOLDER": "Type your question or task...",
     "SEND": "Send",
-    "ATTACH": "Attach pictures",
-    "REMOVE_PICTURE": "Remove picture",
-    "UPLOAD_FAILED": "Could not upload the picture. Please try again.",
+    "ATTACH": "Attach pictures or videos",
+    "REMOVE_PICTURE": "Remove",
+    "UPLOAD_FAILED": "Could not upload the file. Please try again.",
     "THINKING": "Copilot is working...",
     "CONFIRM": "Yes, do it",
     "CANCEL": "Cancel",
@@ -504,11 +504,11 @@
       "ADD": "Add FAQ"
     },
     "IMAGES": {
-      "TITLE": "Product images",
-      "DESCRIPTION": "The AI can send these pictures when a customer asks about the product.",
+      "TITLE": "Product pictures and videos",
+      "DESCRIPTION": "The AI can send these pictures and videos when a customer asks about the product. Pictures up to 5 MB, videos (MP4) up to 16 MB.",
       "NAME": "Product name",
       "DETAILS": "Price and details",
-      "ADD": "Add image"
+      "ADD": "Add picture or video"
     },
     "PREVIEW": {
       "TITLE": "Try your AI",

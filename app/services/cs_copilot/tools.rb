@@ -45,9 +45,9 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
        { title: { type: 'string' }, color: { type: 'string', description: 'Hex color like #1f93ff' } }, ['title']),
     fn('add_faqs', 'Add FAQs to the AI agent. Put several ways of asking in one question, separated by " / ".',
        { faqs: { type: 'array', items: { type: 'object', properties: { question: { type: 'string' }, answer: { type: 'string' } } } } }, ['faqs']),
-    fn('add_product_images', 'Save pictures the user attached as AI product images, so the AI can send them to customers.',
+    fn('add_product_images', 'Save pictures or videos the user attached as AI product media, so the AI can send them to customers.',
        { images: { type: 'array', items: { type: 'object', properties: {
-         image: { type: 'string', description: 'Attached picture, like img1' },
+         image: { type: 'string', description: 'Attached picture or video, like img1' },
          name: { type: 'string', description: 'Product name' },
          details: { type: 'string', description: 'Price and details' }
        } } } }, ['images']),
@@ -82,7 +82,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     when 'create_canned_response' then "Save canned response /#{args[:short_code]}"
     when 'create_label' then "Create label \"#{args[:title]}\""
     when 'add_faqs' then "Add #{Array(args[:faqs]).size} FAQs to the AI agent"
-    when 'add_product_images' then "Save #{Array(args[:images]).size} product pictures for the AI: " \
+    when 'add_product_images' then "Save #{Array(args[:images]).size} product pictures/videos for the AI: " \
                                    "#{Array(args[:images]).pluck('name').compact.join(', ')}"
     when 'update_ai_agent' then "Change AI settings: #{args.except(:business_info_to_add).keys.join(', ')}" \
                                 "#{' and add business info' if args[:business_info_to_add].present?}"

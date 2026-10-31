@@ -39,7 +39,7 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
 
     images = builder.image_items(reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i))
     text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
-    images.each { |item| text += "\n#{I18n.t('ai.preview.image', name: item.question)}" }
+    images.each { |item| text += "\n#{I18n.t(item.video? ? 'ai.preview.video' : 'ai.preview.image', name: item.question)}" }
     text
   end
 

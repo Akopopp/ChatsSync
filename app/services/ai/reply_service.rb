@@ -144,7 +144,7 @@ class Ai::ReplyService
       content: text.presence, sender: agent.bot,
       content_attributes: { 'ai_generated' => true, 'ai_answered_up_to' => answered_up_to }
     )
-    image_items.each { |item| reply.attachments.new(account_id: account.id, file_type: :image, file: item.image.blob) }
+    image_items.each { |item| reply.attachments.new(account_id: account.id, file_type: item.video? ? :video : :image, file: item.image.blob) }
     reply.save!
   end
 end

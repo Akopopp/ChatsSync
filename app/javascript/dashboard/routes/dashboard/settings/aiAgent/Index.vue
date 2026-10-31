@@ -355,8 +355,15 @@ onMounted(fetchAll);
                 class="grid gap-1 p-2 rounded-lg border border-n-weak"
                 :class="{ 'opacity-50': !image.enabled }"
               >
+                <video
+                  v-if="image.image_url && image.video"
+                  :src="image.image_url"
+                  controls
+                  preload="metadata"
+                  class="w-full h-24 object-cover rounded"
+                />
                 <img
-                  v-if="image.image_url"
+                  v-else-if="image.image_url"
                   :src="image.image_url"
                   class="w-full h-24 object-cover rounded"
                 />
@@ -376,7 +383,7 @@ onMounted(fetchAll);
               <input
                 ref="imageInput"
                 type="file"
-                accept="image/*"
+                accept="image/*,video/mp4,video/3gpp"
                 @change="onImageSelected"
               />
               <input

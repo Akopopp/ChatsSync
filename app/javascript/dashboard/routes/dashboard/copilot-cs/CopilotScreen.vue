@@ -16,7 +16,7 @@ const isThinking = ref(false);
 const pendingAction = ref(null);
 const listRef = ref(null);
 const fileInput = ref(null);
-// Pictures picked but not sent yet: { file, preview }
+// Pictures/videos picked but not sent yet: { file, preview, video }
 const pickedFiles = ref([]);
 // Pictures already sent in this chat: { img1: signedId }, so Copilot can save them later
 const uploads = ref({});
@@ -39,11 +39,15 @@ const addMessage = (role, content, images = []) => {
 };
 
 const pickFiles = event => {
-  const files = [...event.target.files].filter(file =>
-    file.type.startsWith('image/')
+  const files = [...event.target.files].filter(
+    file => file.type.startsWith('image/') || file.type.startsWith('video/')
   );
   pickedFiles.value.push(
-    ...files.map(file => ({ file, preview: URL.createObjectURL(file) }))
+    ...files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      video: file.type.startsWith('video/'),
+    }))
   );
   event.target.value = '';
 };
@@ -87,7 +91,10 @@ const send = async text => {
     );
     return;
   }
-  const previews = pickedFiles.value.map(item => item.preview);
+  const previews = pickedFiles.value.map(({ preview, video }) => ({
+    preview,
+    video,
+  }));
   pickedFiles.value = [];
   draft.value = '';
   addMessage('user', [typed, note].filter(Boolean).join('\n'), previews);
@@ -188,12 +195,19 @@ const onKey = event => {
         "
       >
         <div v-if="message.images?.length" class="flex flex-wrap gap-2 mb-1">
-          <img
-            v-for="image in message.images"
-            :key="image"
-            :src="image"
-            class="size-20 object-cover rounded-lg"
-          />
+          <template v-for="media in message.images" :key="media.preview">
+            <video
+              v-if="media.video"
+              :src="media.preview"
+              controls
+              class="w-40 rounded-lg"
+            />
+            <img
+              v-else
+              :src="media.preview"
+              class="size-20 object-cover rounded-lg"
+            />
+          </template>
         </div>
         <template
           v-for="(part, partIndex) in parts(message.content)"
@@ -236,7 +250,16 @@ const onKey = event => {
         :key="item.preview"
         class="relative"
       >
-        <img :src="item.preview" class="size-16 object-cover rounded-lg" />
+        <video
+          v-if="item.video"
+          :src="item.preview"
+          class="size-16 object-cover rounded-lg"
+        />
+        <img
+          v-else
+          :src="item.preview"
+          class="size-16 object-cover rounded-lg"
+        />
         <button
           class="absolute -top-2 -right-2 size-5 rounded-full bg-n-slate-12 text-n-background text-xs"
           :title="$t('COPILOT.REMOVE_PICTURE')"
@@ -251,7 +274,7 @@ const onKey = event => {
       <input
         ref="fileInput"
         type="file"
-        accept="image/*"
+        accept="image/*,video/mp4,video/3gpp"
         multiple
         class="hidden"
         @change="pickFiles"

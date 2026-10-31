@@ -35,6 +35,6 @@ class Api::V1::Accounts::AiKnowledgeItemsController < Api::V1::Accounts::BaseCon
   end
 
   def item_json(item)
-    item.as_json(only: %i[id kind question answer enabled]).merge(image_url: item.image_url)
+    item.as_json(only: %i[id kind question answer enabled]).merge(image_url: item.image_url, video: item.video?)
   end
 end
