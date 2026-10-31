@@ -176,7 +176,7 @@ class CsCopilot::Tools
     scope = scope.where(inbox_id: args[:inbox_id]) if args[:inbox_id].present?
     outgoing = scope.where(message_type: :outgoing)
     ai = outgoing.where("(content_attributes::jsonb ->> 'ai_generated') = 'true'")
-    by_member = outgoing.where(sender_type: 'User').group(:sender_id).count.transform_keys { |id| agent_name(id) }
+    by_member = outgoing.where(sender_type: 'User').reorder(nil).group(:sender_id).count.transform_keys { |id| agent_name(id) }
     { from: time(period.first), to: time(period.last), received_from_customers: scope.where(message_type: :incoming).count,
       sent_by_team: by_member, sent_by_ai: ai.count,
       sent_by_chatbot_and_flows: outgoing.where(sender_type: 'AgentBot').where.not(id: ai.select(:id)).count,
@@ -186,7 +186,8 @@ class CsCopilot::Tools
 
   def tool_agent_activity(args)
     period = range(args)
-    sent = account.messages.where(created_at: period, private: false, message_type: :outgoing, sender_type: 'User').group(:sender_id).count
+    sent = account.messages.where(created_at: period, private: false, message_type: :outgoing, sender_type: 'User')
+                  .reorder(nil).group(:sender_id).count
     resolved = ReportingEvent.where(account_id: account.id, name: 'conversation_resolved', created_at: period).group(:user_id).count
     { from: time(period.first), to: time(period.last),
       members: account.users.map { |member| { name: member.name, messages_sent: sent[member.id] || 0, chats_resolved: resolved[member.id] || 0 } } }

@@ -48,10 +48,14 @@ class CsCopilot::Agent
     { reply: text.to_s.strip.presence, pending_action: { tool: name, args: args, summary: tools.summary(name, args) } }
   end
 
+  # Any failure goes back to the model as an error, so it can tell the user instead of crashing.
   def run_tool(name, args)
     tools.execute(name, args).to_json.truncate(MAX_RESULT_CHARS)
   rescue CsCopilot::Tools::Error, ActiveRecord::RecordNotFound, ActiveRecord::RecordInvalid => e
     { error: e.message }.to_json
+  rescue StandardError => e
+    Rails.logger.error("[ChatsSync Copilot] #{name} failed: #{e.class} #{e.message}")
+    { error: 'This lookup failed. Try asking in a different way.' }.to_json
   end
 
   def parse_args(raw)
