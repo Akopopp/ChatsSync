@@ -1,6 +1,6 @@
 # Everything the Copilot can look up or do in ChatsSync, with the same permissions as the signed-in user.
 # Read tools run straight away; write tools are only proposed and run after the user confirms.
-class Copilot::Tools
+class CsCopilot::Tools
   class Error < StandardError; end
 
   TIMEZONE = 'Asia/Karachi'.freeze

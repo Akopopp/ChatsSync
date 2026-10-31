@@ -1,6 +1,6 @@
 # OpenAI-style chat with tool calling. Groq goes first (it does not train on API data),
 # Gemini's OpenAI-compatible endpoint is the backup. Change the order with COPILOT_MODELS.
-class Copilot::Llm
+class CsCopilot::Llm
   ENDPOINTS = {
     'groq' => ['https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY'],
     'gemini' => ['https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'GEMINI_API_KEY']

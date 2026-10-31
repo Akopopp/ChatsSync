@@ -11,14 +11,14 @@ class Api::V1::Accounts::CopilotController < Api::V1::Accounts::BaseController
 
   def confirm
     render json: agent.confirm(params.require(:tool).to_s, params[:args].respond_to?(:to_unsafe_h) ? params[:args].to_unsafe_h : {})
-  rescue Copilot::Tools::Error, ActiveRecord::RecordNotFound, ActiveRecord::RecordInvalid => e
+  rescue CsCopilot::Tools::Error, ActiveRecord::RecordNotFound, ActiveRecord::RecordInvalid => e
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
   private
 
   def agent
-    Copilot::Agent.new(account: Current.account, user: Current.user)
+    CsCopilot::Agent.new(account: Current.account, user: Current.user)
   end
 
   def history_params

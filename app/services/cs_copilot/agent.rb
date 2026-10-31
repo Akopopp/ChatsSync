@@ -1,6 +1,6 @@
 # Runs one Copilot request: the model may look things up (read tools) several times,
 # then answers. If it wants to change something, the action is returned for the user to confirm.
-class Copilot::Agent
+class CsCopilot::Agent
   MAX_STEPS = 6
   MAX_RESULT_CHARS = 6000
   HISTORY_LIMIT = 12
@@ -11,7 +11,7 @@ class Copilot::Agent
   def run(history)
     messages = [{ role: 'system', content: system_prompt }] + history.last(HISTORY_LIMIT).map { |item| { role: item[:role], content: item[:content].to_s } }
     MAX_STEPS.times do
-      reply = Copilot::Llm.chat(messages: messages, tools: Copilot::Tools::DEFINITIONS)
+      reply = CsCopilot::Llm.chat(messages: messages, tools: CsCopilot::Tools::DEFINITIONS)
       calls = Array(reply['tool_calls'])
       return { reply: reply['content'].to_s.strip } if calls.empty?
 
@@ -28,7 +28,7 @@ class Copilot::Agent
   end
 
   def confirm(name, args)
-    raise Copilot::Tools::Error, 'This action cannot be confirmed.' unless tools.write?(name)
+    raise CsCopilot::Tools::Error, 'This action cannot be confirmed.' unless tools.write?(name)
 
     tools.execute(name, args)
     { reply: "#{I18n.t('copilot.done')} #{tools.summary(name, args)}." }
@@ -37,7 +37,7 @@ class Copilot::Agent
   private
 
   def tools
-    @tools ||= Copilot::Tools.new(account: account, user: user)
+    @tools ||= CsCopilot::Tools.new(account: account, user: user)
   end
 
   def pending(name, args, text)
@@ -46,7 +46,7 @@ class Copilot::Agent
 
   def run_tool(name, args)
     tools.execute(name, args).to_json.truncate(MAX_RESULT_CHARS)
-  rescue Copilot::Tools::Error, ActiveRecord::RecordNotFound, ActiveRecord::RecordInvalid => e
+  rescue CsCopilot::Tools::Error, ActiveRecord::RecordNotFound, ActiveRecord::RecordInvalid => e
     { error: e.message }.to_json
   end
 
@@ -60,7 +60,7 @@ class Copilot::Agent
     role = account.account_users.find_by(user_id: user.id)&.role
     <<~PROMPT
       You are ChatsSync Copilot, the assistant inside the ChatsSync WhatsApp CRM for the business "#{account.name}".
-      You help #{user.name} (role: #{role}) run their customer chats. Today is #{Time.current.in_time_zone(Copilot::Tools::TIMEZONE).strftime('%A %d %B %Y, %I:%M %p')} (Pakistan time).
+      You help #{user.name} (role: #{role}) run their customer chats. Today is #{Time.current.in_time_zone(CsCopilot::Tools::TIMEZONE).strftime('%A %d %B %Y, %I:%M %p')} (Pakistan time).
 
       - Use the tools to look up real data before answering. Never guess numbers, names or messages.
       - To change anything, call the matching action tool. The user will see a confirm button, so do not ask "should I?" first.
