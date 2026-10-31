@@ -79,9 +79,9 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     render json: { error: 'Message status update is only allowed for API inboxes' }, status: :forbidden unless @conversation.inbox.api?
   end
 
-  # Private notes stay allowed; customer replies wait for a plan upgrade.
+  # Private notes and incoming customer messages (API inboxes) stay allowed; replies wait for a plan upgrade.
   def ensure_conversation_not_plan_locked
-    return if ActiveModel::Type::Boolean.new.cast(params[:private])
+    return if ActiveModel::Type::Boolean.new.cast(params[:private]) || params[:message_type].to_s == 'incoming'
     return unless @conversation.additional_attributes&.dig('plan_locked')
 
     render_payment_required(I18n.t('errors.plan.conversation_locked'))

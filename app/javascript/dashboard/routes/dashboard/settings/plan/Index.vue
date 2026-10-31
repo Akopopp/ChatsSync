@@ -33,6 +33,8 @@ const fetchUsage = async () => {
   }
 };
 
+onMounted(fetchUsage);
+
 const accountTag = computed(
   () => `${currentAccount.value?.name} (#${currentAccount.value?.id})`
 );
@@ -44,7 +46,9 @@ const contactLink = text =>
   );
 
 const endsOn = computed(() =>
-  data.value?.ends_at ? format(new Date(data.value.ends_at), 'dd MMM, yyyy') : '-'
+  data.value?.ends_at
+    ? format(new Date(data.value.ends_at), 'dd MMM, yyyy')
+    : '-'
 );
 
 const daysLeft = computed(() => {
@@ -68,7 +72,7 @@ const rows = computed(() =>
 <template>
   <SettingsLayout
     :is-loading="isLoading"
-    :loading-message="$t('ATTRIBUTES_MGMT.LOADING')"
+    :loading-message="$t('PLAN_USAGE.LOADING')"
   >
     <template #header>
       <BaseSettingsHeader

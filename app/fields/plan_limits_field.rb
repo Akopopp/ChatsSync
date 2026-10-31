@@ -23,7 +23,8 @@ class PlanLimitsField < Administrate::Field::Base
   end
 
   def values
-    (data.presence || {}).to_h.stringify_keys
+    order = Plan::LIMIT_KEYS + Plan::FEATURE_KEYS
+    (data.presence || {}).to_h.stringify_keys.sort_by { |key, _| order.index(key) || order.size }.to_h
   end
 
   def extra_keys

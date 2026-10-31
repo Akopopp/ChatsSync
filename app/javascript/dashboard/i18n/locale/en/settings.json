@@ -435,6 +435,7 @@
   },
   "PLAN_USAGE": {
     "TITLE": "Plan & Usage",
+    "LOADING": "Loading your plan...",
     "DESCRIPTION": "See your ChatsSync plan, when it ends, and how much of each limit you have used this month.",
     "NO_PLAN": "No plan assigned yet",
     "PLAN_DESCRIPTION": "Your current plan. Contact ChatsSync on WhatsApp to renew or upgrade.",
