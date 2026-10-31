@@ -437,20 +437,47 @@
   },
   "COPILOT": {
     "TITLE": "Copilot",
-    "DESCRIPTION": "Ask anything about your chats, team and AI, or tell Copilot what to do. You can write in English or Roman Urdu, and attach product pictures or videos for your AI. It asks you before changing anything.",
-    "TRY": "Try asking:",
+    "SUBTITLE": "Your AI assistant for chats, team, AI agent and plan",
+    "GREETING": "Hi {name}, how can I help today?",
+    "DESCRIPTION": "Ask about your chats, team and AI, or tell Copilot what to do. Write in English or Roman Urdu, and attach product pictures or videos for your AI. Copilot asks before changing anything.",
+    "NEW_CHAT": "New chat",
     "SUGGESTIONS": {
-      "TODAY": "How many messages came today, and who replied to how many?",
-      "UNANSWERED": "Which open chats have not been answered yet?",
-      "TEAM": "How many chats did each agent resolve this week?",
-      "FAQS": "Make 10 FAQs for my AI from my business info"
+      "TODAY": {
+        "TITLE": "Today's summary",
+        "PROMPT": "How many messages came today, and who replied to how many?"
+      },
+      "UNANSWERED": {
+        "TITLE": "Unanswered chats",
+        "PROMPT": "Which open chats have not been answered yet?"
+      },
+      "TEAM": {
+        "TITLE": "Team performance",
+        "PROMPT": "How many chats did each agent resolve this week?"
+      },
+      "FAQS": {
+        "TITLE": "Train your AI",
+        "PROMPT": "Make 10 FAQs for my AI from my business info"
+      },
+      "MEDIA": {
+        "TITLE": "Add product pictures",
+        "PROMPT": "I want to add product pictures and videos so the AI can send them to customers"
+      },
+      "PLAN": {
+        "TITLE": "Plan usage",
+        "PROMPT": "How much of my plan is used this month?"
+      }
     },
-    "PLACEHOLDER": "Type your question or task...",
+    "PLACEHOLDER": "Ask Copilot anything, or tell it what to do...",
+    "HINT": "Enter to send, Shift + Enter for a new line",
     "SEND": "Send",
     "ATTACH": "Attach pictures or videos",
     "REMOVE_PICTURE": "Remove",
+    "FILES_ATTACHED": "{count} file(s) attached",
     "UPLOAD_FAILED": "Could not upload the file. Please try again.",
+    "COPY": "Copy",
+    "COPIED": "Copied",
     "THINKING": "Copilot is working...",
+    "CONFIRM_TITLE": "Please confirm",
     "CONFIRM": "Yes, do it",
     "CANCEL": "Cancel",
     "CANCELLED": "Okay, I did not change anything.",

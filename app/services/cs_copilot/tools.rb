@@ -4,9 +4,9 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   class Error < StandardError; end
 
   TIMEZONE = 'Asia/Karachi'.freeze
-  WRITE_TOOLS = %w[add_labels assign_conversation change_status add_private_note send_reply
-                   create_canned_response create_label add_faqs add_product_images update_ai_agent].freeze
-  ADMIN_TOOLS = %w[create_canned_response create_label add_faqs add_product_images update_ai_agent].freeze
+  WRITE_TOOLS = %w[add_labels assign_conversation change_status add_private_note send_reply set_chat_ai
+                   create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent].freeze
+  ADMIN_TOOLS = %w[create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent].freeze
 
   def self.fn(name, description, properties = {}, required = [])
     { type: 'function', function: { name: name, description: description,
@@ -15,6 +15,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   DATE = { type: 'string', description: 'Date as YYYY-MM-DD (Pakistan time)' }.freeze
   CHAT = { type: 'integer', description: 'Chat number shown as #number' }.freeze
+  CHATS = { type: 'array', items: { type: 'integer' }, description: 'Several chat numbers, to do the same thing to all of them' }.freeze
 
   DEFINITIONS = [
     fn('search_conversations', 'Find chats. Filter by words in messages or contact name/phone, status, label, inbox, agent and dates.',
@@ -30,13 +31,17 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     fn('list_canned_responses', 'List saved canned responses.'),
     fn('plan_usage', 'Show the ChatsSync plan, end date and how much of each limit is used.'),
     fn('ai_settings', 'Show the AI agent settings and how many FAQs and images it has.'),
-    fn('add_labels', 'Add labels to a chat.', { conversation_id: CHAT, labels: { type: 'array', items: { type: 'string' } } },
-       %w[conversation_id labels]),
-    fn('assign_conversation', 'Assign a chat to a team member and/or a team.',
-       { conversation_id: CHAT, agent_id: { type: 'integer' }, team_id: { type: 'integer' } }, ['conversation_id']),
-    fn('change_status', 'Open, resolve or mark a chat pending.',
-       { conversation_id: CHAT, status: { type: 'string', enum: %w[open resolved pending] } },
-       %w[conversation_id status]),
+    fn('list_ai_knowledge', 'List the AI agent FAQs and product pictures/videos with their ids.', { query: { type: 'string' } }),
+    fn('chat_stats', 'Chats in a date range: new, resolved, open now, waiting, and average first reply time, per inbox.',
+       { from_date: DATE, to_date: DATE }),
+    fn('add_labels', 'Add labels to one or more chats.',
+       { conversation_id: CHAT, conversation_ids: CHATS, labels: { type: 'array', items: { type: 'string' } } }, ['labels']),
+    fn('assign_conversation', 'Assign one or more chats to a team member and/or a team.',
+       { conversation_id: CHAT, conversation_ids: CHATS, agent_id: { type: 'integer' }, team_id: { type: 'integer' } }),
+    fn('change_status', 'Open, resolve or mark pending one or more chats.',
+       { conversation_id: CHAT, conversation_ids: CHATS, status: { type: 'string', enum: %w[open resolved pending] } }, ['status']),
+    fn('set_chat_ai', 'Turn the AI agent on or off in one or more chats.',
+       { conversation_id: CHAT, conversation_ids: CHATS, on: { type: 'boolean' } }, ['on']),
     fn('add_private_note', 'Add a private note to a chat (customers do not see it).', { conversation_id: CHAT, text: { type: 'string' } },
        %w[conversation_id text]),
     fn('send_reply', 'Send a message to the customer in a chat.', { conversation_id: CHAT, text: { type: 'string' } }, %w[conversation_id text]),
@@ -51,6 +56,8 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
          name: { type: 'string', description: 'Product name' },
          details: { type: 'string', description: 'Price and details' }
        } } } }, ['images']),
+    fn('remove_ai_knowledge', 'Delete AI agent FAQs or product pictures/videos by id (get ids from list_ai_knowledge).',
+       { ids: { type: 'array', items: { type: 'integer' } } }, ['ids']),
     fn('update_ai_agent', 'Change AI agent settings.',
        { enabled: { type: 'boolean' }, reply_scope: { type: 'string', enum: %w[ad_leads all] },
          business_info_to_add: { type: 'string', description: 'Text to add at the end of the business information' },
@@ -73,10 +80,13 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   def summary(name, args)
     args = args.with_indifferent_access
     case name
-    when 'add_labels' then "Add labels #{Array(args[:labels]).join(', ')} to chat ##{args[:conversation_id]}"
-    when 'assign_conversation' then "Assign chat ##{args[:conversation_id]}#{" to #{agent_name(args[:agent_id])}" if args[:agent_id]}" \
+    when 'add_labels' then "Add labels #{Array(args[:labels]).join(', ')} to #{chats_text(args)}"
+    when 'assign_conversation' then "Assign #{chats_text(args)}#{" to #{agent_name(args[:agent_id])}" if args[:agent_id]}" \
                                     "#{" (team #{args[:team_id]})" if args[:team_id]}"
-    when 'change_status' then "Mark chat ##{args[:conversation_id]} as #{args[:status]}"
+    when 'change_status' then "Mark #{chats_text(args)} as #{args[:status]}"
+    when 'set_chat_ai' then "Turn the AI #{args[:on] ? 'on' : 'off'} in #{chats_text(args)}"
+    when 'remove_ai_knowledge' then "Delete #{Array(args[:ids]).size} AI FAQs/media: " \
+                                    "#{account.ai_knowledge_items.where(id: args[:ids]).pluck(:question).map { |q| q.truncate(40) }.join('; ')}"
     when 'add_private_note' then "Add a private note to chat ##{args[:conversation_id]}: \"#{args[:text].to_s.truncate(120)}\""
     when 'send_reply' then "Send to the customer in chat ##{args[:conversation_id]}: \"#{args[:text].to_s.truncate(200)}\""
     when 'create_canned_response' then "Save canned response /#{args[:short_code]}"
@@ -109,6 +119,27 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   def conversation(display_id)
     conversations.find_by(display_id: display_id) || raise(Error, "Chat ##{display_id} not found or you do not have access to it.")
+  end
+
+  MAX_BULK = 50
+
+  def chat_ids(args)
+    ids = (Array(args[:conversation_ids]) + [args[:conversation_id]]).compact_blank.map(&:to_i).uniq
+    raise Error, 'Tell me which chats.' if ids.empty?
+    raise Error, "I can change up to #{MAX_BULK} chats at a time." if ids.size > MAX_BULK
+
+    ids
+  end
+
+  def chats(args)
+    chat_ids(args).map { |id| conversation(id) }
+  end
+
+  def chats_text(args)
+    ids = chat_ids(args)
+    ids.size == 1 ? "chat ##{ids.first}" : "#{ids.size} chats (#{ids.first(10).map { |id| "##{id}" }.join(', ')}#{' ...' if ids.size > 10})"
+  rescue Error
+    'the chats'
   end
 
   def range(args, default_days: 7)
@@ -235,23 +266,33 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   end
 
   def tool_add_labels(args)
-    chat = conversation(args[:conversation_id])
-    chat.add_labels(Array(args[:labels]).map { |label| label.to_s.parameterize })
-    { done: true, labels: chat.reload.label_list }
+    labels = Array(args[:labels]).map { |label| label.to_s.parameterize }
+    updated = chats(args).each { |chat| chat.add_labels(labels) }
+    { done: true, chats: updated.size, labels: labels }
   end
 
   def tool_assign_conversation(args)
-    chat = conversation(args[:conversation_id])
     attrs = {}
     attrs[:assignee_id] = account.users.find(args[:agent_id]).id if args[:agent_id].present?
     attrs[:team_id] = account.teams.find(args[:team_id]).id if args[:team_id].present?
-    chat.update!(attrs)
-    { done: true }
+    raise Error, 'Tell me the team member or team.' if attrs.empty?
+
+    updated = chats(args).each { |chat| chat.update!(attrs) }
+    { done: true, chats: updated.size }
   end
 
   def tool_change_status(args)
-    conversation(args[:conversation_id]).update!(status: args[:status])
-    { done: true }
+    updated = chats(args).each { |chat| chat.update!(status: args[:status]) }
+    { done: true, chats: updated.size }
+  end
+
+  def tool_set_chat_ai(args)
+    updated = chats(args).each do |chat|
+      attrs = (chat.additional_attributes || {}).except('ai_off')
+      attrs['ai_off'] = true unless args[:on]
+      chat.update!(additional_attributes: attrs)
+    end
+    { done: true, chats: updated.size }
   end
 
   def tool_add_private_note(args)
@@ -305,6 +346,36 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     record = account.ai_knowledge_items.new(kind: 'image', question: item['name'].presence || blob.filename.base, answer: item['details'])
     record.image.attach(blob)
     record.save ? nil : record.errors.full_messages.to_sentence
+  end
+
+  def tool_list_ai_knowledge(args)
+    items = account.ai_knowledge_items.with_attached_image.order(:kind, :id)
+    if args[:query].present?
+      like = "%#{ActiveRecord::Base.sanitize_sql_like(args[:query])}%"
+      items = items.where('question ILIKE ? OR answer ILIKE ?', like, like)
+    end
+    { items: items.limit(60).map do |item|
+      { id: item.id, type: item.kind == 'faq' ? 'faq' : (item.video? ? 'video' : 'picture'), on: item.enabled,
+        question_or_name: item.question.truncate(120), answer_or_details: item.answer.to_s.truncate(120) }
+    end }
+  end
+
+  def tool_remove_ai_knowledge(args)
+    removed = account.ai_knowledge_items.where(id: Array(args[:ids])).destroy_all
+    { done: true, removed: removed.size }
+  end
+
+  def tool_chat_stats(args)
+    period = range(args)
+    scope = account.conversations.where(inbox_id: user.assigned_inboxes.select(:id))
+    events = ReportingEvent.where(account_id: account.id, created_at: period, inbox_id: user.assigned_inboxes.select(:id))
+    first_reply = events.where(name: 'first_response').reorder(nil).group(:inbox_id).average(:value)
+    inbox_names = account.inboxes.pluck(:id, :name).to_h
+    { from: time(period.first), to: time(period.last),
+      new_chats: scope.where(created_at: period).reorder(nil).group(:inbox_id).count.transform_keys { |id| inbox_names[id] },
+      resolved: events.where(name: 'conversation_resolved').reorder(nil).group(:inbox_id).count.transform_keys { |id| inbox_names[id] },
+      open_now: scope.open.count, waiting_for_bot_or_pending: scope.pending.count,
+      average_first_reply_minutes: first_reply.to_h { |id, secs| [inbox_names[id], (secs.to_f / 60).round(1)] } }
   end
 
   def tool_update_ai_agent(args)

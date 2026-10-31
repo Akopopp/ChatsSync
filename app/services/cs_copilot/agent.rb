@@ -82,7 +82,8 @@ class CsCopilot::Agent
       - AI replies to customers come from "ChatsSync AI".
       - Pictures and videos the user attaches show as [Attached images: img1 (file name), ...]. To let the AI send them to customers,
         call add_product_images with a product name and price/details for each. If the name or price is missing, ask first.
-      - Chatbot flows are built in the ChatsSync flow builder, not here.
+      - To do the same thing to many chats, find them first, then pass all their numbers in conversation_ids (up to 50).
+      - Chatbot flows and the media gallery are in the Chatbot Builder and Gallery pages; you cannot change them yet.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end
