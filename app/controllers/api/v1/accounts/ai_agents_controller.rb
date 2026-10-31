@@ -14,9 +14,9 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   # Lets the business try a customer question without sending anything.
   def preview
     question = params.require(:message).to_s.truncate(1000)
-    reply = Ai::LlmClient.chat(system: Ai::PromptBuilder.new(agent: @agent).system_prompt(question), messages: [{ role: 'user', text: question }],
-                               within: 13)
-    render json: { reply: reply }
+    builder = Ai::PromptBuilder.new(agent: @agent)
+    reply = Ai::LlmClient.chat(system: builder.system_prompt(question), messages: [{ role: 'user', text: question }], within: 13)
+    render json: { reply: readable_preview(reply, builder) }
   rescue Ai::LlmClient::Error => e
     render json: { error: e.message }, status: :service_unavailable
   end
@@ -32,6 +32,16 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   end
 
   private
+
+  # Shows the business what would happen instead of the AI's internal tags.
+  def readable_preview(reply, builder)
+    return I18n.t('ai.preview.handoff', message: @agent.default_handoff_message) if reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
+
+    images = builder.image_items(reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i))
+    text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
+    images.each { |item| text += "\n#{I18n.t('ai.preview.image', name: item.question)}" }
+    text
+  end
 
   def fetch_agent
     @agent = Current.account.ai_agent || Current.account.create_ai_agent!(business_name: Current.account.name)

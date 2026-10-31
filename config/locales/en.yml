@@ -30,6 +30,10 @@
 # available at https://guides.rubyonrails.org/i18n.html.
 
 en:
+  ai:
+    preview:
+      handoff: '(The AI would pass this chat to your team and send: "%{message}")'
+      image: '(sends the picture: %{name})'
   copilot:
     done: Done.
     too_many_steps: That needed too many steps. Please ask in a simpler way.

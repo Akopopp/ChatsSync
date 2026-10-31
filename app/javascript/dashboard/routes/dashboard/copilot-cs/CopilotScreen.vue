@@ -85,8 +85,12 @@ const openChat = event => {
   });
 };
 
+// Replies are plain text; drop any markdown bold markers the model still adds.
 const parts = content =>
-  content.split(/(#\d+)/g).map(text => ({ text, chat: /^#\d+$/.test(text) }));
+  content
+    .replace(/\*\*/g, '')
+    .split(/(#\d+)/g)
+    .map(text => ({ text, chat: /^#\d+$/.test(text) }));
 
 const onKey = event => {
   if (event.key === 'Enter' && !event.shiftKey) {

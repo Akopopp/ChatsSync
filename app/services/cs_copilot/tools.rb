@@ -23,7 +23,7 @@ class CsCopilot::Tools
          from_date: DATE, to_date: DATE, limit: { type: 'integer' } }),
     fn('get_conversation', 'Read the latest messages of one chat, with who sent each message.', { conversation_id: CHAT }, ['conversation_id']),
     fn('search_contacts', 'Find contacts by name, phone or email.', { query: { type: 'string' } }, ['query']),
-    fn('message_stats', 'Count messages in a date range: received, and sent by each team member, by AI, by the chatbot/flows and others.',
+    fn('message_stats', 'Count messages in a date range: received, and sent by each team member, by ChatsSync AI, by the chatbot/flows and others.',
        { from_date: DATE, to_date: DATE, inbox_id: { type: 'integer' } }),
     fn('agent_activity', 'Per team member: messages sent and chats resolved in a date range.', { from_date: DATE, to_date: DATE }),
     fn('list_team', 'List team members (agents and admins), teams, inboxes and labels with their ids.'),
@@ -175,11 +175,12 @@ class CsCopilot::Tools
     scope = account.messages.where(created_at: period, private: false, inbox_id: user.assigned_inboxes.select(:id))
     scope = scope.where(inbox_id: args[:inbox_id]) if args[:inbox_id].present?
     outgoing = scope.where(message_type: :outgoing)
-    ai = outgoing.where("(content_attributes::jsonb ->> 'ai_generated') = 'true'")
+    bots = outgoing.where(sender_type: 'AgentBot')
+    ai_bot_id = AgentBot.where(account_id: account.id, name: AiAgent::BOT_NAME).pick(:id)
     by_member = outgoing.where(sender_type: 'User').reorder(nil).group(:sender_id).count.transform_keys { |id| agent_name(id) }
     { from: time(period.first), to: time(period.last), received_from_customers: scope.where(message_type: :incoming).count,
-      sent_by_team: by_member, sent_by_ai: ai.count,
-      sent_by_chatbot_and_flows: outgoing.where(sender_type: 'AgentBot').where.not(id: ai.select(:id)).count,
+      sent_by_team: by_member, sent_by_chatssync_ai: bots.where(sender_id: ai_bot_id).count,
+      sent_by_chatbot_and_flows: bots.where.not(sender_id: ai_bot_id).count,
       sent_by_campaigns_and_system: outgoing.where(sender_type: nil).count,
       new_chats: account.conversations.where(created_at: period, inbox_id: user.assigned_inboxes.select(:id)).count }
   end

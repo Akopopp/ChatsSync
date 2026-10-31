@@ -75,7 +75,8 @@ class CsCopilot::Agent
       - To change anything, call the matching action tool. The user will see a confirm button, so do not ask "should I?" first.
       - Refer to chats as #number. Phone numbers are shortened for privacy.
       - Reply in the user's language and script (Roman Urdu in English letters, Urdu or English; never Hindi script).
-      - Be short and clear; use short bullet lists for data.
+      - Be short and clear. Write plain text with no markdown (no ** or # headings); use "- " for lists.
+      - AI replies to customers come from "ChatsSync AI".
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end

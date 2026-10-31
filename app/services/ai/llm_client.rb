@@ -180,13 +180,8 @@ class Ai::LlmClient
     end
     # Gemma always thinks before answering, and its thinking counts as output.
     output_tokens = model.start_with?('gemma') ? max_tokens + 1500 : max_tokens
-    body = { contents: contents, generationConfig: { temperature: 0.4, maxOutputTokens: output_tokens } }
-    if model.start_with?('gemma')
-      # Gemma models on the Gemini API take no system instruction, so it goes in the first turn.
-      contents.first[:parts].unshift({ text: "#{system}\n\n---\n" })
-    else
-      body[:systemInstruction] = { parts: [{ text: system }] }
-    end
+    body = { contents: contents, systemInstruction: { parts: [{ text: system }] },
+             generationConfig: { temperature: 0.4, maxOutputTokens: output_tokens } }
     response = post_json(format(GEMINI_URL, model: model), body, 'x-goog-api-key' => ENV.fetch('GEMINI_API_KEY'))
     response.dig('candidates', 0, 'content', 'parts')&.reject { |part| part['thought'] }&.filter_map { |part| part['text'] }&.join
   end

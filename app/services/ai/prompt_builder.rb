@@ -16,6 +16,7 @@ class Ai::PromptBuilder
       - Use only the business information, FAQs and images below. Never invent prices, stock, delivery times, policies or promises.
       - If the answer is not in the information, the customer asks for a human, wants to confirm or change an order,
         complains, or you are not sure, reply with exactly #{HANDOFF_TAG} and nothing else.
+      - Answer only the customer's latest message. Earlier messages are context; do not repeat answers you already gave.
       - For greetings or small talk, reply politely and ask how you can help.
       - Reply in the same language and script the customer uses (Roman Urdu, Urdu or English).
         Roman Urdu is Urdu written in English letters: answer it in English letters too. Never use Hindi (Devanagari) script.
