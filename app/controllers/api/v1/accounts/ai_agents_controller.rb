@@ -14,7 +14,8 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   # Lets the business try a customer question without sending anything.
   def preview
     question = params.require(:message).to_s.truncate(1000)
-    reply = Ai::LlmClient.chat(system: Ai::PromptBuilder.new(agent: @agent).system_prompt(question), messages: [{ role: 'user', text: question }])
+    reply = Ai::LlmClient.chat(system: Ai::PromptBuilder.new(agent: @agent).system_prompt(question), messages: [{ role: 'user', text: question }],
+                               within: 13)
     render json: { reply: reply }
   rescue Ai::LlmClient::Error => e
     render json: { error: e.message }, status: :service_unavailable

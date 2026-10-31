@@ -3,7 +3,7 @@ class Ai::FaqGenerator
   pattr_initialize [:agent!, :count]
 
   def perform
-    reply = Ai::LlmClient.chat(system: system_prompt, messages: [{ role: 'user', text: request_text }], max_tokens: 3000)
+    reply = Ai::LlmClient.chat(system: system_prompt, messages: [{ role: 'user', text: request_text }], max_tokens: 3000, within: 13, fast: true)
     faqs = parse(reply)
     agent.account.increment_plan_usage!(:copilot_tasks)
     faqs.filter_map do |faq|

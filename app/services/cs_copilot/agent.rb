@@ -4,6 +4,8 @@ class CsCopilot::Agent
   MAX_STEPS = 6
   MAX_RESULT_CHARS = 6000
   HISTORY_LIMIT = 12
+  # Web requests are cut off after 15 seconds, so the whole run has to finish before that.
+  TIME_LIMIT = 13
 
   pattr_initialize [:account!, :user!]
 
@@ -11,8 +13,9 @@ class CsCopilot::Agent
   def run(history)
     recent = history.last(HISTORY_LIMIT).map { |item| { role: item[:role], content: item[:content].to_s } }
     messages = [{ role: 'system', content: system_prompt }] + recent
+    deadline = Ai::LlmClient.clock + TIME_LIMIT
     MAX_STEPS.times do
-      reply = CsCopilot::Llm.chat(messages: messages, tools: CsCopilot::Tools::DEFINITIONS)
+      reply = CsCopilot::Llm.chat(messages: messages, tools: CsCopilot::Tools::DEFINITIONS, deadline: deadline)
       calls = Array(reply['tool_calls'])
       return { reply: reply['content'].to_s.strip } if calls.empty?
 

@@ -8,12 +8,16 @@ class CsCopilot::Llm
   DEFAULT_MODELS = 'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
 
   # Returns the assistant message hash: { 'content' => ..., 'tool_calls' => [...] }
-  def self.chat(messages:, tools:)
+  # deadline: Ai::LlmClient.clock time by which the answer is needed
+  def self.chat(messages:, tools:, deadline:)
     errors = []
     models.each do |provider, model|
       next errors << "#{model}: paused" if Ai::LlmClient.paused_for(model).positive?
 
-      message = request(provider, model, messages, tools)
+      time_left = deadline - Ai::LlmClient.clock
+      break errors << 'out of time' if time_left < 2
+
+      message = request(provider, model, messages, tools, [Ai::LlmClient::READ_TIMEOUT, time_left - 0.5].min)
       next if message.blank?
 
       Ai::LlmClient.track(model)
@@ -34,13 +38,13 @@ class CsCopilot::Llm
     end
   end
 
-  def self.request(provider, model, messages, tools)
+  def self.request(provider, model, messages, tools, read_timeout)
     url, key_name = ENDPOINTS[provider]
     body = { model: model, messages: messages, tools: tools, tool_choice: 'auto', temperature: 0.2, max_completion_tokens: 2000 }
     body[:reasoning_effort] = 'low' if provider == 'groq'
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{ENV.fetch(key_name)}")
     request.body = body.to_json
-    JSON.parse(Ai::LlmClient.post(uri, request, read_timeout: 45).body).dig('choices', 0, 'message')
+    JSON.parse(Ai::LlmClient.post(uri, request, read_timeout: read_timeout).body).dig('choices', 0, 'message')
   end
 end

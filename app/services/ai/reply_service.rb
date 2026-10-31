@@ -24,7 +24,8 @@ class Ai::ReplyService
     reply = Ai::LlmClient.chat(
       system: prompt_builder.system_prompt(question),
       messages: history(turn) + [{ role: 'user', text: mask(question) }],
-      images: images
+      images: images,
+      within: 75
     )
     deliver(reply, turn.last.id)
   end

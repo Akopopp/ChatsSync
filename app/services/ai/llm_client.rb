@@ -20,17 +20,27 @@ class Ai::LlmClient
   DEFAULT_TEXT_MODELS = 'gemini:gemma-4-26b-a4b-it,gemini:gemma-4-31b-it,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,' \
                         'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b'.freeze
   DEFAULT_VISION_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
+  # Quickest models first, for things a person waits for on screen (like writing FAQs).
+  DEFAULT_FAST_MODELS = 'groq:openai/gpt-oss-120b,gemini:gemini-3.5-flash-lite,groq:openai/gpt-oss-20b,gemini:gemini-3.1-flash-lite,' \
+                        'gemini:gemma-4-26b-a4b-it'.freeze
   KEYS = { 'gemini' => 'GEMINI_API_KEY', 'groq' => 'GROQ_API_KEY' }.freeze
   USAGE_KEY = 'chatssync:ai_usage:%<date>s:%<model>s'.freeze
   PAUSE_KEY = 'chatssync:ai_paused:%<model>s'.freeze
   # Google resets free daily limits at midnight Pacific time, so usage is counted per Pacific day.
   QUOTA_TIMEZONE = 'America/Los_Angeles'.freeze
   FAILURE_PAUSE = 3.minutes.to_i
+  READ_TIMEOUT = 25
 
   # messages: [{ role: 'user' | 'assistant', text: '...' }]
   # images:   [{ mime: 'image/jpeg', data: <binary> }], added to the last user message
-  def self.chat(system:, messages:, images: [], max_tokens: 500)
-    new.chat(system: system, messages: messages, images: images, max_tokens: max_tokens)
+  # within:   seconds the whole call may take (web requests are cut off after 15 seconds)
+  # fast:     use the quickest models first
+  def self.chat(system:, messages:, images: [], max_tokens: 500, within: nil, fast: false)
+    new.chat(system: system, messages: messages, images: images, max_tokens: max_tokens, within: within, fast: fast)
+  end
+
+  def self.clock
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
   def self.configured?
@@ -76,12 +86,17 @@ class Ai::LlmClient
     raise Error, message
   end
 
-  # Sends the request; a timeout or dropped connection counts as the model being unavailable.
-  def self.post(uri, request, read_timeout:)
+  # Sends the request; a timeout or dropped connection counts as the model being unavailable,
+  # unless the wait was cut short because the caller is running out of time.
+  def self.post(uri, request, read_timeout: READ_TIMEOUT)
     response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 5, read_timeout: read_timeout) { |http| http.request(request) }
     check!(response)
     response
-  rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ECONNREFUSED, SocketError => e
+  rescue Net::ReadTimeout => e
+    raise Error, "timed out after #{read_timeout.round}s" if read_timeout < READ_TIMEOUT
+
+    raise Unavailable.new(e.message, FAILURE_PAUSE)
+  rescue Net::OpenTimeout, Errno::ECONNRESET, Errno::ECONNREFUSED, SocketError => e
     raise Unavailable.new(e.message, FAILURE_PAUSE)
   end
 
@@ -104,10 +119,12 @@ class Ai::LlmClient
     end
   end
 
-  def chat(system:, messages:, images: [], max_tokens: 500)
+  def chat(system:, messages:, images: [], max_tokens: 500, within: nil, fast: false)
+    @deadline = within && (self.class.clock + within)
     errors = []
-    models(images.present?).each do |provider, model|
+    models(images.present?, fast).each do |provider, model|
       next errors << "#{model}: paused" if self.class.paused_for(model).positive?
+      break errors << 'out of time' if time_left < 3
 
       text = provider == 'groq' ? groq_chat(model, system, messages, max_tokens) : gemini_chat(model, system, messages, images, max_tokens)
       next errors << "#{model}: empty reply" if text.blank?
@@ -125,9 +142,21 @@ class Ai::LlmClient
 
   private
 
-  def models(vision)
-    list = vision ? ENV.fetch('AI_VISION_MODELS', DEFAULT_VISION_MODELS) : ENV.fetch('AI_TEXT_MODELS', DEFAULT_TEXT_MODELS)
+  def models(vision, fast)
+    list = if vision
+             ENV.fetch('AI_VISION_MODELS', DEFAULT_VISION_MODELS)
+           else
+             fast ? ENV.fetch('AI_FAST_MODELS', DEFAULT_FAST_MODELS) : ENV.fetch('AI_TEXT_MODELS', DEFAULT_TEXT_MODELS)
+           end
     self.class.parse_models(list).select { |provider, _| ENV.fetch(KEYS[provider], nil).present? }
+  end
+
+  def time_left
+    @deadline ? @deadline - self.class.clock : READ_TIMEOUT
+  end
+
+  def read_timeout
+    [READ_TIMEOUT, time_left - 1].min
   end
 
   # Gemini needs alternating user/model turns that start with the user.
@@ -178,6 +207,6 @@ class Ai::LlmClient
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, { 'Content-Type' => 'application/json' }.merge(headers))
     request.body = body.to_json
-    JSON.parse(self.class.post(uri, request, read_timeout: 25).body)
+    JSON.parse(self.class.post(uri, request, read_timeout: read_timeout).body)
   end
 end
