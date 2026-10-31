@@ -60,6 +60,7 @@ en:
   errors:
     ai:
       business_info_missing: Add your business information first, then generate FAQs from it.
+      busy: The AI is busy right now. Please try again in a minute.
       copilot_limit: Your plan's monthly AI assistant limit is used up. Upgrade your plan or buy a pack.
       image_too_big: This picture is too big. Please use one under 5 MB.
       video_too_big: This video is too big. WhatsApp allows videos up to 16 MB, so please use a shorter or smaller MP4.

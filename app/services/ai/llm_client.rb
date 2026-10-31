@@ -121,6 +121,8 @@ class Ai::LlmClient
 
   def chat(system:, messages:, images: [], max_tokens: 500, within: nil, fast: false)
     @deadline = within && (self.class.clock + within)
+    # With a time limit, one slow model may use at most 60% of it, so a quicker model still gets a turn.
+    @attempt_limit = within && (within * 0.6)
     errors = []
     models(images.present?, fast).each do |provider, model|
       next errors << "#{model}: paused" if self.class.paused_for(model).positive?
@@ -137,7 +139,9 @@ class Ai::LlmClient
     rescue StandardError => e
       errors << "#{model}: #{e.message.truncate(160)}"
     end
-    raise Error, "All AI models failed: #{errors.join(' | ').presence || 'no API key set'}"
+    message = "All AI models failed: #{errors.join(' | ').presence || 'no API key set'}"
+    Rails.logger.warn("[ChatsSync AI] #{message}")
+    raise Error, message
   end
 
   private
@@ -156,7 +160,7 @@ class Ai::LlmClient
   end
 
   def read_timeout
-    [READ_TIMEOUT, time_left - 1].min
+    [READ_TIMEOUT, time_left - 1, @attempt_limit].compact.min
   end
 
   # Gemini needs alternating user/model turns that start with the user.

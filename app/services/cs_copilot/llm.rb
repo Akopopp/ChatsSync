@@ -17,7 +17,7 @@ class CsCopilot::Llm
       time_left = deadline - Ai::LlmClient.clock
       break errors << 'out of time' if time_left < 2
 
-      message = request(provider, model, messages, tools, [Ai::LlmClient::READ_TIMEOUT, time_left - 0.5].min)
+      message = request(provider, model, messages, tools, [Ai::LlmClient::READ_TIMEOUT, time_left - 0.5, 8].min)
       next if message.blank?
 
       Ai::LlmClient.track(model)

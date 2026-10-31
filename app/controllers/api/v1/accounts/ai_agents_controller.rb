@@ -17,8 +17,8 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
     builder = Ai::PromptBuilder.new(agent: @agent)
     reply = Ai::LlmClient.chat(system: builder.system_prompt(question), messages: [{ role: 'user', text: question }], within: 13)
     render json: { reply: readable_preview(reply, builder) }
-  rescue Ai::LlmClient::Error => e
-    render json: { error: e.message }, status: :service_unavailable
+  rescue Ai::LlmClient::Error
+    render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end
 
   def generate_faqs
@@ -27,8 +27,8 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
 
     items = Ai::FaqGenerator.new(agent: @agent, count: params[:count].presence&.to_i&.clamp(5, 30)).perform
     render json: { created: items.size }
-  rescue Ai::LlmClient::Error => e
-    render json: { error: e.message }, status: :service_unavailable
+  rescue Ai::LlmClient::Error
+    render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end
 
   private
