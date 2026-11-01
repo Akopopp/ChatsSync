@@ -16,7 +16,7 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
     question = params.require(:message).to_s.truncate(1000)
     builder = Ai::PromptBuilder.new(agent: @agent)
     reply = Ai::LlmClient.chat(system: builder.system_prompt(question), messages: [{ role: 'user', text: question }], within: 13)
-    render json: { reply: readable_preview(reply, builder) }
+    render json: { reply: readable_preview(builder.tidy(reply, question), builder) }
   rescue Ai::LlmClient::Error
     render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end

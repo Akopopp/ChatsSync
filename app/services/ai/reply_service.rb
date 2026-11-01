@@ -28,7 +28,7 @@ class Ai::ReplyService
       images: images,
       within: 75
     )
-    deliver(reply, turn.last.id)
+    deliver(prompt_builder.tidy(reply, question), turn.last.id)
   end
 
   private
