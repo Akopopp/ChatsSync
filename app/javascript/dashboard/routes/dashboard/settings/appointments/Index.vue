@@ -2,9 +2,10 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAlert } from 'dashboard/composables';
-import { useMapGetter } from 'dashboard/composables/store';
-import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
+import { useStore } from 'dashboard/composables/store';
+import { useAccount } from 'dashboard/composables/useAccount';
 import AppointmentsAPI from 'dashboard/api/appointments';
+import TEMPLATES from './templates';
 
 import BillingCard from '../billing/components/BillingCard.vue';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
@@ -12,7 +13,8 @@ import SettingsLayout from '../SettingsLayout.vue';
 import ButtonV4 from 'next/button/Button.vue';
 
 const { t } = useI18n();
-const accountId = useMapGetter('getCurrentAccountId');
+const store = useStore();
+const { accountScopedRoute, accountId } = useAccount();
 
 // Monday first; keys match the server (Sunday = 0).
 const DAYS = ['1', '2', '3', '4', '5', '6', '0'];
@@ -25,7 +27,7 @@ const isLoading = ref(true);
 const isSaving = ref(false);
 const setting = ref(null);
 const days = ref({});
-const appointments = ref([]);
+const newClosedDate = ref('');
 
 const timezones = computed(() =>
   TIMEZONES.includes(setting.value?.timezone)
@@ -38,26 +40,49 @@ const errorMessage = error =>
   error?.response?.data?.error ||
   t('APPOINTMENTS.ERROR');
 
+// Server ranges -> one row per day: open time, close time and an optional break.
 const loadDays = hours => {
   days.value = Object.fromEntries(
     DAYS.map(day => {
-      const [from, to] = hours?.[day]?.[0] || [];
-      return [day, { open: !!from, from: from || '10:00', to: to || '18:00' }];
+      const ranges = hours?.[day] || [];
+      const first = ranges[0] || [];
+      const last = ranges[ranges.length - 1] || [];
+      return [
+        day,
+        {
+          open: ranges.length > 0,
+          from: first[0] || '10:00',
+          to: last[1] || '18:00',
+          hasBreak: ranges.length > 1,
+          breakFrom: ranges.length > 1 ? first[1] : '13:00',
+          breakTo: ranges.length > 1 ? last[0] : '14:00',
+        },
+      ];
     })
   );
 };
 
-const fetchAppointments = async () => {
-  const response = await AppointmentsAPI.list();
-  appointments.value = response.data.payload;
-};
+const hoursFromDays = () =>
+  Object.fromEntries(
+    DAYS.filter(day => days.value[day].open).map(day => {
+      const row = days.value[day];
+      return [
+        day,
+        row.hasBreak
+          ? [
+              [row.from, row.breakFrom],
+              [row.breakTo, row.to],
+            ]
+          : [[row.from, row.to]],
+      ];
+    })
+  );
 
-const fetchAll = async () => {
+const fetchSetting = async () => {
   try {
     const response = await AppointmentsAPI.getSetting();
     setting.value = response.data;
     loadDays(response.data.hours);
-    await fetchAppointments();
   } finally {
     isLoading.value = false;
   }
@@ -66,12 +91,6 @@ const fetchAll = async () => {
 const save = async () => {
   isSaving.value = true;
   try {
-    const hours = Object.fromEntries(
-      DAYS.filter(day => days.value[day].open).map(day => [
-        day,
-        [[days.value[day].from, days.value[day].to]],
-      ])
-    );
     const { enabled, timezone, slot_minutes, capacity } = setting.value;
     const { days_ahead, min_notice_minutes, notes, services } = setting.value;
     const response = await AppointmentsAPI.updateSetting({
@@ -83,16 +102,30 @@ const save = async () => {
       min_notice_minutes,
       notes,
       services: services.filter(service => service.name),
-      hours,
+      closed_dates: setting.value.closed_dates,
+      hours: hoursFromDays(),
     });
     setting.value = response.data;
     loadDays(response.data.hours);
+    // The main menu shows the calendar only when appointments are on.
+    store.dispatch('accounts/get');
     useAlert(t('APPOINTMENTS.SAVED'));
   } catch (error) {
     useAlert(errorMessage(error));
   } finally {
     isSaving.value = false;
   }
+};
+
+const applyTemplate = template => {
+  const { hours, ...rest } = template.setting;
+  setting.value = {
+    ...setting.value,
+    ...rest,
+    services: rest.services.map(service => ({ ...service })),
+  };
+  loadDays(hours);
+  useAlert(t('APPOINTMENTS.TEMPLATES.APPLIED'));
 };
 
 const addService = () => {
@@ -103,60 +136,39 @@ const removeService = index => {
   setting.value.services.splice(index, 1);
 };
 
-const copyLink = async () => {
-  await navigator.clipboard.writeText(setting.value.booking_page_url);
-  useAlert(t('APPOINTMENTS.STATUS.COPIED'));
+const addClosedDate = () => {
+  if (!newClosedDate.value) return;
+  setting.value.closed_dates = [
+    ...new Set([...setting.value.closed_dates, newClosedDate.value]),
+  ].sort();
+  newClosedDate.value = '';
 };
 
-const setStatus = async (appointment, status) => {
-  try {
-    await AppointmentsAPI.setStatus(appointment.id, status);
-    await fetchAppointments();
-  } catch (error) {
-    useAlert(errorMessage(error));
-  }
+const removeClosedDate = value => {
+  setting.value.closed_dates = setting.value.closed_dates.filter(
+    date => date !== value
+  );
 };
 
-const formatDay = value =>
+const formatDate = value =>
   new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-    timeZone: setting.value.timezone,
-  }).format(new Date(value));
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${value}T12:00:00Z`));
 
-const formatTime = value =>
-  new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: setting.value.timezone,
-  }).format(new Date(value));
+const copy = async (text, message) => {
+  await navigator.clipboard.writeText(text);
+  useAlert(message);
+};
 
-const groupedAppointments = computed(() =>
-  appointments.value.reduce((groups, appointment) => {
-    const day = formatDay(appointment.starts_at);
-    (groups[day] ||= []).push(appointment);
-    return groups;
-  }, {})
+const calendarRoute = computed(() =>
+  accountScopedRoute('appointments_calendar', { accountId: accountId.value })
 );
 
-const chatLink = appointment =>
-  frontendURL(
-    conversationUrl({
-      accountId: accountId.value,
-      id: appointment.conversation_id,
-    })
-  );
-
-const statusClass = status =>
-  ({
-    booked: 'bg-n-teal-3 text-n-teal-11',
-    done: 'bg-n-slate-3 text-n-slate-11',
-    cancelled: 'bg-n-ruby-3 text-n-ruby-11',
-    no_show: 'bg-n-amber-3 text-n-amber-11',
-  })[status];
-
-onMounted(fetchAll);
+onMounted(fetchSetting);
 </script>
 
 <template>
@@ -180,6 +192,23 @@ onMounted(fetchAll);
         </div>
 
         <BillingCard
+          :title="$t('APPOINTMENTS.TEMPLATES.TITLE')"
+          :description="$t('APPOINTMENTS.TEMPLATES.DESCRIPTION')"
+        >
+          <div class="px-5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
+            <button
+              v-for="template in TEMPLATES"
+              :key="template.key"
+              class="flex flex-col items-center gap-2 p-3 rounded-lg border border-n-weak hover:bg-n-alpha-1 text-n-slate-12"
+              @click="applyTemplate(template)"
+            >
+              <span class="size-5 text-n-blue-11" :class="template.icon" />
+              {{ $t(`APPOINTMENTS.TEMPLATES.${template.key}`) }}
+            </button>
+          </div>
+        </BillingCard>
+
+        <BillingCard
           :title="$t('APPOINTMENTS.STATUS.TITLE')"
           :description="$t('APPOINTMENTS.STATUS.DESCRIPTION')"
         >
@@ -188,11 +217,18 @@ onMounted(fetchAll);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-3 text-sm text-n-slate-12">
+          <div class="px-5 grid gap-4 text-sm text-n-slate-12">
             <label class="flex items-center gap-2">
               <input v-model="setting.enabled" type="checkbox" />
               {{ $t('APPOINTMENTS.STATUS.ENABLED') }}
             </label>
+            <router-link
+              :to="calendarRoute"
+              class="flex items-center gap-2 text-n-blue-11 w-fit"
+            >
+              <span class="i-lucide-calendar-days size-4" />
+              {{ $t('APPOINTMENTS.STATUS.OPEN_CALENDAR') }}
+            </router-link>
             <div class="grid gap-1">
               <span class="font-medium">
                 {{ $t('APPOINTMENTS.STATUS.PAGE') }}
@@ -209,7 +245,43 @@ onMounted(fetchAll);
                 >
                   {{ setting.booking_page_url }}
                 </a>
-                <ButtonV4 xs faded slate @click="copyLink">
+                <ButtonV4
+                  xs
+                  faded
+                  slate
+                  @click="
+                    copy(
+                      setting.booking_page_url,
+                      $t('APPOINTMENTS.STATUS.COPIED')
+                    )
+                  "
+                >
+                  {{ $t('APPOINTMENTS.STATUS.COPY') }}
+                </ButtonV4>
+              </div>
+            </div>
+            <div class="grid gap-1">
+              <span class="font-medium">
+                {{ $t('APPOINTMENTS.STATUS.GOOGLE') }}
+              </span>
+              <span class="text-xs text-n-slate-11">
+                {{ $t('APPOINTMENTS.STATUS.GOOGLE_NOTE') }}
+              </span>
+              <div class="flex items-center gap-2">
+                <code class="text-xs text-n-slate-11 break-all">
+                  {{ setting.calendar_feed_url }}
+                </code>
+                <ButtonV4
+                  xs
+                  faded
+                  slate
+                  @click="
+                    copy(
+                      setting.calendar_feed_url,
+                      $t('APPOINTMENTS.STATUS.COPIED')
+                    )
+                  "
+                >
                   {{ $t('APPOINTMENTS.STATUS.COPY') }}
                 </ButtonV4>
               </div>
@@ -226,13 +298,13 @@ onMounted(fetchAll);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-2 text-sm text-n-slate-12">
+          <div class="px-5 grid gap-3 text-sm text-n-slate-12">
             <div
               v-for="day in DAYS"
               :key="day"
-              class="flex flex-wrap items-center gap-3"
+              class="flex flex-wrap items-center gap-x-3 gap-y-2"
             >
-              <label class="flex items-center gap-2 w-32">
+              <label class="flex items-center gap-2 w-28">
                 <input v-model="days[day].open" type="checkbox" />
                 {{ $t(`APPOINTMENTS.DAYS.D${day}`) }}
               </label>
@@ -240,14 +312,66 @@ onMounted(fetchAll);
                 <input
                   v-model="days[day].from"
                   type="time"
-                  class="!w-32 !mb-0"
+                  class="!w-28 !mb-0"
                 />
                 <span class="text-n-slate-11">{{ $t('APPOINTMENTS.TO') }}</span>
-                <input v-model="days[day].to" type="time" class="!w-32 !mb-0" />
+                <input v-model="days[day].to" type="time" class="!w-28 !mb-0" />
+                <label class="flex items-center gap-2 text-n-slate-11">
+                  <input v-model="days[day].hasBreak" type="checkbox" />
+                  {{ $t('APPOINTMENTS.HOURS.BREAK') }}
+                </label>
+                <template v-if="days[day].hasBreak">
+                  <input
+                    v-model="days[day].breakFrom"
+                    type="time"
+                    class="!w-28 !mb-0"
+                  />
+                  <span class="text-n-slate-11">
+                    {{ $t('APPOINTMENTS.TO') }}
+                  </span>
+                  <input
+                    v-model="days[day].breakTo"
+                    type="time"
+                    class="!w-28 !mb-0"
+                  />
+                </template>
               </template>
               <span v-else class="text-n-slate-11">
                 {{ $t('APPOINTMENTS.HOURS.CLOSED') }}
               </span>
+            </div>
+
+            <div class="grid gap-2 pt-3 border-t border-n-weak">
+              <span class="font-medium">
+                {{ $t('APPOINTMENTS.HOURS.DAYS_OFF') }}
+              </span>
+              <span class="text-xs text-n-slate-11">
+                {{ $t('APPOINTMENTS.HOURS.DAYS_OFF_NOTE') }}
+              </span>
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="newClosedDate"
+                  type="date"
+                  class="!w-44 !mb-0"
+                />
+                <ButtonV4 sm faded slate @click="addClosedDate">
+                  {{ $t('APPOINTMENTS.HOURS.ADD_DAY_OFF') }}
+                </ButtonV4>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="value in setting.closed_dates"
+                  :key="value"
+                  class="flex items-center gap-1 px-2 py-1 rounded-md bg-n-alpha-2 text-xs"
+                >
+                  {{ formatDate(value) }}
+                  <button
+                    class="i-lucide-x size-3 text-n-slate-11"
+                    :aria-label="$t('APPOINTMENTS.DELETE')"
+                    @click="removeClosedDate(value)"
+                  />
+                </span>
+              </div>
             </div>
           </div>
         </BillingCard>
@@ -368,81 +492,6 @@ onMounted(fetchAll);
                 :placeholder="$t('APPOINTMENTS.NOTES_PLACEHOLDER')"
               />
             </label>
-          </div>
-        </BillingCard>
-
-        <BillingCard
-          :title="$t('APPOINTMENTS.LIST.TITLE')"
-          :description="$t('APPOINTMENTS.LIST.DESCRIPTION')"
-        >
-          <div class="px-5 grid gap-4 text-sm">
-            <p v-if="!appointments.length" class="text-n-slate-11">
-              {{ $t('APPOINTMENTS.LIST.EMPTY') }}
-            </p>
-            <div
-              v-for="(items, day) in groupedAppointments"
-              :key="day"
-              class="grid gap-2"
-            >
-              <span class="font-medium text-n-slate-12">{{ day }}</span>
-              <div
-                v-for="appointment in items"
-                :key="appointment.id"
-                class="flex flex-wrap items-center gap-3 p-3 rounded-lg border border-n-weak"
-              >
-                <span class="font-medium text-n-slate-12 w-20">
-                  {{ formatTime(appointment.starts_at) }}
-                </span>
-                <div class="grid flex-1 min-w-40">
-                  <span class="text-n-slate-12">
-                    {{ appointment.customer_name || '-' }}
-                    <span v-if="appointment.service" class="text-n-slate-11">
-                      · {{ appointment.service }}
-                    </span>
-                  </span>
-                  <span class="text-xs text-n-slate-11">
-                    {{ appointment.customer_phone }}
-                  </span>
-                </div>
-                <span
-                  class="px-2 py-0.5 rounded-md text-xs"
-                  :class="statusClass(appointment.status)"
-                >
-                  {{
-                    $t(`APPOINTMENTS.STATUSES.${appointment.status.toUpperCase()}`)
-                  }}
-                </span>
-                <div class="flex gap-3 text-xs">
-                  <router-link
-                    v-if="appointment.conversation_id"
-                    :to="chatLink(appointment)"
-                    class="text-n-blue-11"
-                  >
-                    {{ $t('APPOINTMENTS.LIST.OPEN_CHAT') }}
-                  </router-link>
-                  <template v-if="appointment.status === 'booked'">
-                    <button
-                      class="text-n-teal-11"
-                      @click="setStatus(appointment, 'done')"
-                    >
-                      {{ $t('APPOINTMENTS.LIST.DONE') }}
-                    </button>
-                    <button
-                      class="text-n-amber-11"
-                      @click="setStatus(appointment, 'no_show')"
-                    >
-                      {{ $t('APPOINTMENTS.LIST.NO_SHOW') }}
-                    </button>
-                    <button
-                      class="text-n-ruby-11"
-                      @click="setStatus(appointment, 'cancelled')"
-                    >
-                      {{ $t('APPOINTMENTS.LIST.CANCEL') }}
-                    </button>
-                  </template>
-                </div>
-              </div>
-            </div>
           </div>
         </BillingCard>
       </section>

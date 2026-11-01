@@ -29,5 +29,29 @@
     "ORDER_ALL": "Order on WhatsApp",
     "ORDER_TEXT": "Hi, I want to order from your menu.",
     "ORDER_ITEM_TEXT": "Hi, I want to order: {name} ({price})"
+  },
+  "NO_TIMES_DAY": "This day is full. Please choose another day.",
+  "BOOKED": "Booked",
+  "LEGEND_FREE": "Free times",
+  "LEGEND_FULL": "Full",
+  "LEGEND_CLOSED": "Closed",
+  "PREV_MONTH": "Previous month",
+  "NEXT_MONTH": "Next month",
+  "CHANGE_OR_CANCEL": "Change or cancel this booking",
+  "MANAGE": {
+    "TITLE": "Your appointment",
+    "CHANGE": "Change time",
+    "CANCEL": "Cancel appointment",
+    "CANCEL_CONFIRM": "Cancel this appointment?",
+    "YES_CANCEL": "Yes, cancel it",
+    "KEEP": "Keep it",
+    "CANCELLED": "Your appointment has been cancelled.",
+    "CHOOSE_NEW": "Choose a new day and time",
+    "SAVE_NEW": "Move my appointment",
+    "MOVED_TITLE": "Time changed!",
+    "MOVED_TEXT": "Your appointment is now on {label}.",
+    "NOT_CHANGEABLE": "This booking can no longer be changed online. Please message us.",
+    "BACK": "Back",
+    "NOT_FOUND": "We could not find this booking."
   }
 }

@@ -28,4 +28,5 @@ json.name @account.name
 json.support_email @account.support_email
 json.status @account.status
 json.plan_ends_at @account.plan_ends_at
+json.appointments_enabled resource.appointment_setting&.enabled || false
 json.cache_keys @account.cache_keys

@@ -119,7 +119,11 @@ class Appointments::AiBooking
     appointment = setting.book!(start: start, service: service, conversation: conversation, contact: contact, name: name)
     tell_team(appointment)
     label = appointment.label(setting.zone)
-    roman_urdu ? "✅ Appointment confirm: #{label}" : "✅ Appointment confirmed: #{label}"
+    if roman_urdu
+      "✅ Appointment confirm: #{label}\nTime change ya cancel karna ho to: #{appointment.manage_url}"
+    else
+      "✅ Appointment confirmed: #{label}\nTo change or cancel: #{appointment.manage_url}"
+    end
   rescue AppointmentSetting::SlotTaken
     roman_urdu ? 'Maazrat, ye time ab available nahi hai. Koi aur time bata dein.' : 'Sorry, that time is no longer free. Please choose another time.'
   end

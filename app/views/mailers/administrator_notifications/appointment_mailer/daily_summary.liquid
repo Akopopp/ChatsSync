@@ -1,0 +1,11 @@
+<p>Good morning,</p>
+
+<p>You have {{ meta['count'] }} appointment(s) today:</p>
+
+<ul>
+{% for line in meta['lines'] %}
+  <li>{{ line }}</li>
+{% endfor %}
+</ul>
+
+<p><a href="{{ action_url }}">Open the appointments calendar</a></p>

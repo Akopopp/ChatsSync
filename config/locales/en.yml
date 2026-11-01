@@ -58,6 +58,8 @@ en:
     inbox_deletetion_response: Your inbox deletion request will be processed in some time.
 
   errors:
+    appointments:
+      slot_taken: That time is full or not available. Please choose another time.
     ai:
       business_info_missing: Add your business information first, then generate FAQs from it.
       busy: The AI is busy right now. Please try again in a minute.

@@ -21,8 +21,18 @@ class AppointmentsAPI extends ApiClient {
     return axios.get(this.url, { params });
   }
 
-  setStatus(id, status) {
-    return axios.patch(`${this.url}/${id}`, { appointment: { status } });
+  freeTimes(params) {
+    return axios.get(`${this.url}/free_times`, { params });
+  }
+
+  // data: { date, time, conversation_id, appointment: { service, customer_name, customer_phone, notes } }
+  book(data) {
+    return axios.post(this.url, data);
+  }
+
+  // data: { date, time } to move it, and/or { appointment: { status, notes } }
+  change(id, data) {
+    return axios.patch(`${this.url}/${id}`, data);
   }
 }
 

@@ -16,6 +16,7 @@ import OnboardingAccountDetails from './onboarding/Index.vue';
 import chatbotRoutes from './chatbot/chatbot.routes';
 import galleryRoutes from './gallery/gallery.routes';
 import templatesRoutes from './templates/templates.routes';
+import appointmentsRoutes from './appointments/appointments.routes';
 
 export default {
   routes: [
@@ -36,6 +37,7 @@ export default {
         ...campaignsRoutes.routes,
         ...galleryRoutes,
         ...templatesRoutes,
+        ...appointmentsRoutes,
       ],
     },
     {

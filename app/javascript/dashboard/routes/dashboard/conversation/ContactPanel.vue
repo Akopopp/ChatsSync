@@ -11,6 +11,7 @@ import { FEATURE_FLAGS } from 'dashboard/featureFlags';
 
 import AccordionItem from 'dashboard/components/Accordion/AccordionItem.vue';
 import ContactConversations from './ContactConversations.vue';
+import ContactAppointments from './ContactAppointments.vue';
 import ConversationAction from './ConversationAction.vue';
 import ConversationParticipant from './ConversationParticipant.vue';
 import ContactInfo from './contact/ContactInfo.vue';
@@ -55,7 +56,11 @@ const isShopifyFeatureEnabled = computed(
   () => shopifyIntegration.value.enabled
 );
 
-const { isCloudFeatureEnabled } = useAccount();
+const { isCloudFeatureEnabled, currentAccount } = useAccount();
+
+const appointmentsEnabled = computed(
+  () => !!currentAccount.value?.appointments_enabled
+);
 
 const isLinearFeatureEnabled = computed(() =>
   isCloudFeatureEnabled(FEATURE_FLAGS.LINEAR)
@@ -164,6 +169,27 @@ onMounted(() => {
               <ConversationAction
                 :conversation-id="conversationId"
                 :inbox-id="inboxId"
+              />
+            </AccordionItem>
+          </div>
+          <div
+            v-else-if="
+              element.name === 'appointments' &&
+              appointmentsEnabled &&
+              contact.id
+            "
+          >
+            <AccordionItem
+              :title="$t('APPOINTMENTS.CHAT.TITLE')"
+              :is-open="isContactSidebarItemOpen('is_appointments_open')"
+              compact
+              @toggle="
+                value => toggleSidebarUIState('is_appointments_open', value)
+              "
+            >
+              <ContactAppointments
+                :contact="contact"
+                :conversation-id="conversationId"
               />
             </AccordionItem>
           </div>

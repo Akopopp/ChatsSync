@@ -40,6 +40,8 @@ Rails.application.routes.draw do
 
   get '/health', to: 'health#show'
   get '/book/:token', to: 'booking_pages#show', as: :booking_page
+  get '/book/:token/manage/:manage_token', to: 'booking_pages#show'
+  get '/calendars/:token', to: 'appointment_calendars#show'
   get '/menu/:token', to: 'booking_pages#menu', as: :menu_page
   get '/api', to: 'api#index'
   namespace :api, defaults: { format: 'json' } do
@@ -65,7 +67,9 @@ Rails.application.routes.draw do
           end
           resources :ai_knowledge_items, only: [:index, :create, :update, :destroy]
           resource :appointment_setting, only: [:show, :update]
-          resources :appointments, only: [:index, :update]
+          resources :appointments, only: [:index, :create, :update] do
+            get :free_times, on: :collection
+          end
           resource :catalog_setting, only: [:show, :update]
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
@@ -604,6 +608,9 @@ Rails.application.routes.draw do
         resources :csat_survey, only: [:show, :update]
         get 'bookings/:token', to: 'bookings#show'
         post 'bookings/:token', to: 'bookings#create'
+        get 'bookings/:token/manage/:manage_token', to: 'bookings#manage'
+        post 'bookings/:token/manage/:manage_token/reschedule', to: 'bookings#reschedule'
+        post 'bookings/:token/manage/:manage_token/cancel', to: 'bookings#cancel'
         get 'menus/:token', to: 'menus#show'
       end
     end

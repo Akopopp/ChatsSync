@@ -1094,7 +1094,7 @@
   },
   "APPOINTMENTS": {
     "TITLE": "Appointments",
-    "DESCRIPTION": "Let customers book appointments on WhatsApp. The AI agent offers free times, books them and tells your team.",
+    "DESCRIPTION": "Let customers book appointments on WhatsApp, Instagram and your website. The AI agent offers free times, books them and tells your team.",
     "LOADING": "Loading appointments...",
     "SAVE": "Save",
     "SAVED": "Appointment settings saved",
@@ -1112,12 +1112,19 @@
       "PAGE": "Booking page",
       "PAGE_NOTE": "Customers can also pick a time on this page. Share it on your website, Instagram bio or WhatsApp status.",
       "COPY": "Copy link",
-      "COPIED": "Link copied"
+      "COPIED": "Link copied",
+      "OPEN_CALENDAR": "Open the appointments calendar",
+      "GOOGLE": "Google Calendar",
+      "GOOGLE_NOTE": "Copy this private link. In Google Calendar open Other calendars → + → From URL and paste it. Your bookings will show on your phone too. Do not share this link."
     },
     "HOURS": {
       "TITLE": "Working hours",
       "DESCRIPTION": "Appointments are only offered inside these hours.",
-      "CLOSED": "Closed"
+      "CLOSED": "Closed",
+      "BREAK": "Break",
+      "DAYS_OFF": "Days off",
+      "DAYS_OFF_NOTE": "Holidays or days you are closed. No bookings are taken on these dates.",
+      "ADD_DAY_OFF": "Add day off"
     },
     "DAYS": {
       "D0": "Sunday",
@@ -1146,19 +1153,59 @@
       "ADD": "Add service"
     },
     "LIST": {
-      "TITLE": "Upcoming appointments",
-      "DESCRIPTION": "Appointments for the next 30 days.",
-      "EMPTY": "No appointments yet.",
-      "OPEN_CHAT": "Open chat",
-      "DONE": "Mark done",
-      "NO_SHOW": "No show",
-      "CANCEL": "Cancel"
+      "EMPTY": "No appointments in this view.",
+      "OPEN_CHAT": "Open chat"
     },
     "STATUSES": {
       "BOOKED": "Booked",
       "DONE": "Done",
       "CANCELLED": "Cancelled",
       "NO_SHOW": "No show"
+    },
+    "TEMPLATES": {
+      "TITLE": "Quick setup",
+      "DESCRIPTION": "Pick your type of business to fill in hours, slot length and services. Then change anything you like and press Save.",
+      "APPLIED": "Filled in. Check the details below and press Save.",
+      "CLINIC": "Clinic / Doctor",
+      "SALON": "Salon / Spa",
+      "CONSULTANT": "Consultant / Office",
+      "PROPERTY": "Property visit",
+      "RESTAURANT": "Restaurant table"
+    },
+    "FORM": {
+      "NEW_TITLE": "New appointment",
+      "EDIT_TITLE": "Appointment",
+      "NAME": "Customer name",
+      "PHONE": "Phone number",
+      "SERVICE": "Service",
+      "DATE": "Date",
+      "TIME": "Time",
+      "PICK_TIME": "Choose a time",
+      "FULL": "(full)",
+      "OTHER_TIME": "Other time",
+      "STATUS": "Status",
+      "NOTES": "Notes",
+      "SAVE": "Save",
+      "CANCEL": "Close",
+      "CLOSE": "Close",
+      "SAVED": "Appointment saved",
+      "MISSING": "Please enter the customer name and choose a time."
+    },
+    "CALENDAR": {
+      "TITLE": "Appointments",
+      "COUNT": "{count} booked in this view",
+      "TODAY": "Today",
+      "PREVIOUS": "Previous",
+      "NEXT": "Next",
+      "DAY": "Day",
+      "WEEK": "Week",
+      "NEW": "New appointment",
+      "ADD": "+ Add"
+    },
+    "CHAT": {
+      "TITLE": "Appointments",
+      "NONE": "No upcoming appointments.",
+      "BOOK": "Book appointment"
     }
   },
   "CATALOG": {

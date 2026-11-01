@@ -43,7 +43,7 @@ const emit = defineEmits([
 const store = useStore();
 const route = useRoute();
 const { t } = useI18n();
-const { accountScopedRoute } = useAccount();
+const { accountScopedRoute, currentAccount } = useAccount();
 
 const currentUserRole = useMapGetter('getCurrentRole');
 const isAdmin = computed(() => currentUserRole.value === 'administrator');
@@ -285,6 +285,17 @@ const groupA = computed(() => [
       'contacts_edit',
     ],
   },
+  ...(currentAccount.value?.appointments_enabled
+    ? [
+        {
+          name: 'Appointments',
+          label: t('SIDEBAR.APPOINTMENTS'),
+          icon: 'i-lucide-calendar-days',
+          to: accountScopedRoute('appointments_calendar'),
+          activeOn: ['appointments_calendar'],
+        },
+      ]
+    : []),
   {
     name: 'Campaigns',
     label: t('SIDEBAR.CAMPAIGNS'),
