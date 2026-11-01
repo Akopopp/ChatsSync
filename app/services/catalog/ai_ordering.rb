@@ -4,7 +4,7 @@
 class Catalog::AiOrdering
   PRODUCT_TAG = /\[PRODUCT:\s*(\d+)\s*\]/i
   ORDER_TAG = /\[ORDER:\s*([^\]|]+)\|?([^\]|]*)\|?([^\]]*)\]/i
-  LINE = /(\d+)\s*(?:[x×*]\s*(\d+))?/i
+  QUANTITY = /[x×*]\s*(\d+)/i
   MAX_PRODUCTS = 60
   MAX_PICTURES = 4
   NO_ORDERS = "- Do not take orders in chat; tell the customer how to order using the business information.\n".freeze
@@ -83,7 +83,10 @@ class Catalog::AiOrdering
   end
 
   def order(items_text, name, address, roman_urdu:)
-    lines = items_text.scan(LINE).map { |id, quantity| [account.products.find_by(id: id), (quantity || 1).to_i] }
+    lines = items_text.split(/[,;]/).filter_map do |part|
+      id = part[/\d+/] or next
+      [account.products.find_by(id: id), (part[QUANTITY, 1] || 1).to_i]
+    end
     return "(Preview: would place an order for #{lines.map { |product, quantity| "#{product&.name} x#{quantity}" }.join(', ')})" if conversation.nil?
 
     placed = setting.place_order!(lines: lines, conversation: conversation, contact: conversation.contact, name: name, address: address)
