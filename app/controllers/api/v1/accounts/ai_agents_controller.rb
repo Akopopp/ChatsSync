@@ -20,7 +20,7 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
                                messages: [{ role: 'user', text: question }], within: 13)
     reply = builder.tidy(reply, question)
     reply = actions.apply(reply, roman_urdu: builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
-    render json: { reply: readable_preview(reply, builder) }
+    render json: { reply: readable_preview(reply, builder, actions.media) }
   rescue Ai::LlmClient::Error
     render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end
@@ -38,12 +38,13 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   private
 
   # Shows the business what would happen instead of the AI's internal tags.
-  def readable_preview(reply, builder)
+  def readable_preview(reply, builder, media = [])
     return I18n.t('ai.preview.handoff', message: @agent.default_handoff_message) if reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
 
     images = builder.image_items(reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i))
     text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
     images.each { |item| text += "\n#{I18n.t(item.video? ? 'ai.preview.video' : 'ai.preview.image', name: item.question)}" }
+    media.each { |product| text += "\n#{I18n.t('ai.preview.image', name: product.name)}" }
     text
   end
 

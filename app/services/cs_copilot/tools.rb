@@ -5,13 +5,14 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   TIMEZONE = 'Asia/Karachi'.freeze
   # Tool sets that live in their own classes (chatbot flows and gallery, appointments).
-  EXTENSIONS = [CsCopilot::BotTools, CsCopilot::AppointmentTools].freeze
+  EXTENSIONS = [CsCopilot::BotTools, CsCopilot::AppointmentTools, CsCopilot::CatalogTools].freeze
   WRITE_TOOLS = (%w[add_labels assign_conversation change_status add_private_note send_reply set_chat_ai
                     create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent] +
                  EXTENSIONS.flat_map { |extension| extension::WRITE_TOOLS }).freeze
   ADMIN_TOOLS = (%w[create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent] +
                  EXTENSIONS.flat_map { |extension| extension::ADMIN_TOOLS }).freeze
-  UPLOAD_TOOLS = %w[add_product_images add_to_gallery].freeze
+  # Tools that take attached files, and the argument that lists them.
+  UPLOAD_TOOLS = { 'add_product_images' => 'images', 'add_to_gallery' => 'images', 'add_products' => 'products' }.freeze
 
   def self.fn(name, description, properties = {}, required = [])
     { type: 'function', function: { name: name, description: description,
@@ -116,9 +117,10 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   # Swaps the picture names the model uses (img1) for the stored uploads, so confirming saves the right files.
   def with_uploads(name, args, uploads)
-    return args unless UPLOAD_TOOLS.include?(name)
+    key = UPLOAD_TOOLS[name]
+    return args unless key
 
-    args.merge('images' => Array(args['images']).map { |item| item.to_h.merge('signed_id' => uploads[item.to_h['image'].to_s]) })
+    args.merge(key => Array(args[key]).map { |item| item.to_h.merge('signed_id' => uploads[item.to_h['image'].to_s]) })
   end
 
   private

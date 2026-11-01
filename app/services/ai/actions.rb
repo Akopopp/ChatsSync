@@ -12,11 +12,16 @@ class Ai::Actions
     handlers.reduce(reply) { |text, handler| handler.apply(text, roman_urdu: roman_urdu) }
   end
 
+  # Pictures the handlers want sent with the reply (like product pictures from the catalog).
+  def media
+    handlers.flat_map { |handler| handler.respond_to?(:media) ? handler.media : [] }
+  end
+
   private
 
   def handlers
-    @handlers ||= [
-      (Appointments::AiBooking.new(account: account, conversation: conversation) if Appointments::AiBooking.enabled_for?(account))
-    ].compact
+    @handlers ||= [Appointments::AiBooking, Catalog::AiOrdering].filter_map do |handler|
+      handler.new(account: account, conversation: conversation) if handler.enabled_for?(account)
+    end
   end
 end

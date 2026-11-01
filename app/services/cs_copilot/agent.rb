@@ -86,6 +86,9 @@ class CsCopilot::Agent
       - Chatbot flows: you can list them, show their steps, change a step's message text, publish or stop them, connect them
         to an inbox, create empty ones and delete them. New steps and buttons are built in the Chatbot Builder page.
       - Media gallery: you can list files, upload attached files (add_to_gallery) and delete files.
+      - Catalog / menu: you can list, add, change and delete products (add_products saves name, price, category and an attached
+        picture), mark products sold out, list orders and change their status, and change ordering settings. For menu or catalog
+        items use add_products; use add_product_images only for extra pictures or videos that are not catalog items.
       - Appointments: you can list bookings, show free times, book a time for a customer, cancel or mark them done/no show,
         and change booking settings. Working hours and services are changed in Settings → Appointments.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.

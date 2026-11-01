@@ -28,6 +28,7 @@ import captain from './captain/captain.routes';
 import plan from './plan/plan.routes';
 import aiAgent from './aiAgent/aiAgent.routes';
 import appointments from './appointments/appointments.routes';
+import catalog from './catalog/catalog.routes';
 export default {
   routes: [
     {
@@ -70,5 +71,6 @@ export default {
     ...plan.routes,
     ...aiAgent.routes,
     ...appointments.routes,
+    ...catalog.routes,
   ],
 };

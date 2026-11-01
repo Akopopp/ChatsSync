@@ -61,6 +61,9 @@ class Account < ApplicationRecord
   has_one :ai_agent, dependent: :destroy
   has_many :ai_knowledge_items, dependent: :destroy
   has_one :appointment_setting, dependent: :destroy
+  has_one :catalog_setting, dependent: :destroy
+  has_many :products, dependent: :destroy_async
+  has_many :orders, dependent: :destroy_async
   has_many :appointments, dependent: :destroy_async
   has_many :agent_bot_inboxes, dependent: :destroy_async
   has_many :agent_bots, dependent: :destroy_async

@@ -285,7 +285,3 @@ onMounted(load);
     </div>
   </div>
 </template>
-
-<style lang="scss">
-@import '../survey/assets/scss/woot.scss';
-</style>

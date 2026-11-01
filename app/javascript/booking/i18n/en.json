@@ -18,5 +18,16 @@
   "SLOT_TAKEN": "Sorry, that time was just taken. Please choose another time.",
   "MISSING": "Please enter your name and WhatsApp number.",
   "ERROR": "Something went wrong. Please try again.",
-  "TIMEZONE": "Times are in {zone}"
+  "TIMEZONE": "Times are in {zone}",
+  "MENU": {
+    "TITLE": "Menu",
+    "ALL": "All",
+    "OTHER": "Other",
+    "EMPTY": "Nothing here yet.",
+    "NOT_AVAILABLE": "This menu is not available right now.",
+    "ORDER": "Order",
+    "ORDER_ALL": "Order on WhatsApp",
+    "ORDER_TEXT": "Hi, I want to order from your menu.",
+    "ORDER_ITEM_TEXT": "Hi, I want to order: {name} ({price})"
+  }
 }

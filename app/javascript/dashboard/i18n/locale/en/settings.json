@@ -386,7 +386,8 @@
     "SECURITY": "Security",
     "CAPTAIN_AI": "Captain",
     "CONVERSATION_WORKFLOW": "Conversation Workflow",
-    "APPOINTMENTS": "Appointments"
+    "APPOINTMENTS": "Appointments",
+    "CATALOG": "Catalog & orders"
   },
   "CAPTAIN_SETTINGS": {
     "TITLE": "Captain Settings",
@@ -1150,6 +1151,62 @@
       "DONE": "Done",
       "CANCELLED": "Cancelled",
       "NO_SHOW": "No show"
+    }
+  },
+  "CATALOG": {
+    "TITLE": "Catalog & orders",
+    "DESCRIPTION": "Add your products or menu. The AI agent answers with your real prices, sends product pictures and takes orders in chat.",
+    "LOADING": "Loading catalog...",
+    "SAVE": "Save",
+    "SAVED": "Catalog settings saved",
+    "ERROR": "Something went wrong. Please try again.",
+    "DELETE": "Delete",
+    "NOT_IN_PLAN": "The catalog and orders are not included in your current plan. Please contact ChatsSync to upgrade.",
+    "STATUS": {
+      "TITLE": "Selling in chat",
+      "DESCRIPTION": "Choose what the AI agent does with your catalog.",
+      "ENABLED": "AI uses this catalog to answer customers",
+      "TAKE_ORDERS": "AI takes orders in chat",
+      "CURRENCY": "Currency",
+      "DELIVERY_FEE": "Delivery fee",
+      "MIN_ORDER": "Minimum order",
+      "NOTES": "Ordering notes",
+      "NOTES_PLACEHOLDER": "For example: Cash on delivery. Delivery in 2-3 days in Lahore, 4-5 days in other cities.",
+      "PAGE": "Menu page",
+      "PAGE_NOTE": "A page with all your products and pictures, with an order on WhatsApp button. Share it anywhere.",
+      "COPY": "Copy link",
+      "COPIED": "Link copied"
+    },
+    "PRODUCTS": {
+      "TITLE": "Products",
+      "DESCRIPTION": "Products the AI can talk about, show and sell. Mark them sold out when they are not available.",
+      "NAME": "Product name",
+      "PRICE": "Price",
+      "CATEGORY": "Category (optional)",
+      "PRODUCT_DESCRIPTION": "Description: size, colors, ingredients... (optional)",
+      "ADD": "Add product",
+      "UPDATE": "Save changes",
+      "CANCEL_EDIT": "Cancel",
+      "EDIT": "Edit",
+      "SOLD_OUT": "Mark sold out",
+      "AVAILABLE": "Mark available",
+      "NO_CATEGORY": "Other",
+      "EMPTY": "No products yet."
+    },
+    "ORDERS": {
+      "TITLE": "Orders",
+      "DESCRIPTION": "Orders taken in chat, newest first.",
+      "EMPTY": "No orders yet.",
+      "NUMBER": "Order #{number}",
+      "ITEM": "{name} x{quantity}",
+      "OPEN_CHAT": "Open chat",
+      "STATUSES": {
+        "NEW": "New",
+        "CONFIRMED": "Confirmed",
+        "SHIPPED": "Shipped",
+        "DELIVERED": "Delivered",
+        "CANCELLED": "Cancelled"
+      }
     }
   }
 }

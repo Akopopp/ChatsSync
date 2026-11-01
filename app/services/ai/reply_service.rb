@@ -32,7 +32,7 @@ class Ai::ReplyService
     )
     reply = prompt_builder.tidy(reply, question)
     reply = actions.apply(reply, roman_urdu: prompt_builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
-    deliver(reply, turn.last.id)
+    deliver(reply, turn.last.id, actions.media)
   end
 
   private
@@ -138,15 +138,17 @@ class Ai::ReplyService
     text.to_s.gsub(/[\w.+-]+@[\w-]+\.[\w.]+/, '[email]').gsub(/\+?\d[\d\s\-()]{8,}\d/, '[phone]')
   end
 
-  def deliver(reply, answered_up_to)
+  # media: product pictures from the catalog, sent along with any AI product media the reply asks for.
+  def deliver(reply, answered_up_to, media = [])
     if reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
       hand_off(answered_up_to)
     else
       ids = reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i)
       text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
-      return if text.blank? && ids.empty?
+      items = prompt_builder.image_items(ids) + media
+      return if text.blank? && items.empty?
 
-      create_message(text, prompt_builder.image_items(ids), answered_up_to)
+      create_message(text, items, answered_up_to)
     end
     account.increment_plan_usage!(:ai_replies)
   end
