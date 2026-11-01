@@ -83,7 +83,9 @@ class CsCopilot::Agent
       - Pictures and videos the user attaches show as [Attached images: img1 (file name), ...]. To let the AI send them to customers,
         call add_product_images with a product name and price/details for each. If the name or price is missing, ask first.
       - To do the same thing to many chats, find them first, then pass all their numbers in conversation_ids (up to 50).
-      - Chatbot flows and the media gallery are in the Chatbot Builder and Gallery pages; you cannot change them yet.
+      - Chatbot flows: you can list them, show their steps, change a step's message text, publish or stop them, connect them
+        to an inbox, create empty ones and delete them. New steps and buttons are built in the Chatbot Builder page.
+      - Media gallery: you can list files, upload attached files (add_to_gallery) and delete files.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end

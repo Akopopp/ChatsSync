@@ -4,9 +4,12 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   class Error < StandardError; end
 
   TIMEZONE = 'Asia/Karachi'.freeze
-  WRITE_TOOLS = %w[add_labels assign_conversation change_status add_private_note send_reply set_chat_ai
-                   create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent].freeze
-  ADMIN_TOOLS = %w[create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent].freeze
+  WRITE_TOOLS = (%w[add_labels assign_conversation change_status add_private_note send_reply set_chat_ai
+                    create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent] +
+                 CsCopilot::BotTools::WRITE_TOOLS).freeze
+  ADMIN_TOOLS = (%w[create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent] +
+                 CsCopilot::BotTools::READ_TOOLS + CsCopilot::BotTools::WRITE_TOOLS).freeze
+  UPLOAD_TOOLS = %w[add_product_images add_to_gallery].freeze
 
   def self.fn(name, description, properties = {}, required = [])
     { type: 'function', function: { name: name, description: description,
@@ -62,7 +65,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
        { enabled: { type: 'boolean' }, reply_scope: { type: 'string', enum: %w[ad_leads all] },
          business_info_to_add: { type: 'string', description: 'Text to add at the end of the business information' },
          instructions: { type: 'string' }, handoff_message: { type: 'string' } })
-  ].freeze
+  ].concat(CsCopilot::BotTools::DEFINITIONS).freeze
 
   pattr_initialize [:account!, :user!]
 
@@ -74,10 +77,14 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     raise Error, "Unknown tool #{name}" unless DEFINITIONS.any? { |tool| tool[:function][:name] == name }
     raise Error, 'Only administrators can do this.' if ADMIN_TOOLS.include?(name) && !admin?
 
+    return CsCopilot::BotTools.new(account: account).execute(name, args) if CsCopilot::BotTools.handles?(name)
+
     send("tool_#{name}", args.with_indifferent_access)
   end
 
   def summary(name, args)
+    return CsCopilot::BotTools.new(account: account).summary(name, args) if CsCopilot::BotTools.handles?(name)
+
     args = args.with_indifferent_access
     case name
     when 'add_labels' then "Add labels #{Array(args[:labels]).join(', ')} to #{chats_text(args)}"
@@ -102,7 +109,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   # Swaps the picture names the model uses (img1) for the stored uploads, so confirming saves the right files.
   def with_uploads(name, args, uploads)
-    return args unless name == 'add_product_images'
+    return args unless UPLOAD_TOOLS.include?(name)
 
     args.merge('images' => Array(args['images']).map { |item| item.to_h.merge('signed_id' => uploads[item.to_h['image'].to_s]) })
   end
