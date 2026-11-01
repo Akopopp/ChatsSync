@@ -1,5 +1,5 @@
 # Copilot tools for chatbot flows and the media gallery. These live in the ChatsSync bot
-# service (CHATSSYNC_BOT_URL, shared key CHATSSYNC_BOT_KEY). Every flow or file is also
+# service (CHATSSYNC_BOT_URL). The bot checks the admin's login; every flow or file is also
 # matched against this account's own list before it is read or changed.
 class CsCopilot::BotTools
   READ_TOOLS = %w[list_flows get_flow list_gallery].freeze
@@ -37,7 +37,7 @@ class CsCopilot::BotTools
        { ids: { type: 'array', items: { type: 'integer' } } }, ['ids'])
   ].freeze
 
-  pattr_initialize [:account!]
+  pattr_initialize [:account!, :user!]
 
   def self.handles?(name)
     (READ_TOOLS + WRITE_TOOLS).include?(name)
@@ -184,8 +184,8 @@ class CsCopilot::BotTools
     base = ENV.fetch('CHATSSYNC_BOT_URL', '').chomp('/')
     raise CsCopilot::Tools::Error, 'Chatbot flows and the gallery are not connected on this server yet.' if base.blank?
 
-    # The shared key and account tell the bot this call comes from ChatsSync for this account.
-    headers = { 'X-CS-Service-Key' => ENV.fetch('CHATSSYNC_BOT_KEY', ''), 'X-CS-Account' => account.id.to_s }
+    # The bot checks the signed-in admin's token and account, the same way the Chatbot Builder does.
+    headers = { 'X-CS-Token' => user.access_token&.token.to_s, 'X-CS-Account' => account.id.to_s }
     options = { timeout: 8, headers: headers }
     if multipart
       options.merge!(body: multipart, multipart: true)

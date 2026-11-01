@@ -77,13 +77,13 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     raise Error, "Unknown tool #{name}" unless DEFINITIONS.any? { |tool| tool[:function][:name] == name }
     raise Error, 'Only administrators can do this.' if ADMIN_TOOLS.include?(name) && !admin?
 
-    return CsCopilot::BotTools.new(account: account).execute(name, args) if CsCopilot::BotTools.handles?(name)
+    return CsCopilot::BotTools.new(account: account, user: user).execute(name, args) if CsCopilot::BotTools.handles?(name)
 
     send("tool_#{name}", args.with_indifferent_access)
   end
 
   def summary(name, args)
-    return CsCopilot::BotTools.new(account: account).summary(name, args) if CsCopilot::BotTools.handles?(name)
+    return CsCopilot::BotTools.new(account: account, user: user).summary(name, args) if CsCopilot::BotTools.handles?(name)
 
     args = args.with_indifferent_access
     case name
