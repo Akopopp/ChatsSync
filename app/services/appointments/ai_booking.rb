@@ -5,7 +5,7 @@ class Appointments::AiBooking
   BOOK_TAG = /\[BOOK:\s*([^\]|]+)\|?([^\]|]*)\|?([^\]]*)\]/i
   CANCEL_TAG = /\[CANCEL_BOOKING\]/i
   DAYS_SHOWN = 5
-  SLOTS_PER_DAY = 12
+  SLOTS_PER_DAY = 24
 
   # conversation is nil in the AI preview, where nothing is booked.
   pattr_initialize [:account!, :conversation]
@@ -21,18 +21,21 @@ class Appointments::AiBooking
 
   def prompt_text(_question = nil)
     zone = setting.zone
-    days = setting.free_slots(days: DAYS_SHOWN, limit_per_day: SLOTS_PER_DAY).map do |date, times|
-      "#{date.strftime('%a %-d %b')}: #{times.map { |time| time.strftime('%H:%M') }.join(', ')}"
-    end
     <<~TEXT
       Appointments:
-      - You can book appointments. Today is #{zone.now.strftime('%A %-d %B %Y')} (#{setting.timezone}).
+      - You can book appointments. Now: #{zone.now.strftime('%A %-d %B %Y, %-I:%M %p')} (#{setting.timezone}).
       - Services: #{services_text}
-      - Free times (24-hour clock): #{days.presence&.join('; ') || 'no free times in the next days'}
-      - Offer 3 to 5 of these times, not the whole list. Only book a time from this list.
-      - When the customer has chosen a time and told you their name, write one short thank-you line and put
-        [BOOK:YYYY-MM-DD HH:MM|Customer name|Service] on its own line (leave Service empty if there is only one).
-        Do not say the booking is confirmed yourself: the system checks the time and adds the confirmation.
+      - Free start times:
+      #{free_times_text}
+      - If the customer asks for a time that is not listed, say it is not free and offer the nearest free times.
+        Offer 3 to 5 times, not the whole list.
+      - Booking takes two steps:
+        1. When you know the day and time, the customer's name#{' and the service' if setting.service_names.many?},
+           repeat the day, date and time and ask the customer to confirm. Do not book yet.
+        2. Only after the customer confirms, write one short thank-you line and put
+           [BOOK:YYYY-MM-DD h:mm AM/PM|Customer name|Service] on its own line, copying the date and time from the list,
+           for example [BOOK:#{example_slot}|Ali|#{setting.service_names.first}].
+        Never say the appointment is booked or confirmed yourself: the system checks the time and adds the confirmation.
       - If the customer wants to cancel, confirm and put [CANCEL_BOOKING] on its own line. To change the time,
         put [CANCEL_BOOKING] and then a new [BOOK:...].
       #{existing_text}#{page_text}#{setting.notes.present? ? "- Notes from the business: #{setting.notes}\n" : ''}
@@ -59,6 +62,24 @@ class Appointments::AiBooking
 
   def contact
     conversation&.contact
+  end
+
+  def free_slots
+    @free_slots ||= setting.free_slots(days: DAYS_SHOWN, limit_per_day: SLOTS_PER_DAY)
+  end
+
+  def free_times_text
+    today = setting.zone.today
+    lines = free_slots.map do |date, times|
+      label = { today => ' (today)', today + 1 => ' (tomorrow)' }[date]
+      "  #{date.strftime('%a %Y-%m-%d')}#{label}: #{times.map { |time| time.strftime('%-I:%M %p') }.join(', ')}"
+    end
+    lines.presence&.join("\n") || '  none in the next days'
+  end
+
+  def example_slot
+    date, times = free_slots.first
+    date ? "#{date.iso8601} #{times.first.strftime('%-I:%M %p')}" : 'YYYY-MM-DD 3:00 PM'
   end
 
   def services_text

@@ -3,6 +3,7 @@
 # tag becomes a real order here, priced from the catalog (never from the chat).
 class Catalog::AiOrdering
   PRODUCT_TAG = /\[PRODUCT:\s*(\d+)\s*\]/i
+  TOTAL_TAG = /\[TOTAL:\s*([^\]]+)\]/i
   ORDER_TAG = /\[ORDER:\s*([^\]|]+)\|?([^\]|]*)\|?([^\]]*)\]/i
   QUANTITY = /[x×*]\s*(\d+)/i
   MAX_PRODUCTS = 60
@@ -35,6 +36,8 @@ class Catalog::AiOrdering
       Catalog and ordering (prices in #{setting.currency}):
       #{lines.join("\n")}
       - Only quote products and prices from this catalog. If something is not in it, say it is not available.
+      - Never add up prices yourself. To tell a total, write [TOTAL:<id> x <quantity>, <id> x <quantity>] in your sentence
+        where the amount goes; the system replaces it with the exact total#{' including delivery' if setting.delivery_fee.positive?}.
       - To show a product picture, put [PRODUCT:<id>] on its own line (at most #{MAX_PICTURES}, only products that have a picture).
       #{setting.take_orders ? order_rules : NO_ORDERS}#{page_text}
     TEXT
@@ -45,7 +48,7 @@ class Catalog::AiOrdering
     ids = reply.scan(PRODUCT_TAG).flatten.map(&:to_i)
     pictures = account.products.available.with_attached_image.where(id: ids).select { |product| product.image.attached? }
     media.concat(pictures.first(MAX_PICTURES))
-    text = reply.gsub(PRODUCT_TAG, '')
+    text = reply.gsub(PRODUCT_TAG, '').gsub(TOTAL_TAG) { total_text(Regexp.last_match(1)) }
     match = text.match(ORDER_TAG)
     return text.strip if match.nil? || !setting.take_orders
 
@@ -82,11 +85,22 @@ class Catalog::AiOrdering
             .first(MAX_PRODUCTS)
   end
 
-  def order(items_text, name, address, roman_urdu:)
-    lines = items_text.split(/[,;]/).filter_map do |part|
+  def order_lines(items_text)
+    items_text.split(/[,;]/).filter_map do |part|
       id = part[/\d+/] or next
       [account.products.find_by(id: id), (part[QUANTITY, 1] || 1).to_i]
     end
+  end
+
+  def total_text(items_text)
+    subtotal = order_lines(items_text).sum { |product, quantity| product&.available ? product.price * quantity.clamp(0, 999) : 0 }
+    return setting.money(subtotal) unless setting.delivery_fee.positive?
+
+    "#{setting.money(subtotal + setting.delivery_fee)} (#{setting.money(subtotal)} + #{setting.money(setting.delivery_fee)} delivery)"
+  end
+
+  def order(items_text, name, address, roman_urdu:)
+    lines = order_lines(items_text)
     return "(Preview: would place an order for #{lines.map { |product, quantity| "#{product&.name} x#{quantity}" }.join(', ')})" if conversation.nil?
 
     placed = setting.place_order!(lines: lines, conversation: conversation, contact: conversation.contact, name: name, address: address)

@@ -92,6 +92,8 @@ class Ai::PromptBuilder
 
     if roman_urdu?(text)
       'The customer wrote in Roman Urdu (Urdu in English letters): reply only in Roman Urdu, not in English.'
+    elsif text.scan(/[a-zA-Z]+/).size >= 3
+      'The customer wrote in English: reply only in English, not in Roman Urdu.'
     else
       'Reply in the same language the customer used.'
     end
