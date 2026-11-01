@@ -80,11 +80,19 @@ class Ai::LlmClient
   def self.check!(response)
     return if response.is_a?(Net::HTTPSuccess)
 
-    message = "HTTP #{response.code} #{response.body.to_s.truncate(200)}"
+    message = "HTTP #{response.code} #{error_detail(response.body).squish.truncate(200)}"
     raise Unavailable.new(message, rest_seconds(response)) if response.code == '429'
     raise Unavailable.new(message, FAILURE_PAUSE) if response.code.start_with?('5')
 
     raise Error, message
+  end
+
+  # The provider's own error message, so a failure log says what was wrong.
+  def self.error_detail(body)
+    parsed = JSON.parse(body.to_s)
+    Array.wrap(parsed).first&.dig('error', 'message').presence || body.to_s
+  rescue JSON::ParserError
+    body.to_s
   end
 
   # Sends the request; a timeout or dropped connection counts as the model being unavailable,

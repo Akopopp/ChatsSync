@@ -19,6 +19,13 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
                                      parameters: { type: 'object', properties: properties, required: required } } }
   end
 
+  # Gemini rejects an object schema without properties, so tools without arguments send no parameters.
+  def self.without_empty_parameters(tool)
+    return tool if tool.dig(:function, :parameters, :properties).present?
+
+    { type: tool[:type], function: tool[:function].except(:parameters) }
+  end
+
   DATE = { type: 'string', description: 'Date as YYYY-MM-DD (Pakistan time)' }.freeze
   CHAT = { type: 'integer', description: 'Chat number shown as #number' }.freeze
   CHATS = { type: 'array', items: { type: 'integer' }, description: 'Several chat numbers, to do the same thing to all of them' }.freeze
@@ -68,7 +75,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
        { enabled: { type: 'boolean' }, reply_scope: { type: 'string', enum: %w[ad_leads all] },
          business_info_to_add: { type: 'string', description: 'Text to add at the end of the business information' },
          instructions: { type: 'string' }, handoff_message: { type: 'string' } })
-  ].concat(*EXTENSIONS.map { |extension| extension::DEFINITIONS }).freeze
+  ].concat(*EXTENSIONS.map { |extension| extension::DEFINITIONS }).map { |tool| without_empty_parameters(tool) }.freeze
 
   pattr_initialize [:account!, :user!]
 
