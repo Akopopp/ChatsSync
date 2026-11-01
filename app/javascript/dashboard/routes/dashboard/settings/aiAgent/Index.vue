@@ -244,6 +244,41 @@ onMounted(fetchAll);
         </BillingCard>
 
         <BillingCard
+          :title="$t('AI_AGENT.SKILLS.TITLE')"
+          :description="$t('AI_AGENT.SKILLS.DESCRIPTION')"
+        >
+          <div class="px-5 grid sm:grid-cols-2 gap-3 text-sm">
+            <router-link
+              :to="{ name: 'appointments_settings' }"
+              class="flex items-center gap-3 p-3 rounded-lg border border-n-weak hover:bg-n-alpha-1"
+            >
+              <span class="i-lucide-calendar-days size-5 text-n-blue-11" />
+              <span class="grid">
+                <span class="font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.SKILLS.APPOINTMENTS') }}
+                </span>
+                <span class="text-xs text-n-slate-11">
+                  {{ $t('AI_AGENT.SKILLS.APPOINTMENTS_NOTE') }}
+                </span>
+              </span>
+            </router-link>
+            <router-link
+              :to="{ name: 'catalog_settings' }"
+              class="flex items-center gap-3 p-3 rounded-lg border border-n-weak hover:bg-n-alpha-1"
+            >
+              <span class="i-lucide-shopping-bag size-5 text-n-blue-11" />
+              <span class="grid">
+                <span class="font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.SKILLS.CATALOG') }}
+                </span>
+                <span class="text-xs text-n-slate-11">
+                  {{ $t('AI_AGENT.SKILLS.CATALOG_NOTE') }}
+                </span>
+              </span>
+            </router-link>
+          </div>
+        </BillingCard>
+        <BillingCard
           :title="$t('AI_AGENT.BUSINESS.TITLE')"
           :description="$t('AI_AGENT.BUSINESS.DESCRIPTION')"
         >
