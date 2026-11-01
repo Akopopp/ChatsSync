@@ -13,7 +13,8 @@ class CsCopilot::AppointmentTools
   DATE = { type: 'string', description: 'Date as YYYY-MM-DD' }.freeze
 
   DEFINITIONS = [
-    fn('list_appointments', 'List appointments in a date range (default: today and the next 7 days) with time, customer, service, status and chat.',
+    fn('list_appointments', 'List appointments in a date range (default: today and the next 7 days) with time, customer, service, ' \
+                            'status and chat. "Kal ki appointments" means tomorrow\'s appointments.',
        { from_date: DATE, to_date: DATE, status: { type: 'string', enum: %w[booked cancelled done no_show all] } }),
     fn('free_appointment_times', 'Show free appointment times for the next days, or for one date.',
        { date: DATE, service: { type: 'string' } }),
