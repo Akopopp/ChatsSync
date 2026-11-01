@@ -1,6 +1,6 @@
 # Copilot tools for chatbot flows and the media gallery. These live in the ChatsSync bot
-# service (CHATSSYNC_BOT_URL). The bot API does not check who is calling, so every flow or
-# file is first matched against this account's own list before it is read or changed.
+# service (CHATSSYNC_BOT_URL, shared key CHATSSYNC_BOT_KEY). Every flow or file is also
+# matched against this account's own list before it is read or changed.
 class CsCopilot::BotTools
   READ_TOOLS = %w[list_flows get_flow list_gallery].freeze
   WRITE_TOOLS = %w[create_flow edit_flow_text publish_flow unpublish_flow assign_flow_inbox delete_flow
@@ -184,11 +184,13 @@ class CsCopilot::BotTools
     base = ENV.fetch('CHATSSYNC_BOT_URL', '').chomp('/')
     raise CsCopilot::Tools::Error, 'Chatbot flows and the gallery are not connected on this server yet.' if base.blank?
 
-    options = { timeout: 8 }
+    # The shared key and account tell the bot this call comes from ChatsSync for this account.
+    headers = { 'X-CS-Service-Key' => ENV.fetch('CHATSSYNC_BOT_KEY', ''), 'X-CS-Account' => account.id.to_s }
+    options = { timeout: 8, headers: headers }
     if multipart
       options.merge!(body: multipart, multipart: true)
     elsif json
-      options.merge!(body: json.to_json, headers: { 'Content-Type' => 'application/json' })
+      options.merge!(body: json.to_json, headers: headers.merge('Content-Type' => 'application/json'))
     end
     response = HTTParty.public_send(method, "#{base}#{path}", **options)
     raise CsCopilot::Tools::Error, "The chatbot service returned an error (#{response.code})." unless response.success?
