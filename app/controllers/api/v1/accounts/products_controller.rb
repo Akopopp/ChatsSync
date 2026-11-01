@@ -35,6 +35,7 @@ class Api::V1::Accounts::ProductsController < Api::V1::Accounts::BaseController
   end
 
   def product_json(product)
-    product.as_json(only: %i[id name description price category available position]).merge(image_url: product.image_url)
+    price = product.price.frac.zero? ? product.price.to_i : product.price.to_f
+    product.as_json(only: %i[id name description category available position]).merge(price: price, image_url: product.image_url)
   end
 end
