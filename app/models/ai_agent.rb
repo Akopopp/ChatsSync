@@ -22,6 +22,10 @@
 class AiAgent < ApplicationRecord
   REPLY_SCOPES = %w[ad_leads all].freeze
   TONES = %w[professional friendly formal].freeze
+  GOALS = %w[answer sell book leads].freeze
+  REPLY_LENGTHS = %w[short detailed].freeze
+  LANGUAGES = %w[match roman_urdu english urdu].freeze
+  POLICY_KEYS = %w[delivery payment returns warranty timings location].freeze
   CHANNEL_TYPES = %w[Channel::Whatsapp Channel::FacebookPage Channel::Instagram Channel::WebWidget Channel::Api].freeze
   BOT_NAME = 'ChatsSync AI'.freeze
 
@@ -35,6 +39,18 @@ class AiAgent < ApplicationRecord
   validates :tone, inclusion: { in: TONES }
   validates :agent_name, length: { maximum: 60 }
   validates :reply_examples, length: { maximum: 3000 }
+  validates :goal, inclusion: { in: GOALS }
+  validates :reply_length, inclusion: { in: REPLY_LENGTHS }
+  validates :reply_language, inclusion: { in: LANGUAGES }
+  validates :always_rules, :never_rules, :handoff_rules, length: { maximum: 2000 }
+  validates :lead_fields, length: { maximum: 200 }
+
+  before_validation { self.policies = (policies || {}).to_h.slice(*POLICY_KEYS).transform_values { |value| value.to_s.strip.truncate(600) } }
+
+  # The details the AI collects when its goal is to get leads, like "Name, City, Budget".
+  def lead_field_names
+    lead_fields.to_s.split(/[,\n]/).map(&:strip).compact_blank.first(8)
+  end
 
   def default_handoff_message
     handoff_message.presence || 'Thank you! Our team will reply to you shortly.'

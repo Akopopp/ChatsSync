@@ -562,6 +562,53 @@
       "APPOINTMENTS_NOTE": "Offers free times and books them for customers.",
       "CATALOG": "Sell from your catalog",
       "CATALOG_NOTE": "Answers with your prices, sends product pictures and takes orders."
+    },
+    "PROFILE": {
+      "TITLE": "Teach your AI more",
+      "DESCRIPTION": "Tell the AI your goal, your policies and your rules. Short, clear points work best.",
+      "GOAL": "Main goal of the AI",
+      "GOALS": {
+        "ANSWER": "Answer questions",
+        "SELL": "Sell and take orders",
+        "BOOK": "Book appointments",
+        "LEADS": "Collect leads for my team"
+      },
+      "LEAD_FIELDS": "Details to collect",
+      "LEAD_FIELDS_PLACEHOLDER": "For example: Name, City, Budget",
+      "POLICIES": "Your policies",
+      "POLICY": {
+        "DELIVERY": "Delivery",
+        "DELIVERY_HINT": "Areas, charges and how many days",
+        "PAYMENT": "Payment methods",
+        "PAYMENT_HINT": "Cash on delivery, bank transfer, JazzCash...",
+        "RETURNS": "Returns and exchange",
+        "RETURNS_HINT": "Within how many days, and the conditions",
+        "WARRANTY": "Warranty",
+        "WARRANTY_HINT": "What is covered and for how long",
+        "TIMINGS": "Opening hours",
+        "TIMINGS_HINT": "For example: Mon–Sat 10 am to 9 pm, Sunday closed",
+        "LOCATION": "Address and location",
+        "LOCATION_HINT": "Shop address or Google Maps link"
+      },
+      "ALWAYS": "Always do (one per line)",
+      "ALWAYS_HINT": "For example:\nAsk for the shoe size before taking an order\nMention free delivery above Rs 5,000",
+      "NEVER": "Never do (one per line)",
+      "NEVER_HINT": "For example:\nNever offer a discount\nNever promise an exact delivery date",
+      "HANDOFF": "Pass the chat to my team when (one per line)",
+      "HANDOFF_HINT": "For example:\nThe customer wants a bulk or wholesale order\nThe customer asks for a refund",
+      "LENGTH": "Reply length",
+      "LENGTHS": {
+        "SHORT": "Short (1–3 sentences)",
+        "DETAILED": "Detailed (up to 6 sentences)"
+      },
+      "LANGUAGE": "Reply language",
+      "LANGUAGES": {
+        "MATCH": "Same as the customer",
+        "ROMAN_URDU": "Always Roman Urdu",
+        "ENGLISH": "Always English",
+        "URDU": "Always Urdu script"
+      },
+      "EMOJI": "Use emojis"
     }
   },
   "PLAN_USAGE": {

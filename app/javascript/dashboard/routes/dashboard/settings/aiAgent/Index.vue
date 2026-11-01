@@ -23,6 +23,17 @@ const newImage = ref({ question: '', answer: '', file: null });
 const previewMessage = ref('');
 const previewReply = ref('');
 
+const POLICY_KEYS = [
+  'delivery',
+  'payment',
+  'returns',
+  'warranty',
+  'timings',
+  'location',
+];
+const GOALS = ['answer', 'sell', 'book', 'leads'];
+const LANGUAGES = ['match', 'roman_urdu', 'english', 'urdu'];
+
 const faqs = computed(() => items.value.filter(item => item.kind === 'faq'));
 const images = computed(() =>
   items.value.filter(item => item.kind === 'image')
@@ -57,6 +68,9 @@ const save = async () => {
     const { enabled, reply_scope, inbox_ids, business_name } = agent.value;
     const { business_info, instructions, handoff_message } = agent.value;
     const { tone, agent_name, reply_examples } = agent.value;
+    const { policies, always_rules, never_rules, handoff_rules } = agent.value;
+    const { goal, lead_fields, reply_length, use_emoji, reply_language } =
+      agent.value;
     const response = await AiAgentAPI.update({
       enabled,
       reply_scope,
@@ -68,6 +82,15 @@ const save = async () => {
       tone,
       agent_name,
       reply_examples,
+      policies,
+      always_rules,
+      never_rules,
+      handoff_rules,
+      goal,
+      lead_fields,
+      reply_length,
+      use_emoji,
+      reply_language,
     });
     agent.value = response.data;
     useAlert(t('AI_AGENT.SAVED'));
@@ -358,6 +381,125 @@ onMounted(fetchAll);
                 :placeholder="$t('AI_AGENT.BUSINESS.HANDOFF_PLACEHOLDER')"
               />
             </label>
+          </div>
+        </BillingCard>
+
+        <BillingCard
+          :title="$t('AI_AGENT.PROFILE.TITLE')"
+          :description="$t('AI_AGENT.PROFILE.DESCRIPTION')"
+        >
+          <template #action>
+            <ButtonV4 sm solid blue :is-loading="isSaving" @click="save">
+              {{ $t('AI_AGENT.SAVE') }}
+            </ButtonV4>
+          </template>
+          <div class="px-5 grid gap-4 text-sm">
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.GOAL') }}
+                <select v-model="agent.goal" class="w-full !mb-0">
+                  <option v-for="goal in GOALS" :key="goal" :value="goal">
+                    {{ $t(`AI_AGENT.PROFILE.GOALS.${goal.toUpperCase()}`) }}
+                  </option>
+                </select>
+              </label>
+              <label v-if="agent.goal === 'leads'" class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.LEAD_FIELDS') }}
+                <input
+                  v-model="agent.lead_fields"
+                  type="text"
+                  maxlength="200"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.PROFILE.LEAD_FIELDS_PLACEHOLDER')"
+                />
+              </label>
+            </div>
+
+            <div class="grid gap-2">
+              <span class="font-medium">
+                {{ $t('AI_AGENT.PROFILE.POLICIES') }}
+              </span>
+              <div class="grid sm:grid-cols-2 gap-3">
+                <label v-for="key in POLICY_KEYS" :key="key" class="grid gap-1">
+                  {{ $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}`) }}
+                  <textarea
+                    v-model="agent.policies[key]"
+                    rows="2"
+                    maxlength="600"
+                    class="w-full !mb-0"
+                    :placeholder="
+                      $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}_HINT`)
+                    "
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.ALWAYS') }}
+                <textarea
+                  v-model="agent.always_rules"
+                  rows="4"
+                  maxlength="2000"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.PROFILE.ALWAYS_HINT')"
+                />
+              </label>
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.NEVER') }}
+                <textarea
+                  v-model="agent.never_rules"
+                  rows="4"
+                  maxlength="2000"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.PROFILE.NEVER_HINT')"
+                />
+              </label>
+            </div>
+
+            <label class="grid gap-1">
+              {{ $t('AI_AGENT.PROFILE.HANDOFF') }}
+              <textarea
+                v-model="agent.handoff_rules"
+                rows="3"
+                maxlength="2000"
+                class="w-full !mb-0"
+                :placeholder="$t('AI_AGENT.PROFILE.HANDOFF_HINT')"
+              />
+            </label>
+
+            <div class="grid sm:grid-cols-3 gap-3 items-end">
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.LENGTH') }}
+                <select v-model="agent.reply_length" class="w-full !mb-0">
+                  <option value="short">
+                    {{ $t('AI_AGENT.PROFILE.LENGTHS.SHORT') }}
+                  </option>
+                  <option value="detailed">
+                    {{ $t('AI_AGENT.PROFILE.LENGTHS.DETAILED') }}
+                  </option>
+                </select>
+              </label>
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.PROFILE.LANGUAGE') }}
+                <select v-model="agent.reply_language" class="w-full !mb-0">
+                  <option
+                    v-for="language in LANGUAGES"
+                    :key="language"
+                    :value="language"
+                  >
+                    {{
+                      $t(`AI_AGENT.PROFILE.LANGUAGES.${language.toUpperCase()}`)
+                    }}
+                  </option>
+                </select>
+              </label>
+              <label class="flex items-center gap-2 pb-2">
+                <input v-model="agent.use_emoji" type="checkbox" />
+                {{ $t('AI_AGENT.PROFILE.EMOJI') }}
+              </label>
+            </div>
           </div>
         </BillingCard>
 
