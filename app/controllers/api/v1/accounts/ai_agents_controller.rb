@@ -15,8 +15,12 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   def preview
     question = params.require(:message).to_s.truncate(1000)
     builder = Ai::PromptBuilder.new(agent: @agent)
-    reply = Ai::LlmClient.chat(system: builder.system_prompt(question), messages: [{ role: 'user', text: question }], within: 13)
-    render json: { reply: readable_preview(builder.tidy(reply, question), builder) }
+    actions = Ai::Actions.new(account: Current.account)
+    reply = Ai::LlmClient.chat(system: builder.system_prompt(question, extra: actions.prompt_text(question)),
+                               messages: [{ role: 'user', text: question }], within: 13)
+    reply = builder.tidy(reply, question)
+    reply = actions.apply(reply, roman_urdu: builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
+    render json: { reply: readable_preview(reply, builder) }
   rescue Ai::LlmClient::Error
     render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end

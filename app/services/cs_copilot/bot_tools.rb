@@ -5,6 +5,7 @@ class CsCopilot::BotTools
   READ_TOOLS = %w[list_flows get_flow list_gallery].freeze
   WRITE_TOOLS = %w[create_flow edit_flow_text publish_flow unpublish_flow assign_flow_inbox delete_flow
                    add_to_gallery remove_from_gallery].freeze
+  ADMIN_TOOLS = (READ_TOOLS + WRITE_TOOLS).freeze
   MAX_STEPS = 40
   MAX_FILE_SIZE = 16.megabytes
 

@@ -23,7 +23,7 @@ class Plan < ApplicationRecord
     campaigns_monthly chatbot_flows kb_faqs kb_files
   ].freeze
   # On/off switches. Missing means on.
-  FEATURE_KEYS = %w[ai_voice_images ai_on_paid_chats].freeze
+  FEATURE_KEYS = %w[ai_voice_images ai_on_paid_chats appointments catalog_orders].freeze
   # Limits that count usage per monthly cycle; packs bought for a cycle only add to these.
   CYCLE_KEYS = %w[ai_replies_monthly copilot_tasks_monthly contacts_monthly campaigns_monthly].freeze
   TIMEZONE = ENV.fetch('PLAN_TIMEZONE', 'Asia/Karachi')

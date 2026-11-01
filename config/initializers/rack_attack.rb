@@ -159,6 +159,11 @@ class Rack::Attack
     end
   end
 
+  ## Prevent fake bookings on public booking pages ###
+  throttle('public/api/v1/bookings/ip', limit: 5, period: 1.hour) do |req|
+    req.ip if req.path_without_extentions.start_with?('/public/api/v1/bookings/') && req.post?
+  end
+
   ## Prevent Brute-Force Signup Attacks ###
   throttle('accounts/ip', limit: 5, period: 30.minutes) do |req|
     req.ip if req.path_without_extentions == '/api/v1/accounts' && req.post?

@@ -58,9 +58,9 @@ const suggestions = computed(() => [
     prompt: t('COPILOT.SUGGESTIONS.MEDIA.PROMPT'),
   },
   {
-    icon: 'i-lucide-gauge',
-    title: t('COPILOT.SUGGESTIONS.PLAN.TITLE'),
-    prompt: t('COPILOT.SUGGESTIONS.PLAN.PROMPT'),
+    icon: 'i-lucide-calendar-days',
+    title: t('COPILOT.SUGGESTIONS.APPOINTMENTS.TITLE'),
+    prompt: t('COPILOT.SUGGESTIONS.APPOINTMENTS.PROMPT'),
   },
 ]);
 

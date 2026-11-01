@@ -16,7 +16,8 @@ class Ai::PromptBuilder
   }.freeze
 
   # first_reply: true when the AI has not replied in this chat yet, so it greets only once.
-  def system_prompt(query, first_reply: true)
+  # extra: more sections, like free appointment times or the product catalog.
+  def system_prompt(query, first_reply: true, extra: nil)
     <<~PROMPT
       You are #{agent.agent_name.presence || 'the customer service assistant'} for #{business_name}. You reply to customers on behalf of the business.
 
@@ -24,8 +25,9 @@ class Ai::PromptBuilder
 
       Rules:
       - Use only the business information, FAQs and media below. Never invent prices, stock, delivery times, policies or promises.
-      - If the answer is not in the information, the customer asks for a human, wants to confirm or change an order,
-        complains, or you are not sure, reply with exactly #{HANDOFF_TAG} and nothing else.
+      - If the answer is not in the information, the customer asks for a human, complains, or you are not sure,
+        reply with exactly #{HANDOFF_TAG} and nothing else. Also hand off order or booking requests unless an
+        "Ordering" or "Appointments" section below tells you how to handle them.
       - Answer only the customer's latest message. Earlier messages are context; do not repeat answers you already gave.
       - #{greeting_rule(first_reply)}
       - Do not end every reply with "anything else?". Offer more help only when the customer seems finished.
@@ -48,6 +50,7 @@ class Ai::PromptBuilder
 
       Product pictures and videos you can send:
       #{image_text(query)}
+      #{extra}
     PROMPT
   end
 
@@ -61,6 +64,15 @@ class Ai::PromptBuilder
     return reply if question.to_s.match?(SALAM)
 
     reply.sub(/\A\s*(wa\s*)?(alaikum|alaykum|walaikum|walaykum)\s*(us|as|a)?[\s-]*sala+m[\s.!,]*/i, '').strip.presence || reply
+  end
+
+  def self.roman_urdu?(text)
+    words = text.to_s.downcase.scan(/[a-z]+/)
+    words.present? && (words & ROMAN_URDU_WORDS).size >= [1, words.size / 6].max
+  end
+
+  def roman_urdu?(text)
+    self.class.roman_urdu?(text)
   end
 
   SALAM = /\b(salam|salaam|assalam|aoa|a\.o\.a)\b/i
@@ -78,8 +90,7 @@ class Ai::PromptBuilder
     text = question.to_s
     return 'The customer wrote in Urdu script: reply in Urdu script.' if text.match?(/[\u0600-\u06FF]/)
 
-    words = text.downcase.scan(/[a-z]+/)
-    if words.present? && (words & ROMAN_URDU_WORDS).size >= [1, words.size / 6].max
+    if roman_urdu?(text)
       'The customer wrote in Roman Urdu (Urdu in English letters): reply only in Roman Urdu, not in English.'
     else
       'Reply in the same language the customer used.'

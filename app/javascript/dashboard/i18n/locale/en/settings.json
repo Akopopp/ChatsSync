@@ -385,7 +385,8 @@
     "DOCS": "Read docs",
     "SECURITY": "Security",
     "CAPTAIN_AI": "Captain",
-    "CONVERSATION_WORKFLOW": "Conversation Workflow"
+    "CONVERSATION_WORKFLOW": "Conversation Workflow",
+    "APPOINTMENTS": "Appointments"
   },
   "CAPTAIN_SETTINGS": {
     "TITLE": "Captain Settings",
@@ -462,9 +463,9 @@
         "TITLE": "Add product pictures",
         "PROMPT": "I want to add product pictures and videos so the AI can send them to customers"
       },
-      "PLAN": {
-        "TITLE": "Plan usage",
-        "PROMPT": "How much of my plan is used this month?"
+      "APPOINTMENTS": {
+        "TITLE": "Today's appointments",
+        "PROMPT": "Show today's and tomorrow's appointments"
       }
     },
     "PLACEHOLDER": "Ask Copilot anything, or tell it what to do...",
@@ -1080,6 +1081,75 @@
       "DESCRIPTION": "Are you sure you want to delete this policy? This action cannot be undone.",
       "CONFIRM_BUTTON_LABEL": "Delete",
       "CANCEL_BUTTON_LABEL": "Cancel"
+    }
+  },
+  "APPOINTMENTS": {
+    "TITLE": "Appointments",
+    "DESCRIPTION": "Let customers book appointments on WhatsApp. The AI agent offers free times, books them and tells your team.",
+    "LOADING": "Loading appointments...",
+    "SAVE": "Save",
+    "SAVED": "Appointment settings saved",
+    "ERROR": "Something went wrong. Please try again.",
+    "DELETE": "Delete",
+    "TO": "to",
+    "MINUTES": "{count} minutes",
+    "NOT_IN_PLAN": "Appointments are not included in your current plan. Please contact ChatsSync to upgrade.",
+    "NOTES": "Notes for customers",
+    "NOTES_PLACEHOLDER": "For example: Please arrive 10 minutes early. Free parking is available.",
+    "STATUS": {
+      "TITLE": "Booking",
+      "DESCRIPTION": "When this is on, the AI agent can book, change and cancel appointments in chats it replies to.",
+      "ENABLED": "Take appointments",
+      "PAGE": "Booking page",
+      "PAGE_NOTE": "Customers can also pick a time on this page. Share it on your website, Instagram bio or WhatsApp status.",
+      "COPY": "Copy link",
+      "COPIED": "Link copied"
+    },
+    "HOURS": {
+      "TITLE": "Working hours",
+      "DESCRIPTION": "Appointments are only offered inside these hours.",
+      "CLOSED": "Closed"
+    },
+    "DAYS": {
+      "D0": "Sunday",
+      "D1": "Monday",
+      "D2": "Tuesday",
+      "D3": "Wednesday",
+      "D4": "Thursday",
+      "D5": "Friday",
+      "D6": "Saturday"
+    },
+    "RULES": {
+      "TITLE": "Booking rules",
+      "DESCRIPTION": "How long each slot is, how many customers fit in one slot and how far ahead people can book.",
+      "SLOT": "Slot length",
+      "CAPACITY": "Customers per slot",
+      "DAYS_AHEAD": "Days ahead customers can book",
+      "NOTICE": "Minimum notice (minutes)",
+      "TIMEZONE": "Time zone"
+    },
+    "SERVICES": {
+      "TITLE": "Services",
+      "DESCRIPTION": "Optional. Add your services so customers can choose one. Leave minutes empty to use the slot length.",
+      "NAME": "Service name",
+      "MINUTES": "Minutes",
+      "PRICE": "Price",
+      "ADD": "Add service"
+    },
+    "LIST": {
+      "TITLE": "Upcoming appointments",
+      "DESCRIPTION": "Appointments for the next 30 days.",
+      "EMPTY": "No appointments yet.",
+      "OPEN_CHAT": "Open chat",
+      "DONE": "Mark done",
+      "NO_SHOW": "No show",
+      "CANCEL": "Cancel"
+    },
+    "STATUSES": {
+      "BOOKED": "Booked",
+      "DONE": "Done",
+      "CANCELLED": "Cancelled",
+      "NO_SHOW": "No show"
     }
   }
 }

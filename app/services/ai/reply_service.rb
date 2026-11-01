@@ -22,13 +22,17 @@ class Ai::ReplyService
 
     question = texts.join("\n").presence || '(customer sent an image)'
     show_typing(turn.last)
+    actions = Ai::Actions.new(account: account, conversation: conversation)
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question, first_reply: first_reply?) + earlier_messages(turn),
+      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: actions.prompt_text(question)) +
+              earlier_messages(turn),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
       within: 75
     )
-    deliver(prompt_builder.tidy(reply, question), turn.last.id)
+    reply = prompt_builder.tidy(reply, question)
+    reply = actions.apply(reply, roman_urdu: prompt_builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
+    deliver(reply, turn.last.id)
   end
 
   private

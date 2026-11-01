@@ -1,0 +1,22 @@
+{
+  "TITLE": "Book an appointment",
+  "LOADING": "Loading free times...",
+  "NOT_AVAILABLE": "Online booking is not available right now. Please message us to book.",
+  "SERVICE": "Choose a service",
+  "MINUTES": "{count} min",
+  "DATE": "Choose a day",
+  "TIME": "Choose a time",
+  "NO_TIMES": "No free times right now. Please message us to book.",
+  "DETAILS": "Your details",
+  "NAME": "Your name",
+  "PHONE": "WhatsApp number",
+  "BOOK": "Book appointment",
+  "BOOKING": "Booking...",
+  "DONE_TITLE": "You're booked!",
+  "DONE_TEXT": "Your appointment is confirmed for {label}.",
+  "BOOK_ANOTHER": "Book another",
+  "SLOT_TAKEN": "Sorry, that time was just taken. Please choose another time.",
+  "MISSING": "Please enter your name and WhatsApp number.",
+  "ERROR": "Something went wrong. Please try again.",
+  "TIMEZONE": "Times are in {zone}"
+}

@@ -27,6 +27,7 @@ import conversationWorkflow from './conversationWorkflow/conversationWorkflow.ro
 import captain from './captain/captain.routes';
 import plan from './plan/plan.routes';
 import aiAgent from './aiAgent/aiAgent.routes';
+import appointments from './appointments/appointments.routes';
 export default {
   routes: [
     {
@@ -68,5 +69,6 @@ export default {
     ...captain.routes,
     ...plan.routes,
     ...aiAgent.routes,
+    ...appointments.routes,
   ],
 };

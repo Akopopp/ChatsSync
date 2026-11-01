@@ -39,6 +39,7 @@ Rails.application.routes.draw do
   end
 
   get '/health', to: 'health#show'
+  get '/book/:token', to: 'booking_pages#show', as: :booking_page
   get '/api', to: 'api#index'
   namespace :api, defaults: { format: 'json' } do
     namespace :v1 do
@@ -62,6 +63,8 @@ Rails.application.routes.draw do
             post :generate_faqs
           end
           resources :ai_knowledge_items, only: [:index, :create, :update, :destroy]
+          resource :appointment_setting, only: [:show, :update]
+          resources :appointments, only: [:index, :update]
           resource :copilot, only: [], controller: 'copilot' do
             post :chat
             post :confirm
@@ -595,6 +598,8 @@ Rails.application.routes.draw do
         end
 
         resources :csat_survey, only: [:show, :update]
+        get 'bookings/:token', to: 'bookings#show'
+        post 'bookings/:token', to: 'bookings#create'
       end
     end
   end
