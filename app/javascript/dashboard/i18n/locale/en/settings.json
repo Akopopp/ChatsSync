@@ -514,6 +514,16 @@
       "TITLE": "Business information",
       "DESCRIPTION": "The AI only answers from what you write here and in your FAQs.",
       "NAME": "Business name",
+      "AGENT_NAME": "AI agent name (optional)",
+      "AGENT_NAME_PLACEHOLDER": "For example: Ayesha",
+      "TONE": "How the AI talks",
+      "TONES": {
+        "PROFESSIONAL": "Professional",
+        "FRIENDLY": "Friendly",
+        "FORMAL": "Formal"
+      },
+      "EXAMPLES": "Sample replies (optional)",
+      "EXAMPLES_PLACEHOLDER": "Write 2-3 replies the way your best team member would. The AI copies this style.\nCustomer: price kya hai?\nYou: Ji, is article ki price Rs 3,200 hai. Order ke liye apna naam, address aur size bhej dein.",
       "INFO": "About your business",
       "INFO_PLACEHOLDER": "Products, prices, delivery areas and charges, timings, payment methods, return policy, address...",
       "INSTRUCTIONS": "Extra instructions (optional)",

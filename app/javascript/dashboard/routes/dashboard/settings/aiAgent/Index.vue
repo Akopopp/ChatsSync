@@ -56,6 +56,7 @@ const save = async () => {
   try {
     const { enabled, reply_scope, inbox_ids, business_name } = agent.value;
     const { business_info, instructions, handoff_message } = agent.value;
+    const { tone, agent_name, reply_examples } = agent.value;
     const response = await AiAgentAPI.update({
       enabled,
       reply_scope,
@@ -64,6 +65,9 @@ const save = async () => {
       business_info,
       instructions,
       handoff_message,
+      tone,
+      agent_name,
+      reply_examples,
     });
     agent.value = response.data;
     useAlert(t('AI_AGENT.SAVED'));
@@ -253,6 +257,32 @@ onMounted(fetchAll);
               {{ $t('AI_AGENT.BUSINESS.NAME') }}
               <input v-model="agent.business_name" type="text" class="w-full" />
             </label>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.BUSINESS.AGENT_NAME') }}
+                <input
+                  v-model="agent.agent_name"
+                  type="text"
+                  maxlength="60"
+                  class="w-full"
+                  :placeholder="$t('AI_AGENT.BUSINESS.AGENT_NAME_PLACEHOLDER')"
+                />
+              </label>
+              <label class="grid gap-1">
+                {{ $t('AI_AGENT.BUSINESS.TONE') }}
+                <select v-model="agent.tone" class="w-full">
+                  <option value="professional">
+                    {{ $t('AI_AGENT.BUSINESS.TONES.PROFESSIONAL') }}
+                  </option>
+                  <option value="friendly">
+                    {{ $t('AI_AGENT.BUSINESS.TONES.FRIENDLY') }}
+                  </option>
+                  <option value="formal">
+                    {{ $t('AI_AGENT.BUSINESS.TONES.FORMAL') }}
+                  </option>
+                </select>
+              </label>
+            </div>
             <label class="grid gap-1">
               {{ $t('AI_AGENT.BUSINESS.INFO') }}
               <textarea
@@ -271,6 +301,16 @@ onMounted(fetchAll);
                 maxlength="3000"
                 class="w-full"
                 :placeholder="$t('AI_AGENT.BUSINESS.INSTRUCTIONS_PLACEHOLDER')"
+              />
+            </label>
+            <label class="grid gap-1">
+              {{ $t('AI_AGENT.BUSINESS.EXAMPLES') }}
+              <textarea
+                v-model="agent.reply_examples"
+                rows="4"
+                maxlength="3000"
+                class="w-full"
+                :placeholder="$t('AI_AGENT.BUSINESS.EXAMPLES_PLACEHOLDER')"
               />
             </label>
             <label class="grid gap-1">

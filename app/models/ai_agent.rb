@@ -21,6 +21,7 @@
 # The ChatsSync AI agent that replies to customers for one account.
 class AiAgent < ApplicationRecord
   REPLY_SCOPES = %w[ad_leads all].freeze
+  TONES = %w[professional friendly formal].freeze
   CHANNEL_TYPES = %w[Channel::Whatsapp Channel::FacebookPage Channel::Instagram Channel::WebWidget Channel::Api].freeze
   BOT_NAME = 'ChatsSync AI'.freeze
 
@@ -31,6 +32,9 @@ class AiAgent < ApplicationRecord
   validates :business_info, length: { maximum: 8000 }
   validates :instructions, length: { maximum: 3000 }
   validates :handoff_message, length: { maximum: 500 }
+  validates :tone, inclusion: { in: TONES }
+  validates :agent_name, length: { maximum: 60 }
+  validates :reply_examples, length: { maximum: 3000 }
 
   def default_handoff_message
     handoff_message.presence || 'Thank you! Our team will reply to you shortly.'

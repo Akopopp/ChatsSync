@@ -21,8 +21,9 @@ class Ai::ReplyService
     return if texts.empty? && images.empty?
 
     question = texts.join("\n").presence || '(customer sent an image)'
+    show_typing(turn.last)
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question) + earlier_messages(turn),
+      system: prompt_builder.system_prompt(question, first_reply: first_reply?) + earlier_messages(turn),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
       within: 75
@@ -101,6 +102,20 @@ class Ai::ReplyService
       end
     end
     parts.compact.join("\n").presence
+  end
+
+  def first_reply?
+    !conversation.messages.where(message_type: :outgoing, private: false).exists?
+  end
+
+  # On WhatsApp the customer sees their message read and "typing..." while the reply is written.
+  def show_typing(customer_message)
+    channel = conversation.inbox.channel
+    return unless channel.is_a?(Channel::Whatsapp) && channel.provider == 'whatsapp_cloud' && customer_message.source_id.present?
+
+    channel.provider_service.send_typing_indicator(customer_message.source_id)
+  rescue StandardError => e
+    Rails.logger.warn("[ChatsSync AI] typing indicator failed: #{e.message}")
   end
 
   # Earlier messages go in as background text rather than as chat turns, so the AI answers

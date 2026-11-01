@@ -17,7 +17,8 @@ class Ai::LlmClient
 
   GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/%<model>s:generateContent'.freeze
   GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'.freeze
-  DEFAULT_TEXT_MODELS = 'gemini:gemma-4-26b-a4b-it,gemini:gemma-4-31b-it,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,' \
+  # Quick Flash Lite models answer first while their small free daily limit lasts; Gemma (large free limit, slower) takes over after.
+  DEFAULT_TEXT_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,gemini:gemma-4-26b-a4b-it,gemini:gemma-4-31b-it,' \
                         'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b'.freeze
   DEFAULT_VISION_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
   # Quickest models first, for things a person waits for on screen (like writing FAQs).

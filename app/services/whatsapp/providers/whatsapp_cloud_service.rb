@@ -75,6 +75,15 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
     csat_template_service.get_template_status(template_name)
   end
 
+  # Marks the customer's message as read and shows "typing..." until the reply is sent (or 25 seconds pass).
+  def send_typing_indicator(message_id)
+    HTTParty.post(
+      "#{phone_id_path('v24.0')}/messages",
+      headers: api_headers,
+      body: { messaging_product: 'whatsapp', status: 'read', message_id: message_id, typing_indicator: { type: 'text' } }.to_json
+    )
+  end
+
   def media_url(media_id)
     "#{api_base_path}/v13.0/#{media_id}"
   end

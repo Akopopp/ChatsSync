@@ -342,7 +342,7 @@ class Message < ApplicationRecord
   def schedule_ai_reply
     return unless incoming? && sender_type == 'Contact' && account.ai_agent&.enabled
 
-    Ai::ReplyJob.set(wait: 6.seconds).perform_later(id)
+    Ai::ReplyJob.set(wait: 2.seconds).perform_later(id)
   end
 
   # A new contact beyond the plan's monthly contact limit gets a locked chat:
