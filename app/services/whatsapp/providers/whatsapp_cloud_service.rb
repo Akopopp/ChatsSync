@@ -231,7 +231,7 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
       "#{phone_id_path('v21.0')}/messages",
       headers: api_headers,
       body: {
-        messaging_product: 'whatsapp', recipient_type: 'individual', to: phone_number, type: 'interactive',
+        messaging_product: 'whatsapp', **recipient_params(phone_number), type: 'interactive',
         interactive: {
           type: 'flow', body: { text: message.outgoing_content.presence || flow['cta'] },
           action: { name: 'flow', parameters: { flow_message_version: '3', flow_token: flow['token'], flow_id: flow['flow_id'],
