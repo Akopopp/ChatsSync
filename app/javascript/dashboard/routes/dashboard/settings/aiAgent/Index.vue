@@ -74,7 +74,9 @@ const pick = value =>
 
 const faqs = computed(() => items.value.filter(item => item.kind === 'faq'));
 const media = computed(() => items.value.filter(item => item.kind === 'image'));
-const isDirty = computed(() => !!agent.value && pick(agent.value) !== saved.value);
+const isDirty = computed(
+  () => !!agent.value && pick(agent.value) !== saved.value
+);
 const canReplyToAllChats = computed(
   () => !!agent.value?.features?.ai_on_paid_chats
 );
@@ -240,9 +242,7 @@ onMounted(fetchAll);
               </span>
               <div class="grid min-w-0">
                 <div class="flex items-center gap-2">
-                  <h2
-                    class="text-base font-semibold text-n-slate-12 truncate"
-                  >
+                  <h2 class="text-base font-semibold text-n-slate-12 truncate">
                     {{ agent.agent_name || $t('AI_AGENT.HERO.DEFAULT_NAME') }}
                   </h2>
                   <span
@@ -291,9 +291,7 @@ onMounted(fetchAll);
               <span class="text-xs text-n-slate-11">
                 {{ $t(`AI_AGENT.HERO.${stat.label}`) }}
               </span>
-              <span
-                class="text-xl font-semibold text-n-slate-12 tabular-nums"
-              >
+              <span class="text-xl font-semibold text-n-slate-12 tabular-nums">
                 {{ formatNumber(usageStat(stat.key).used) }}
               </span>
               <span class="text-xs text-n-slate-10">
@@ -310,9 +308,7 @@ onMounted(fetchAll);
               <span class="text-xs text-n-slate-11">
                 {{ $t('AI_AGENT.HERO.KNOWLEDGE') }}
               </span>
-              <span
-                class="text-xl font-semibold text-n-slate-12 tabular-nums"
-              >
+              <span class="text-xl font-semibold text-n-slate-12 tabular-nums">
                 {{ formatNumber(faqs.length + media.length) }}
               </span>
               <span class="text-xs text-n-slate-10">
@@ -360,7 +356,9 @@ onMounted(fetchAll);
               >
                 <span
                   class="size-3.5"
-                  :class="step.done ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+                  :class="
+                    step.done ? 'i-lucide-circle-check' : 'i-lucide-circle'
+                  "
                 />
                 {{ $t(`AI_AGENT.CHECKLIST.${step.key}`) }}
               </button>
@@ -368,9 +366,7 @@ onMounted(fetchAll);
           </div>
         </div>
 
-        <div
-          class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] items-start"
-        >
+        <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
           <div class="grid gap-4 min-w-0">
             <div class="overflow-x-auto">
               <TabBar
@@ -516,7 +512,9 @@ onMounted(fetchAll);
                     type="text"
                     maxlength="60"
                     class="w-full !mb-0"
-                    :placeholder="$t('AI_AGENT.BUSINESS.AGENT_NAME_PLACEHOLDER')"
+                    :placeholder="
+                      $t('AI_AGENT.BUSINESS.AGENT_NAME_PLACEHOLDER')
+                    "
                   />
                 </label>
               </div>
@@ -544,7 +542,7 @@ onMounted(fetchAll);
                 <span class="flex items-center justify-between gap-2">
                   {{ $t('AI_AGENT.BUSINESS.INFO') }}
                   <span class="text-xs text-n-slate-10 tabular-nums">
-                    {{ (agent.business_info || '').length }} / 8000
+                    {{ `${(agent.business_info || '').length} / 8000` }}
                   </span>
                 </span>
                 <textarea
@@ -562,7 +560,9 @@ onMounted(fetchAll);
                   rows="3"
                   maxlength="3000"
                   class="w-full !mb-0"
-                  :placeholder="$t('AI_AGENT.BUSINESS.INSTRUCTIONS_PLACEHOLDER')"
+                  :placeholder="
+                    $t('AI_AGENT.BUSINESS.INSTRUCTIONS_PLACEHOLDER')
+                  "
                 />
               </label>
               <label class="grid gap-1 text-sm text-n-slate-12">
@@ -626,7 +626,9 @@ onMounted(fetchAll);
                     type="text"
                     maxlength="200"
                     class="w-full !mb-0"
-                    :placeholder="$t('AI_AGENT.PROFILE.LEAD_FIELDS_PLACEHOLDER')"
+                    :placeholder="
+                      $t('AI_AGENT.PROFILE.LEAD_FIELDS_PLACEHOLDER')
+                    "
                   />
                 </label>
               </div>
@@ -662,7 +664,9 @@ onMounted(fetchAll);
                 <div class="grid sm:grid-cols-2 gap-3">
                   <label class="grid gap-1 text-sm text-n-slate-12">
                     <span class="flex items-center gap-1.5">
-                      <span class="i-lucide-circle-check size-4 text-n-teal-10" />
+                      <span
+                        class="i-lucide-circle-check size-4 text-n-teal-10"
+                      />
                       {{ $t('AI_AGENT.PROFILE.ALWAYS') }}
                     </span>
                     <textarea

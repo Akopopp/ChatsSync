@@ -152,9 +152,7 @@ const remove = async faq => {
           >
             {{ faq.question }}
           </span>
-          <span
-            class="text-sm text-n-slate-11 whitespace-pre-line break-words"
-          >
+          <span class="text-sm text-n-slate-11 whitespace-pre-line break-words">
             {{ faq.answer }}
           </span>
         </div>
