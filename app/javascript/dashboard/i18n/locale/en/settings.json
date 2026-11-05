@@ -506,11 +506,15 @@
       "AD_LEADS": "Only customers who came from a Meta ad (free Meta window)",
       "ALL": "All WhatsApp chats",
       "ALL_NOTE": "Replies outside the free ad window can cost Meta message charges.",
-      "NOT_IN_PLAN": "Replying to all chats is not included in your plan."
+      "NOT_IN_PLAN": "Replying to all chats is not included in your plan.",
+      "AD_LEADS_NOTE": "Customers who message you from a Click-to-WhatsApp ad. Replies in the free ad window cost nothing.",
+      "ALL_TITLE": "All WhatsApp chats",
+      "AD_TITLE": "Ad chats only"
     },
     "INBOXES": {
       "TITLE": "Inboxes",
-      "NOTE": "Leave all unticked to use every WhatsApp, Facebook, Instagram and website chat inbox."
+      "NOTE": "Leave all unticked to use every WhatsApp, Facebook, Instagram and website chat inbox.",
+      "ALL": "All inboxes"
     },
     "BUSINESS": {
       "TITLE": "Business information",
@@ -540,20 +544,36 @@
       "GENERATED": "{count} FAQs added. Review them below.",
       "QUESTION": "Question, e.g. What is the price? / How much is it?",
       "ANSWER": "Answer",
-      "ADD": "Add FAQ"
+      "ADD": "Add FAQ",
+      "SEARCH": "Search FAQs",
+      "EMPTY": "No FAQs yet. Add one or generate them from your business info.",
+      "NEW": "New FAQ",
+      "NO_MATCH": "No FAQs match your search."
     },
     "IMAGES": {
       "TITLE": "Product pictures and videos",
       "DESCRIPTION": "The AI can send these pictures and videos when a customer asks about the product. Pictures up to 5 MB, videos (MP4) up to 16 MB.",
       "NAME": "Product name",
       "DETAILS": "Price and details",
-      "ADD": "Add picture or video"
+      "ADD": "Add picture or video",
+      "CHOOSE": "Choose a picture or video",
+      "EMPTY": "No pictures or videos yet.",
+      "NEW": "New picture or video"
     },
     "PREVIEW": {
       "TITLE": "Try your AI",
       "DESCRIPTION": "Type a customer message to see how the AI would reply. Nothing is sent to anyone.",
       "PLACEHOLDER": "e.g. What is the price of this shirt?",
-      "BUTTON": "Get reply"
+      "BUTTON": "Get reply",
+      "EMPTY": "Ask anything a customer would ask. Nothing here is sent to anyone.",
+      "TRY": "Try asking",
+      "SUGGESTION_1": "What is the price?",
+      "SUGGESTION_2": "Do you deliver to Lahore?",
+      "SUGGESTION_3": "Can I book for tomorrow?",
+      "CLEAR": "Clear",
+      "TYPING": "Typing…",
+      "CUSTOMER": "Customer",
+      "SEND": "Send"
     },
     "SKILLS": {
       "TITLE": "More things your AI can do",
@@ -561,7 +581,8 @@
       "APPOINTMENTS": "Book appointments",
       "APPOINTMENTS_NOTE": "Offers free times and books them for customers.",
       "CATALOG": "Sell from your catalog",
-      "CATALOG_NOTE": "Answers with your prices, sends product pictures and takes orders."
+      "CATALOG_NOTE": "Answers with your prices, sends product pictures and takes orders.",
+      "OPEN": "Set up"
     },
     "PROFILE": {
       "TITLE": "Teach your AI more",
@@ -608,7 +629,39 @@
         "ENGLISH": "Always English",
         "URDU": "Always Urdu script"
       },
-      "EMOJI": "Use emojis"
+      "EMOJI": "Use emojis",
+      "RULES": "Rules",
+      "STYLE": "Reply style"
+    },
+    "DISCARD": "Discard",
+    "UNSAVED": "You have unsaved changes",
+    "HERO": {
+      "DEFAULT_NAME": "AI Agent",
+      "LIVE": "Live",
+      "OFF": "Off",
+      "SWITCH": "AI replies",
+      "REPLIES_TODAY": "Replies today",
+      "REPLIES_MONTH": "Replies this month",
+      "OF_LIMIT": "of {limit}",
+      "NO_LIMIT": "No limit",
+      "KNOWLEDGE": "Knowledge",
+      "KNOWLEDGE_VALUE": "{faqs} FAQs · {media} media"
+    },
+    "CHECKLIST": {
+      "TITLE": "Get your AI ready",
+      "PROGRESS": "{done} of {total} done",
+      "BUSINESS": "Describe your business",
+      "FAQS": "Add at least 5 FAQs",
+      "MEDIA": "Add product pictures or videos",
+      "TEST": "Test a reply",
+      "ENABLE": "Turn on AI replies"
+    },
+    "TABS": {
+      "SETUP": "Setup",
+      "BUSINESS": "Business",
+      "BEHAVIOUR": "Behaviour",
+      "FAQS": "FAQs",
+      "MEDIA": "Media"
     }
   },
   "PLAN_USAGE": {

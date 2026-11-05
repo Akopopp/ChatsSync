@@ -78,7 +78,8 @@ class CsCopilot::Agent
       - To change anything, call the matching action tool. The user will see a confirm button, so do not ask "should I?" first.
       - Refer to chats as #number. Phone numbers are shortened for privacy.
       - Reply in the user's language and script (Roman Urdu in English letters, Urdu or English; never Hindi script).
-      - Be short and clear. Write plain text with no markdown (no ** or # headings); use "- " for lists.
+      - Be short, clear and professional. Start with the direct answer in one line, then the details.
+        Use **bold** for key numbers and names, "- " for lists and "1." for steps. No headings, tables or emojis.
       - AI replies to customers come from "ChatsSync AI".
       - Pictures and videos the user attaches show as [Attached images: img1 (file name), ...]. To let the AI send them to customers,
         call add_product_images with a product name and price/details for each. If the name or price is missing, ask first.

@@ -4,25 +4,42 @@ import { useI18n } from 'vue-i18n';
 import { useAlert } from 'dashboard/composables';
 import AiAgentAPI from 'dashboard/api/aiAgent';
 import AiKnowledgeItemsAPI from 'dashboard/api/aiKnowledgeItems';
+import PlanUsageAPI from 'dashboard/api/planUsage';
 
-import BillingCard from '../billing/components/BillingCard.vue';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import ButtonV4 from 'next/button/Button.vue';
+import Switch from 'next/switch/Switch.vue';
+import Checkbox from 'next/checkbox/Checkbox.vue';
+import RadioCard from 'next/radioCard/RadioCard.vue';
+import TabBar from 'next/tabbar/TabBar.vue';
+import PreviewChat from './components/PreviewChat.vue';
+import FaqsPanel from './components/FaqsPanel.vue';
+import MediaPanel from './components/MediaPanel.vue';
 
 const { t } = useI18n();
 
-const isLoading = ref(true);
-const isSaving = ref(false);
-const isGenerating = ref(false);
-const isPreviewing = ref(false);
-const agent = ref(null);
-const items = ref([]);
-const newFaq = ref({ question: '', answer: '' });
-const newImage = ref({ question: '', answer: '', file: null });
-const previewMessage = ref('');
-const previewReply = ref('');
-
+const SAVE_FIELDS = [
+  'enabled',
+  'reply_scope',
+  'inbox_ids',
+  'business_name',
+  'business_info',
+  'instructions',
+  'handoff_message',
+  'tone',
+  'agent_name',
+  'reply_examples',
+  'policies',
+  'always_rules',
+  'never_rules',
+  'handoff_rules',
+  'goal',
+  'lead_fields',
+  'reply_length',
+  'use_emoji',
+  'reply_language',
+];
 const POLICY_KEYS = [
   'delivery',
   'payment',
@@ -32,15 +49,65 @@ const POLICY_KEYS = [
   'location',
 ];
 const GOALS = ['answer', 'sell', 'book', 'leads'];
+const TONES = ['professional', 'friendly', 'formal'];
 const LANGUAGES = ['match', 'roman_urdu', 'english', 'urdu'];
+const CHANNEL_ICONS = {
+  'Channel::Whatsapp': 'i-ri-whatsapp-line',
+  'Channel::FacebookPage': 'i-ri-messenger-line',
+  'Channel::Instagram': 'i-ri-instagram-line',
+  'Channel::WebWidget': 'i-lucide-globe',
+  'Channel::Api': 'i-lucide-plug',
+};
+
+const isLoading = ref(true);
+const isSaving = ref(false);
+const isGenerating = ref(false);
+const agent = ref(null);
+const saved = ref('');
+const items = ref([]);
+const usage = ref({});
+const activeTab = ref(0);
+const tested = ref(false);
+
+const pick = value =>
+  JSON.stringify(Object.fromEntries(SAVE_FIELDS.map(key => [key, value[key]])));
 
 const faqs = computed(() => items.value.filter(item => item.kind === 'faq'));
-const images = computed(() =>
-  items.value.filter(item => item.kind === 'image')
-);
+const media = computed(() => items.value.filter(item => item.kind === 'image'));
+const isDirty = computed(() => !!agent.value && pick(agent.value) !== saved.value);
 const canReplyToAllChats = computed(
   () => !!agent.value?.features?.ai_on_paid_chats
 );
+
+const tabs = computed(() => [
+  { key: 'setup', label: t('AI_AGENT.TABS.SETUP') },
+  { key: 'business', label: t('AI_AGENT.TABS.BUSINESS') },
+  { key: 'behaviour', label: t('AI_AGENT.TABS.BEHAVIOUR') },
+  { key: 'faqs', label: t('AI_AGENT.TABS.FAQS'), count: faqs.value.length },
+  { key: 'media', label: t('AI_AGENT.TABS.MEDIA'), count: media.value.length },
+]);
+const currentTab = computed(() => tabs.value[activeTab.value].key);
+
+const checklist = computed(() => {
+  if (!agent.value) return [];
+  return [
+    {
+      key: 'BUSINESS',
+      done: (agent.value.business_info || '').trim().length >= 80,
+      tab: 1,
+    },
+    { key: 'FAQS', done: faqs.value.length >= 5, tab: 3 },
+    { key: 'MEDIA', done: media.value.length > 0, tab: 4 },
+    { key: 'TEST', done: tested.value, tab: null },
+    { key: 'ENABLE', done: !!agent.value.enabled, tab: 0 },
+  ];
+});
+const doneCount = computed(
+  () => checklist.value.filter(step => step.done).length
+);
+
+const usageStat = key => usage.value?.[key] || { used: 0, limit: null };
+const formatNumber = value => Number(value || 0).toLocaleString();
 
 const errorMessage = error =>
   error?.response?.data?.message ||
@@ -52,11 +119,25 @@ const fetchItems = async () => {
   items.value = response.data;
 };
 
+const fetchUsage = async () => {
+  try {
+    const response = await PlanUsageAPI.get();
+    usage.value = response.data.usage || {};
+  } catch {
+    usage.value = {};
+  }
+};
+
+const setAgent = data => {
+  agent.value = { ...data, policies: { ...(data.policies || {}) } };
+  saved.value = pick(agent.value);
+};
+
 const fetchAll = async () => {
   try {
     const response = await AiAgentAPI.get();
-    agent.value = response.data;
-    await fetchItems();
+    setAgent(response.data);
+    await Promise.all([fetchItems(), fetchUsage()]);
   } finally {
     isLoading.value = false;
   }
@@ -65,39 +146,30 @@ const fetchAll = async () => {
 const save = async () => {
   isSaving.value = true;
   try {
-    const { enabled, reply_scope, inbox_ids, business_name } = agent.value;
-    const { business_info, instructions, handoff_message } = agent.value;
-    const { tone, agent_name, reply_examples } = agent.value;
-    const { policies, always_rules, never_rules, handoff_rules } = agent.value;
-    const { goal, lead_fields, reply_length, use_emoji, reply_language } =
-      agent.value;
-    const response = await AiAgentAPI.update({
-      enabled,
-      reply_scope,
-      inbox_ids,
-      business_name,
-      business_info,
-      instructions,
-      handoff_message,
-      tone,
-      agent_name,
-      reply_examples,
-      policies,
-      always_rules,
-      never_rules,
-      handoff_rules,
-      goal,
-      lead_fields,
-      reply_length,
-      use_emoji,
-      reply_language,
-    });
-    agent.value = response.data;
+    const response = await AiAgentAPI.update(JSON.parse(pick(agent.value)));
+    setAgent(response.data);
     useAlert(t('AI_AGENT.SAVED'));
   } catch (error) {
     useAlert(errorMessage(error));
   } finally {
     isSaving.value = false;
+  }
+};
+
+const discard = () => {
+  agent.value = { ...agent.value, ...JSON.parse(saved.value) };
+};
+
+// The on/off switch saves at once, without saving other unsaved edits.
+const toggleEnabled = async () => {
+  const { enabled } = agent.value;
+  try {
+    await AiAgentAPI.update({ enabled });
+    saved.value = JSON.stringify({ ...JSON.parse(saved.value), enabled });
+    useAlert(t('AI_AGENT.SAVED'));
+  } catch (error) {
+    agent.value.enabled = !enabled;
+    useAlert(errorMessage(error));
   }
 };
 
@@ -108,53 +180,10 @@ const toggleInbox = id => {
     : [...ids, id];
 };
 
-const addFaq = async () => {
-  if (!newFaq.value.question || !newFaq.value.answer) return;
-  try {
-    await AiKnowledgeItemsAPI.create({ kind: 'faq', ...newFaq.value });
-    newFaq.value = { question: '', answer: '' };
-    await fetchItems();
-  } catch (error) {
-    useAlert(errorMessage(error));
-  }
-};
-
-const imageInput = ref(null);
-
-const addImage = async () => {
-  if (!newImage.value.question || !newImage.value.file) return;
-  try {
-    await AiKnowledgeItemsAPI.createWithImage({
-      question: newImage.value.question,
-      answer: newImage.value.answer,
-      image: newImage.value.file,
-    });
-    newImage.value = { question: '', answer: '', file: null };
-    imageInput.value.value = '';
-    await fetchItems();
-  } catch (error) {
-    useAlert(errorMessage(error));
-  }
-};
-
-const onImageSelected = event => {
-  [newImage.value.file] = event.target.files;
-};
-
-const toggleItem = async item => {
-  await AiKnowledgeItemsAPI.update(item.id, { enabled: !item.enabled });
-  await fetchItems();
-};
-
-const removeItem = async item => {
-  await AiKnowledgeItemsAPI.delete(item.id);
-  await fetchItems();
-};
-
 const generateFaqs = async () => {
   isGenerating.value = true;
   try {
-    await save();
+    if (isDirty.value) await save();
     const response = await AiAgentAPI.generateFaqs();
     await fetchItems();
     useAlert(t('AI_AGENT.FAQS.GENERATED', { count: response.data.created }));
@@ -165,18 +194,8 @@ const generateFaqs = async () => {
   }
 };
 
-const runPreview = async () => {
-  if (!previewMessage.value) return;
-  isPreviewing.value = true;
-  previewReply.value = '';
-  try {
-    const response = await AiAgentAPI.preview(previewMessage.value);
-    previewReply.value = response.data.reply;
-  } catch (error) {
-    previewReply.value = errorMessage(error);
-  } finally {
-    isPreviewing.value = false;
-  }
+const openStep = step => {
+  if (step.tab !== null) activeTab.value = step.tab;
 };
 
 onMounted(fetchAll);
@@ -194,464 +213,577 @@ onMounted(fetchAll);
       />
     </template>
     <template #body>
-      <section v-if="agent" class="grid gap-4">
+      <section v-if="agent" class="grid gap-5 pb-20">
         <div
           v-if="!agent.ai_configured"
-          class="px-4 py-3 rounded-lg bg-n-amber-3 text-n-amber-11 text-sm"
+          class="flex items-center gap-2 px-4 py-3 rounded-xl bg-n-amber-3 text-n-amber-11 text-sm"
         >
+          <span class="i-lucide-triangle-alert size-4 shrink-0" />
           {{ $t('AI_AGENT.NOT_CONFIGURED') }}
         </div>
 
-        <BillingCard
-          :title="$t('AI_AGENT.STATUS.TITLE')"
-          :description="$t('AI_AGENT.STATUS.DESCRIPTION')"
+        <!-- Status, usage and setup progress -->
+        <div
+          class="grid gap-5 p-5 rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1"
         >
-          <template #action>
-            <ButtonV4 sm solid blue :is-loading="isSaving" @click="save">
-              {{ $t('AI_AGENT.SAVE') }}
-            </ButtonV4>
-          </template>
-          <div class="px-5 grid gap-4 text-sm text-n-slate-12">
-            <label class="flex items-center gap-2">
-              <input v-model="agent.enabled" type="checkbox" />
-              {{ $t('AI_AGENT.STATUS.ENABLED') }}
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3 min-w-0">
+              <span
+                class="grid place-items-center size-12 rounded-2xl shrink-0"
+                :class="
+                  agent.enabled
+                    ? 'bg-n-teal-3 text-n-teal-11'
+                    : 'bg-n-alpha-2 text-n-slate-10'
+                "
+              >
+                <span class="i-lucide-bot size-6" />
+              </span>
+              <div class="grid min-w-0">
+                <div class="flex items-center gap-2">
+                  <h2
+                    class="text-base font-semibold text-n-slate-12 truncate"
+                  >
+                    {{ agent.agent_name || $t('AI_AGENT.HERO.DEFAULT_NAME') }}
+                  </h2>
+                  <span
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                    :class="
+                      agent.enabled
+                        ? 'bg-n-teal-3 text-n-teal-11'
+                        : 'bg-n-alpha-2 text-n-slate-11'
+                    "
+                  >
+                    <span
+                      class="size-1.5 rounded-full"
+                      :class="agent.enabled ? 'bg-n-teal-9' : 'bg-n-slate-9'"
+                    />
+                    {{
+                      agent.enabled
+                        ? $t('AI_AGENT.HERO.LIVE')
+                        : $t('AI_AGENT.HERO.OFF')
+                    }}
+                  </span>
+                </div>
+                <span class="text-sm text-n-slate-11 truncate">
+                  {{ agent.business_name }}
+                </span>
+              </div>
+            </div>
+            <label
+              class="flex items-center gap-3 px-3 py-2 rounded-xl bg-n-alpha-1 cursor-pointer"
+            >
+              <span class="text-sm font-medium text-n-slate-12">
+                {{ $t('AI_AGENT.HERO.SWITCH') }}
+              </span>
+              <Switch v-model="agent.enabled" @change="toggleEnabled" />
             </label>
-            <div class="grid gap-2">
-              <span class="font-medium">{{ $t('AI_AGENT.SCOPE.TITLE') }}</span>
-              <label class="flex items-center gap-2">
-                <input
-                  v-model="agent.reply_scope"
-                  type="radio"
-                  value="ad_leads"
-                />
-                {{ $t('AI_AGENT.SCOPE.AD_LEADS') }}
-              </label>
-              <label class="flex items-center gap-2">
-                <input
-                  v-model="agent.reply_scope"
-                  type="radio"
-                  value="all"
-                  :disabled="!canReplyToAllChats"
-                />
-                {{ $t('AI_AGENT.SCOPE.ALL') }}
-              </label>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div
+              v-for="stat in [
+                { key: 'ai_replies_daily', label: 'REPLIES_TODAY' },
+                { key: 'ai_replies_monthly', label: 'REPLIES_MONTH' },
+              ]"
+              :key="stat.key"
+              class="grid gap-1 p-3 rounded-xl bg-n-alpha-1"
+            >
               <span class="text-xs text-n-slate-11">
+                {{ $t(`AI_AGENT.HERO.${stat.label}`) }}
+              </span>
+              <span
+                class="text-xl font-semibold text-n-slate-12 tabular-nums"
+              >
+                {{ formatNumber(usageStat(stat.key).used) }}
+              </span>
+              <span class="text-xs text-n-slate-10">
                 {{
-                  canReplyToAllChats
-                    ? $t('AI_AGENT.SCOPE.ALL_NOTE')
-                    : $t('AI_AGENT.SCOPE.NOT_IN_PLAN')
+                  usageStat(stat.key).limit
+                    ? $t('AI_AGENT.HERO.OF_LIMIT', {
+                        limit: formatNumber(usageStat(stat.key).limit),
+                      })
+                    : $t('AI_AGENT.HERO.NO_LIMIT')
                 }}
               </span>
             </div>
-            <div class="grid gap-2">
-              <span class="font-medium">{{
-                $t('AI_AGENT.INBOXES.TITLE')
-              }}</span>
+            <div class="grid gap-1 p-3 rounded-xl bg-n-alpha-1">
               <span class="text-xs text-n-slate-11">
-                {{ $t('AI_AGENT.INBOXES.NOTE') }}
+                {{ $t('AI_AGENT.HERO.KNOWLEDGE') }}
               </span>
-              <label
-                v-for="inbox in agent.inboxes"
-                :key="inbox.id"
-                class="flex items-center gap-2"
+              <span
+                class="text-xl font-semibold text-n-slate-12 tabular-nums"
               >
-                <input
-                  type="checkbox"
-                  :checked="(agent.inbox_ids || []).includes(inbox.id)"
-                  @change="toggleInbox(inbox.id)"
-                />
-                {{ inbox.name }}
-              </label>
+                {{ formatNumber(faqs.length + media.length) }}
+              </span>
+              <span class="text-xs text-n-slate-10">
+                {{
+                  $t('AI_AGENT.HERO.KNOWLEDGE_VALUE', {
+                    faqs: faqs.length,
+                    media: media.length,
+                  })
+                }}
+              </span>
             </div>
           </div>
-        </BillingCard>
 
-        <BillingCard
-          :title="$t('AI_AGENT.SKILLS.TITLE')"
-          :description="$t('AI_AGENT.SKILLS.DESCRIPTION')"
-        >
-          <div class="px-5 grid sm:grid-cols-2 gap-3 text-sm">
-            <router-link
-              :to="{ name: 'appointments_settings' }"
-              class="flex items-center gap-3 p-3 rounded-lg border border-n-weak hover:bg-n-alpha-1"
-            >
-              <span class="i-lucide-calendar-days size-5 text-n-blue-11" />
-              <span class="grid">
-                <span class="font-medium text-n-slate-12">
-                  {{ $t('AI_AGENT.SKILLS.APPOINTMENTS') }}
-                </span>
-                <span class="text-xs text-n-slate-11">
-                  {{ $t('AI_AGENT.SKILLS.APPOINTMENTS_NOTE') }}
-                </span>
+          <div v-if="doneCount < checklist.length" class="grid gap-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-medium text-n-slate-12">
+                {{ $t('AI_AGENT.CHECKLIST.TITLE') }}
               </span>
-            </router-link>
-            <router-link
-              :to="{ name: 'catalog_settings' }"
-              class="flex items-center gap-3 p-3 rounded-lg border border-n-weak hover:bg-n-alpha-1"
-            >
-              <span class="i-lucide-shopping-bag size-5 text-n-blue-11" />
-              <span class="grid">
-                <span class="font-medium text-n-slate-12">
-                  {{ $t('AI_AGENT.SKILLS.CATALOG') }}
-                </span>
-                <span class="text-xs text-n-slate-11">
-                  {{ $t('AI_AGENT.SKILLS.CATALOG_NOTE') }}
-                </span>
+              <span class="text-xs text-n-slate-11 tabular-nums">
+                {{
+                  $t('AI_AGENT.CHECKLIST.PROGRESS', {
+                    done: doneCount,
+                    total: checklist.length,
+                  })
+                }}
               </span>
-            </router-link>
-          </div>
-        </BillingCard>
-        <BillingCard
-          :title="$t('AI_AGENT.BUSINESS.TITLE')"
-          :description="$t('AI_AGENT.BUSINESS.DESCRIPTION')"
-        >
-          <template #action>
-            <ButtonV4 sm solid blue :is-loading="isSaving" @click="save">
-              {{ $t('AI_AGENT.SAVE') }}
-            </ButtonV4>
-          </template>
-          <div class="px-5 grid gap-3 text-sm">
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.BUSINESS.NAME') }}
-              <input v-model="agent.business_name" type="text" class="w-full" />
-            </label>
-            <div class="grid sm:grid-cols-2 gap-3">
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.BUSINESS.AGENT_NAME') }}
-                <input
-                  v-model="agent.agent_name"
-                  type="text"
-                  maxlength="60"
-                  class="w-full"
-                  :placeholder="$t('AI_AGENT.BUSINESS.AGENT_NAME_PLACEHOLDER')"
-                />
-              </label>
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.BUSINESS.TONE') }}
-                <select v-model="agent.tone" class="w-full">
-                  <option value="professional">
-                    {{ $t('AI_AGENT.BUSINESS.TONES.PROFESSIONAL') }}
-                  </option>
-                  <option value="friendly">
-                    {{ $t('AI_AGENT.BUSINESS.TONES.FRIENDLY') }}
-                  </option>
-                  <option value="formal">
-                    {{ $t('AI_AGENT.BUSINESS.TONES.FORMAL') }}
-                  </option>
-                </select>
-              </label>
             </div>
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.BUSINESS.INFO') }}
-              <textarea
-                v-model="agent.business_info"
-                rows="8"
-                maxlength="8000"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.BUSINESS.INFO_PLACEHOLDER')"
+            <div class="h-1.5 rounded-full bg-n-alpha-2 overflow-hidden">
+              <div
+                class="h-full rounded-full bg-n-teal-9 transition-all duration-500"
+                :style="{ width: `${(doneCount / checklist.length) * 100}%` }"
               />
-            </label>
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.BUSINESS.INSTRUCTIONS') }}
-              <textarea
-                v-model="agent.instructions"
-                rows="3"
-                maxlength="3000"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.BUSINESS.INSTRUCTIONS_PLACEHOLDER')"
-              />
-            </label>
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.BUSINESS.EXAMPLES') }}
-              <textarea
-                v-model="agent.reply_examples"
-                rows="4"
-                maxlength="3000"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.BUSINESS.EXAMPLES_PLACEHOLDER')"
-              />
-            </label>
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.BUSINESS.HANDOFF') }}
-              <input
-                v-model="agent.handoff_message"
-                type="text"
-                maxlength="500"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.BUSINESS.HANDOFF_PLACEHOLDER')"
-              />
-            </label>
-          </div>
-        </BillingCard>
-
-        <BillingCard
-          :title="$t('AI_AGENT.PROFILE.TITLE')"
-          :description="$t('AI_AGENT.PROFILE.DESCRIPTION')"
-        >
-          <template #action>
-            <ButtonV4 sm solid blue :is-loading="isSaving" @click="save">
-              {{ $t('AI_AGENT.SAVE') }}
-            </ButtonV4>
-          </template>
-          <div class="px-5 grid gap-4 text-sm">
-            <div class="grid sm:grid-cols-2 gap-3">
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.GOAL') }}
-                <select v-model="agent.goal" class="w-full !mb-0">
-                  <option v-for="goal in GOALS" :key="goal" :value="goal">
-                    {{ $t(`AI_AGENT.PROFILE.GOALS.${goal.toUpperCase()}`) }}
-                  </option>
-                </select>
-              </label>
-              <label v-if="agent.goal === 'leads'" class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.LEAD_FIELDS') }}
-                <input
-                  v-model="agent.lead_fields"
-                  type="text"
-                  maxlength="200"
-                  class="w-full !mb-0"
-                  :placeholder="$t('AI_AGENT.PROFILE.LEAD_FIELDS_PLACEHOLDER')"
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="step in checklist"
+                :key="step.key"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs outline outline-1"
+                :class="
+                  step.done
+                    ? 'outline-transparent bg-n-teal-3 text-n-teal-11'
+                    : 'outline-n-weak text-n-slate-12 hover:outline-n-strong'
+                "
+                @click="openStep(step)"
+              >
+                <span
+                  class="size-3.5"
+                  :class="step.done ? 'i-lucide-circle-check' : 'i-lucide-circle'"
                 />
-              </label>
+                {{ $t(`AI_AGENT.CHECKLIST.${step.key}`) }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] items-start"
+        >
+          <div class="grid gap-4 min-w-0">
+            <div class="overflow-x-auto">
+              <TabBar
+                :tabs="tabs"
+                :initial-active-tab="activeTab"
+                @tab-changed="tab => (activeTab = tabs.indexOf(tab))"
+              />
             </div>
 
-            <div class="grid gap-2">
-              <span class="font-medium">
-                {{ $t('AI_AGENT.PROFILE.POLICIES') }}
-              </span>
-              <div class="grid sm:grid-cols-2 gap-3">
-                <label v-for="key in POLICY_KEYS" :key="key" class="grid gap-1">
-                  {{ $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}`) }}
-                  <textarea
-                    v-model="agent.policies[key]"
-                    rows="2"
-                    maxlength="600"
-                    class="w-full !mb-0"
-                    :placeholder="
-                      $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}_HINT`)
-                    "
+            <!-- Setup -->
+            <div v-if="currentTab === 'setup'" class="grid gap-5">
+              <div class="grid gap-3">
+                <h3 class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.SCOPE.TITLE') }}
+                </h3>
+                <div class="grid sm:grid-cols-2 gap-3">
+                  <RadioCard
+                    id="scope-ad-leads"
+                    :label="$t('AI_AGENT.SCOPE.AD_TITLE')"
+                    :description="$t('AI_AGENT.SCOPE.AD_LEADS_NOTE')"
+                    :is-active="agent.reply_scope === 'ad_leads'"
+                    @select="agent.reply_scope = 'ad_leads'"
                   />
+                  <RadioCard
+                    id="scope-all"
+                    :label="$t('AI_AGENT.SCOPE.ALL_TITLE')"
+                    :description="$t('AI_AGENT.SCOPE.ALL_NOTE')"
+                    :is-active="agent.reply_scope === 'all'"
+                    :disabled="!canReplyToAllChats"
+                    :disabled-label="$t('AI_AGENT.SCOPE.NOT_IN_PLAN')"
+                    :disabled-message="$t('AI_AGENT.SCOPE.NOT_IN_PLAN')"
+                    @select="agent.reply_scope = 'all'"
+                  />
+                </div>
+              </div>
+
+              <div class="grid gap-3">
+                <div class="grid gap-0.5">
+                  <h3 class="text-sm font-medium text-n-slate-12">
+                    {{ $t('AI_AGENT.INBOXES.TITLE') }}
+                  </h3>
+                  <p class="text-xs text-n-slate-11">
+                    {{ $t('AI_AGENT.INBOXES.NOTE') }}
+                  </p>
+                </div>
+                <div
+                  class="divide-y divide-n-weak rounded-xl outline outline-1 outline-n-weak"
+                >
+                  <label
+                    v-for="inbox in agent.inboxes"
+                    :key="inbox.id"
+                    class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-n-alpha-1"
+                  >
+                    <Checkbox
+                      :model-value="(agent.inbox_ids || []).includes(inbox.id)"
+                      @change="toggleInbox(inbox.id)"
+                    />
+                    <span
+                      class="size-4 text-n-slate-11"
+                      :class="
+                        CHANNEL_ICONS[inbox.channel_type] || 'i-lucide-inbox'
+                      "
+                    />
+                    <span class="text-sm text-n-slate-12 truncate">
+                      {{ inbox.name }}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="grid gap-3">
+                <div class="grid gap-0.5">
+                  <h3 class="text-sm font-medium text-n-slate-12">
+                    {{ $t('AI_AGENT.SKILLS.TITLE') }}
+                  </h3>
+                  <p class="text-xs text-n-slate-11">
+                    {{ $t('AI_AGENT.SKILLS.DESCRIPTION') }}
+                  </p>
+                </div>
+                <div class="grid sm:grid-cols-2 gap-3">
+                  <router-link
+                    v-for="skill in [
+                      {
+                        route: 'appointments_settings',
+                        icon: 'i-lucide-calendar-days',
+                        key: 'APPOINTMENTS',
+                      },
+                      {
+                        route: 'catalog_settings',
+                        icon: 'i-lucide-shopping-bag',
+                        key: 'CATALOG',
+                      },
+                    ]"
+                    :key="skill.key"
+                    :to="{ name: skill.route }"
+                    class="group flex items-start gap-3 p-4 rounded-xl outline outline-1 outline-n-weak hover:outline-n-strong bg-n-solid-1"
+                  >
+                    <span
+                      class="grid place-items-center size-9 rounded-lg bg-n-blue-3 text-n-blue-11 shrink-0"
+                    >
+                      <span class="size-5" :class="skill.icon" />
+                    </span>
+                    <span class="grid gap-0.5 min-w-0">
+                      <span class="text-sm font-medium text-n-slate-12">
+                        {{ $t(`AI_AGENT.SKILLS.${skill.key}`) }}
+                      </span>
+                      <span class="text-xs text-n-slate-11">
+                        {{ $t(`AI_AGENT.SKILLS.${skill.key}_NOTE`) }}
+                      </span>
+                      <span
+                        class="text-xs font-medium text-n-blue-11 flex items-center gap-1 pt-1"
+                      >
+                        {{ $t('AI_AGENT.SKILLS.OPEN') }}
+                        <span
+                          class="i-lucide-arrow-right size-3 transition-transform group-hover:translate-x-0.5"
+                        />
+                      </span>
+                    </span>
+                  </router-link>
+                </div>
+              </div>
+            </div>
+
+            <!-- Business -->
+            <div v-else-if="currentTab === 'business'" class="grid gap-4">
+              <p class="text-sm text-n-slate-11">
+                {{ $t('AI_AGENT.BUSINESS.DESCRIPTION') }}
+              </p>
+              <div class="grid sm:grid-cols-2 gap-3">
+                <label class="grid gap-1 text-sm text-n-slate-12">
+                  {{ $t('AI_AGENT.BUSINESS.NAME') }}
+                  <input
+                    v-model="agent.business_name"
+                    type="text"
+                    maxlength="120"
+                    class="w-full !mb-0"
+                  />
+                </label>
+                <label class="grid gap-1 text-sm text-n-slate-12">
+                  {{ $t('AI_AGENT.BUSINESS.AGENT_NAME') }}
+                  <input
+                    v-model="agent.agent_name"
+                    type="text"
+                    maxlength="60"
+                    class="w-full !mb-0"
+                    :placeholder="$t('AI_AGENT.BUSINESS.AGENT_NAME_PLACEHOLDER')"
+                  />
+                </label>
+              </div>
+              <div class="grid gap-2">
+                <span class="text-sm text-n-slate-12">
+                  {{ $t('AI_AGENT.BUSINESS.TONE') }}
+                </span>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="tone in TONES"
+                    :key="tone"
+                    class="px-3 py-1.5 rounded-lg text-sm outline outline-1"
+                    :class="
+                      agent.tone === tone
+                        ? 'outline-n-blue-9 bg-n-blue-2 text-n-blue-11'
+                        : 'outline-n-weak text-n-slate-12 hover:outline-n-strong'
+                    "
+                    @click="agent.tone = tone"
+                  >
+                    {{ $t(`AI_AGENT.BUSINESS.TONES.${tone.toUpperCase()}`) }}
+                  </button>
+                </div>
+              </div>
+              <label class="grid gap-1 text-sm text-n-slate-12">
+                <span class="flex items-center justify-between gap-2">
+                  {{ $t('AI_AGENT.BUSINESS.INFO') }}
+                  <span class="text-xs text-n-slate-10 tabular-nums">
+                    {{ (agent.business_info || '').length }} / 8000
+                  </span>
+                </span>
+                <textarea
+                  v-model="agent.business_info"
+                  rows="10"
+                  maxlength="8000"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.BUSINESS.INFO_PLACEHOLDER')"
+                />
+              </label>
+              <label class="grid gap-1 text-sm text-n-slate-12">
+                {{ $t('AI_AGENT.BUSINESS.INSTRUCTIONS') }}
+                <textarea
+                  v-model="agent.instructions"
+                  rows="3"
+                  maxlength="3000"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.BUSINESS.INSTRUCTIONS_PLACEHOLDER')"
+                />
+              </label>
+              <label class="grid gap-1 text-sm text-n-slate-12">
+                {{ $t('AI_AGENT.BUSINESS.EXAMPLES') }}
+                <textarea
+                  v-model="agent.reply_examples"
+                  rows="4"
+                  maxlength="3000"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.BUSINESS.EXAMPLES_PLACEHOLDER')"
+                />
+              </label>
+              <label class="grid gap-1 text-sm text-n-slate-12">
+                {{ $t('AI_AGENT.BUSINESS.HANDOFF') }}
+                <input
+                  v-model="agent.handoff_message"
+                  type="text"
+                  maxlength="500"
+                  class="w-full !mb-0"
+                  :placeholder="$t('AI_AGENT.BUSINESS.HANDOFF_PLACEHOLDER')"
+                />
+              </label>
+            </div>
+
+            <!-- Behaviour -->
+            <div v-else-if="currentTab === 'behaviour'" class="grid gap-5">
+              <div class="grid gap-2">
+                <span class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.PROFILE.GOAL') }}
+                </span>
+                <div class="grid sm:grid-cols-2 gap-2">
+                  <button
+                    v-for="goal in GOALS"
+                    :key="goal"
+                    class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-start outline outline-1"
+                    :class="
+                      agent.goal === goal
+                        ? 'outline-n-blue-9 bg-n-blue-2 text-n-blue-11'
+                        : 'outline-n-weak text-n-slate-12 hover:outline-n-strong'
+                    "
+                    @click="agent.goal = goal"
+                  >
+                    <span
+                      class="size-4 shrink-0"
+                      :class="
+                        agent.goal === goal
+                          ? 'i-lucide-circle-dot'
+                          : 'i-lucide-circle'
+                      "
+                    />
+                    {{ $t(`AI_AGENT.PROFILE.GOALS.${goal.toUpperCase()}`) }}
+                  </button>
+                </div>
+                <label
+                  v-if="agent.goal === 'leads'"
+                  class="grid gap-1 text-sm text-n-slate-12 pt-1"
+                >
+                  {{ $t('AI_AGENT.PROFILE.LEAD_FIELDS') }}
+                  <input
+                    v-model="agent.lead_fields"
+                    type="text"
+                    maxlength="200"
+                    class="w-full !mb-0"
+                    :placeholder="$t('AI_AGENT.PROFILE.LEAD_FIELDS_PLACEHOLDER')"
+                  />
+                </label>
+              </div>
+
+              <div class="grid gap-2">
+                <span class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.PROFILE.POLICIES') }}
+                </span>
+                <div class="grid sm:grid-cols-2 gap-3">
+                  <label
+                    v-for="key in POLICY_KEYS"
+                    :key="key"
+                    class="grid gap-1 text-sm text-n-slate-12"
+                  >
+                    {{ $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}`) }}
+                    <textarea
+                      v-model="agent.policies[key]"
+                      rows="2"
+                      maxlength="600"
+                      class="w-full !mb-0"
+                      :placeholder="
+                        $t(`AI_AGENT.PROFILE.POLICY.${key.toUpperCase()}_HINT`)
+                      "
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div class="grid gap-2">
+                <span class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.PROFILE.RULES') }}
+                </span>
+                <div class="grid sm:grid-cols-2 gap-3">
+                  <label class="grid gap-1 text-sm text-n-slate-12">
+                    <span class="flex items-center gap-1.5">
+                      <span class="i-lucide-circle-check size-4 text-n-teal-10" />
+                      {{ $t('AI_AGENT.PROFILE.ALWAYS') }}
+                    </span>
+                    <textarea
+                      v-model="agent.always_rules"
+                      rows="4"
+                      maxlength="2000"
+                      class="w-full !mb-0"
+                      :placeholder="$t('AI_AGENT.PROFILE.ALWAYS_HINT')"
+                    />
+                  </label>
+                  <label class="grid gap-1 text-sm text-n-slate-12">
+                    <span class="flex items-center gap-1.5">
+                      <span class="i-lucide-circle-x size-4 text-n-ruby-10" />
+                      {{ $t('AI_AGENT.PROFILE.NEVER') }}
+                    </span>
+                    <textarea
+                      v-model="agent.never_rules"
+                      rows="4"
+                      maxlength="2000"
+                      class="w-full !mb-0"
+                      :placeholder="$t('AI_AGENT.PROFILE.NEVER_HINT')"
+                    />
+                  </label>
+                </div>
+                <label class="grid gap-1 text-sm text-n-slate-12">
+                  {{ $t('AI_AGENT.PROFILE.HANDOFF') }}
+                  <textarea
+                    v-model="agent.handoff_rules"
+                    rows="3"
+                    maxlength="2000"
+                    class="w-full !mb-0"
+                    :placeholder="$t('AI_AGENT.PROFILE.HANDOFF_HINT')"
+                  />
+                </label>
+              </div>
+
+              <div class="grid gap-2">
+                <span class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.PROFILE.STYLE') }}
+                </span>
+                <div class="grid sm:grid-cols-2 gap-3">
+                  <label class="grid gap-1 text-sm text-n-slate-12">
+                    {{ $t('AI_AGENT.PROFILE.LENGTH') }}
+                    <select v-model="agent.reply_length" class="w-full !mb-0">
+                      <option value="short">
+                        {{ $t('AI_AGENT.PROFILE.LENGTHS.SHORT') }}
+                      </option>
+                      <option value="detailed">
+                        {{ $t('AI_AGENT.PROFILE.LENGTHS.DETAILED') }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="grid gap-1 text-sm text-n-slate-12">
+                    {{ $t('AI_AGENT.PROFILE.LANGUAGE') }}
+                    <select v-model="agent.reply_language" class="w-full !mb-0">
+                      <option
+                        v-for="language in LANGUAGES"
+                        :key="language"
+                        :value="language"
+                      >
+                        {{
+                          $t(
+                            `AI_AGENT.PROFILE.LANGUAGES.${language.toUpperCase()}`
+                          )
+                        }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <label
+                  class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl outline outline-1 outline-n-weak cursor-pointer"
+                >
+                  <span class="text-sm text-n-slate-12">
+                    {{ $t('AI_AGENT.PROFILE.EMOJI') }}
+                  </span>
+                  <Switch v-model="agent.use_emoji" />
                 </label>
               </div>
             </div>
 
-            <div class="grid sm:grid-cols-2 gap-3">
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.ALWAYS') }}
-                <textarea
-                  v-model="agent.always_rules"
-                  rows="4"
-                  maxlength="2000"
-                  class="w-full !mb-0"
-                  :placeholder="$t('AI_AGENT.PROFILE.ALWAYS_HINT')"
-                />
-              </label>
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.NEVER') }}
-                <textarea
-                  v-model="agent.never_rules"
-                  rows="4"
-                  maxlength="2000"
-                  class="w-full !mb-0"
-                  :placeholder="$t('AI_AGENT.PROFILE.NEVER_HINT')"
-                />
-              </label>
-            </div>
-
-            <label class="grid gap-1">
-              {{ $t('AI_AGENT.PROFILE.HANDOFF') }}
-              <textarea
-                v-model="agent.handoff_rules"
-                rows="3"
-                maxlength="2000"
-                class="w-full !mb-0"
-                :placeholder="$t('AI_AGENT.PROFILE.HANDOFF_HINT')"
-              />
-            </label>
-
-            <div class="grid sm:grid-cols-3 gap-3 items-end">
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.LENGTH') }}
-                <select v-model="agent.reply_length" class="w-full !mb-0">
-                  <option value="short">
-                    {{ $t('AI_AGENT.PROFILE.LENGTHS.SHORT') }}
-                  </option>
-                  <option value="detailed">
-                    {{ $t('AI_AGENT.PROFILE.LENGTHS.DETAILED') }}
-                  </option>
-                </select>
-              </label>
-              <label class="grid gap-1">
-                {{ $t('AI_AGENT.PROFILE.LANGUAGE') }}
-                <select v-model="agent.reply_language" class="w-full !mb-0">
-                  <option
-                    v-for="language in LANGUAGES"
-                    :key="language"
-                    :value="language"
-                  >
-                    {{
-                      $t(`AI_AGENT.PROFILE.LANGUAGES.${language.toUpperCase()}`)
-                    }}
-                  </option>
-                </select>
-              </label>
-              <label class="flex items-center gap-2 pb-2">
-                <input v-model="agent.use_emoji" type="checkbox" />
-                {{ $t('AI_AGENT.PROFILE.EMOJI') }}
-              </label>
-            </div>
-          </div>
-        </BillingCard>
-
-        <BillingCard
-          :title="$t('AI_AGENT.FAQS.TITLE')"
-          :description="$t('AI_AGENT.FAQS.DESCRIPTION')"
-        >
-          <template #action>
-            <ButtonV4
-              sm
-              solid
-              blue
-              :is-loading="isGenerating"
-              @click="generateFaqs"
-            >
-              {{ $t('AI_AGENT.FAQS.GENERATE') }}
-            </ButtonV4>
-          </template>
-          <div class="px-5 grid gap-3 text-sm">
-            <div
-              v-for="faq in faqs"
-              :key="faq.id"
-              class="grid gap-1 p-3 rounded-lg border border-n-weak"
-              :class="{ 'opacity-50': !faq.enabled }"
-            >
-              <div class="font-medium text-n-slate-12">{{ faq.question }}</div>
-              <div class="text-n-slate-11 whitespace-pre-line">
-                {{ faq.answer }}
-              </div>
-              <div class="flex gap-3 text-xs">
-                <button class="text-n-blue-11" @click="toggleItem(faq)">
-                  {{
-                    faq.enabled ? $t('AI_AGENT.DISABLE') : $t('AI_AGENT.ENABLE')
-                  }}
-                </button>
-                <button class="text-n-ruby-11" @click="removeItem(faq)">
-                  {{ $t('AI_AGENT.DELETE') }}
-                </button>
-              </div>
-            </div>
-            <div class="grid gap-2 p-3 rounded-lg bg-n-alpha-1">
-              <input
-                v-model="newFaq.question"
-                type="text"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.FAQS.QUESTION')"
-              />
-              <textarea
-                v-model="newFaq.answer"
-                rows="2"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.FAQS.ANSWER')"
-              />
-              <ButtonV4 sm solid blue class="w-fit" @click="addFaq">
-                {{ $t('AI_AGENT.FAQS.ADD') }}
-              </ButtonV4>
-            </div>
-          </div>
-        </BillingCard>
-
-        <BillingCard
-          :title="$t('AI_AGENT.IMAGES.TITLE')"
-          :description="$t('AI_AGENT.IMAGES.DESCRIPTION')"
-        >
-          <div class="px-5 grid gap-3 text-sm">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div
-                v-for="image in images"
-                :key="image.id"
-                class="grid gap-1 p-2 rounded-lg border border-n-weak"
-                :class="{ 'opacity-50': !image.enabled }"
-              >
-                <video
-                  v-if="image.image_url && image.video"
-                  :src="image.image_url"
-                  controls
-                  preload="metadata"
-                  class="w-full h-24 object-cover rounded"
-                />
-                <img
-                  v-else-if="image.image_url"
-                  :src="image.image_url"
-                  class="w-full h-24 object-cover rounded"
-                />
-                <div class="font-medium text-n-slate-12">
-                  {{ image.question }}
-                </div>
-                <div class="text-xs text-n-slate-11">{{ image.answer }}</div>
-                <button
-                  class="text-xs text-n-ruby-11 w-fit"
-                  @click="removeItem(image)"
-                >
-                  {{ $t('AI_AGENT.DELETE') }}
-                </button>
-              </div>
-            </div>
-            <div class="grid gap-2 p-3 rounded-lg bg-n-alpha-1">
-              <input
-                ref="imageInput"
-                type="file"
-                accept="image/*,video/mp4,video/3gpp"
-                @change="onImageSelected"
-              />
-              <input
-                v-model="newImage.question"
-                type="text"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.IMAGES.NAME')"
-              />
-              <input
-                v-model="newImage.answer"
-                type="text"
-                class="w-full"
-                :placeholder="$t('AI_AGENT.IMAGES.DETAILS')"
-              />
-              <ButtonV4 sm solid blue class="w-fit" @click="addImage">
-                {{ $t('AI_AGENT.IMAGES.ADD') }}
-              </ButtonV4>
-            </div>
-          </div>
-        </BillingCard>
-
-        <BillingCard
-          :title="$t('AI_AGENT.PREVIEW.TITLE')"
-          :description="$t('AI_AGENT.PREVIEW.DESCRIPTION')"
-        >
-          <div class="px-5 grid gap-2 text-sm">
-            <input
-              v-model="previewMessage"
-              type="text"
-              class="w-full"
-              :placeholder="$t('AI_AGENT.PREVIEW.PLACEHOLDER')"
-              @keyup.enter="runPreview"
+            <FaqsPanel
+              v-else-if="currentTab === 'faqs'"
+              :faqs="faqs"
+              :is-generating="isGenerating"
+              @refresh="fetchItems"
+              @generate="generateFaqs"
             />
-            <ButtonV4
-              sm
-              solid
-              blue
-              class="w-fit"
-              :is-loading="isPreviewing"
-              @click="runPreview"
-            >
-              {{ $t('AI_AGENT.PREVIEW.BUTTON') }}
-            </ButtonV4>
-            <div
-              v-if="previewReply"
-              class="p-3 rounded-lg bg-n-alpha-1 whitespace-pre-line text-n-slate-12"
-            >
-              {{ previewReply }}
-            </div>
+
+            <MediaPanel
+              v-else-if="currentTab === 'media'"
+              :media="media"
+              @refresh="fetchItems"
+            />
           </div>
-        </BillingCard>
+
+          <div class="lg:sticky lg:top-0 lg:h-[calc(100vh-7rem)]">
+            <PreviewChat
+              :agent-name="agent.agent_name"
+              @tested="tested = true"
+            />
+          </div>
+        </div>
+
+        <!-- One save bar for every tab -->
+        <div
+          v-if="isDirty"
+          class="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl bg-n-solid-2 outline outline-1 outline-n-strong shadow-lg"
+        >
+          <span class="flex items-center gap-2 text-sm text-n-slate-12">
+            <span class="size-2 rounded-full bg-n-amber-9" />
+            {{ $t('AI_AGENT.UNSAVED') }}
+          </span>
+          <div class="flex gap-2">
+            <ButtonV4 sm ghost slate @click="discard">
+              {{ $t('AI_AGENT.DISCARD') }}
+            </ButtonV4>
+            <ButtonV4 sm solid blue :is-loading="isSaving" @click="save">
+              {{ $t('AI_AGENT.SAVE') }}
+            </ButtonV4>
+          </div>
+        </div>
       </section>
     </template>
   </SettingsLayout>

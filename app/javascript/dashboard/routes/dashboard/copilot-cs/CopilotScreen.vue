@@ -1,14 +1,23 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useAccount } from 'dashboard/composables/useAccount';
 import { useMapGetter } from 'dashboard/composables/store';
 import CopilotAPI from 'dashboard/api/copilot';
+import { useMessageFormatter } from 'shared/composables/useMessageFormatter';
 import ButtonV4 from 'next/button/Button.vue';
 
 const { t } = useI18n();
 const router = useRouter();
+const { formatMessage } = useMessageFormatter();
 const { accountId } = useAccount();
 const currentUser = useMapGetter('getCurrentUser');
 
@@ -23,6 +32,14 @@ const copiedIndex = ref(null);
 const pickedFiles = ref([]);
 // Files already sent in this chat: { img1: signedId }, so Copilot can save them later
 const uploads = ref({});
+// What Copilot is doing, shown while it works
+const thinkingStep = ref(0);
+let thinkingTimer = null;
+const thinkingSteps = computed(() => [
+  t('COPILOT.THINKING.READING'),
+  t('COPILOT.THINKING.CHECKING'),
+  t('COPILOT.THINKING.WRITING'),
+]);
 
 const firstName = computed(
   () =>
@@ -152,16 +169,33 @@ const handleResult = data => {
 const errorText = (error, fallback) =>
   error?.response?.data?.error || t(fallback);
 
+const startThinking = () => {
+  isThinking.value = true;
+  thinkingStep.value = 0;
+  clearInterval(thinkingTimer);
+  thinkingTimer = setInterval(() => {
+    thinkingStep.value = Math.min(
+      thinkingStep.value + 1,
+      thinkingSteps.value.length - 1
+    );
+  }, 2500);
+};
+
+const stopThinking = () => {
+  isThinking.value = false;
+  clearInterval(thinkingTimer);
+};
+
 const send = async text => {
   const typed = (text || draft.value).trim();
   if ((!typed && !pickedFiles.value.length) || isThinking.value) return;
-  isThinking.value = true;
+  startThinking();
   pendingAction.value = null;
   let note = '';
   try {
     note = await uploadPicked();
   } catch (error) {
-    isThinking.value = false;
+    stopThinking();
     addMessage('assistant', errorText(error, 'COPILOT.UPLOAD_FAILED'));
     return;
   }
@@ -182,7 +216,28 @@ const send = async text => {
   } catch (error) {
     addMessage('assistant', errorText(error, 'COPILOT.ERROR'));
   } finally {
-    isThinking.value = false;
+    stopThinking();
+    scrollDown();
+  }
+};
+
+// Asks again for the last answer, e.g. when it was not useful.
+const regenerate = async () => {
+  if (isThinking.value || messages.value.at(-1)?.role !== 'assistant') return;
+  messages.value.pop();
+  pendingAction.value = null;
+  startThinking();
+  try {
+    const history = messages.value.map(({ role, content }) => ({
+      role,
+      content,
+    }));
+    const response = await CopilotAPI.chat(history, uploads.value);
+    handleResult(response.data);
+  } catch (error) {
+    addMessage('assistant', errorText(error, 'COPILOT.ERROR'));
+  } finally {
+    stopThinking();
     scrollDown();
   }
 };
@@ -190,7 +245,7 @@ const send = async text => {
 const confirmAction = async () => {
   const action = pendingAction.value;
   pendingAction.value = null;
-  isThinking.value = true;
+  startThinking();
   scrollDown();
   try {
     const response = await CopilotAPI.confirm(action);
@@ -198,7 +253,7 @@ const confirmAction = async () => {
   } catch (error) {
     addMessage('assistant', errorText(error, 'COPILOT.ERROR'));
   } finally {
-    isThinking.value = false;
+    stopThinking();
   }
 };
 
@@ -219,26 +274,31 @@ const copyMessage = async (content, index) => {
   }
 };
 
-// "#12" in a reply opens that chat.
-const openChat = id => {
-  router.push({
-    name: 'inbox_conversation',
-    params: { accountId: accountId.value, conversation_id: id },
-  });
-};
-
-// Replies are plain text; drop markdown bold markers the model may still add,
-// and hide the attached-files note (the files themselves are shown).
+// Hide the attached-files note; the files themselves are shown.
 const cleanText = content =>
-  content
-    .replace(/\*\*/g, '')
-    .replace(/\n?\[Attached images: [^\]]*\]/g, '')
-    .trim();
+  content.replace(/\n?\[Attached images: [^\]]*\]/g, '').trim();
 
-const parts = content =>
-  cleanText(content)
-    .split(/(#\d+)/g)
-    .map(text => ({ text, chat: /^#\d+$/.test(text) }));
+// Replies use light markdown (lists, bold). "#12" becomes a link to that chat.
+const chatPath = id => `/app/accounts/${accountId.value}/conversations/${id}`;
+const formatReply = content =>
+  formatMessage(
+    cleanText(content).replace(
+      /(^|[^\w/[#])#(\d+)\b/g,
+      (_, before, id) => `${before}[#${id}](${chatPath(id)})`
+    ),
+    false,
+    false,
+    false
+  );
+
+// Chat links open inside the app instead of a new tab.
+const onReplyClick = event => {
+  const link = event.target.closest('a');
+  const path = link && new URL(link.href, window.location.origin).pathname;
+  if (!path || !/\/conversations\/\d+$/.test(path)) return;
+  event.preventDefault();
+  router.push(path);
+};
 
 const attachedCount = content =>
   (content.match(/\[Attached images: ([^\]]*)\]/)?.[1] || '')
@@ -267,6 +327,8 @@ onMounted(() => {
   loadChat();
   scrollDown();
 });
+
+onBeforeUnmount(() => clearInterval(thinkingTimer));
 </script>
 
 <template>
@@ -284,7 +346,8 @@ onMounted(() => {
           <h1 class="text-base font-semibold text-n-slate-12 leading-tight">
             {{ $t('COPILOT.TITLE') }}
           </h1>
-          <p class="text-xs text-n-slate-11 truncate">
+          <p class="flex items-center gap-1.5 text-xs text-n-slate-11 truncate">
+            <span class="size-1.5 rounded-full bg-n-teal-9 shrink-0" />
             {{ $t('COPILOT.SUBTITLE') }}
           </p>
         </div>
@@ -390,38 +453,38 @@ onMounted(() => {
             </div>
             <div class="grid gap-1 min-w-0 max-w-[85%]">
               <div
-                class="px-4 py-2.5 rounded-2xl rounded-tl-md bg-n-solid-2 border border-n-weak text-sm text-n-slate-12 whitespace-pre-line break-words leading-relaxed"
+                v-dompurify-html="formatReply(message.content)"
+                class="px-4 py-3 rounded-2xl rounded-tl-md bg-n-solid-2 border border-n-weak text-sm text-n-slate-12 break-words leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:ps-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_ol]:mb-2 [&_li]:mb-1 [&_strong]:font-semibold [&_a]:font-medium [&_a]:text-n-blue-11 hover:[&_a]:underline"
+                @click="onReplyClick"
+              />
+              <div
+                class="flex items-center gap-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
               >
-                <template
-                  v-for="(part, partIndex) in parts(message.content)"
-                  :key="partIndex"
+                <button
+                  class="flex items-center gap-1 text-xs text-n-slate-10 hover:text-n-slate-12"
+                  @click="copyMessage(cleanText(message.content), index)"
                 >
-                  <button
-                    v-if="part.chat"
-                    class="font-medium text-n-blue-11 hover:underline"
-                    @click="openChat(part.text.slice(1))"
-                  >
-                    {{ part.text }}
-                  </button>
-                  <span v-else>{{ part.text }}</span>
-                </template>
+                  <span
+                    class="size-3"
+                    :class="
+                      copiedIndex === index ? 'i-lucide-check' : 'i-lucide-copy'
+                    "
+                  />
+                  {{
+                    copiedIndex === index
+                      ? $t('COPILOT.COPIED')
+                      : $t('COPILOT.COPY')
+                  }}
+                </button>
+                <button
+                  v-if="index === messages.length - 1 && !isThinking"
+                  class="flex items-center gap-1 text-xs text-n-slate-10 hover:text-n-slate-12"
+                  @click="regenerate"
+                >
+                  <span class="size-3 i-lucide-refresh-cw" />
+                  {{ $t('COPILOT.REGENERATE') }}
+                </button>
               </div>
-              <button
-                class="flex items-center gap-1 w-fit text-xs text-n-slate-10 hover:text-n-slate-12 opacity-0 group-hover:opacity-100 transition-opacity"
-                @click="copyMessage(cleanText(message.content), index)"
-              >
-                <span
-                  class="size-3"
-                  :class="
-                    copiedIndex === index ? 'i-lucide-check' : 'i-lucide-copy'
-                  "
-                />
-                {{
-                  copiedIndex === index
-                    ? $t('COPILOT.COPIED')
-                    : $t('COPILOT.COPY')
-                }}
-              </button>
             </div>
           </div>
         </template>
@@ -471,15 +534,22 @@ onMounted(() => {
             <span class="i-lucide-sparkles size-3.5" />
           </div>
           <div
-            class="flex items-center gap-1 px-4 py-3 rounded-2xl rounded-tl-md bg-n-solid-2 border border-n-weak"
+            class="flex items-center gap-2.5 px-4 py-3 rounded-2xl rounded-tl-md bg-n-solid-2 border border-n-weak"
           >
-            <span class="size-1.5 rounded-full bg-n-slate-10 animate-bounce" />
-            <span
-              class="size-1.5 rounded-full bg-n-slate-10 animate-bounce [animation-delay:150ms]"
-            />
-            <span
-              class="size-1.5 rounded-full bg-n-slate-10 animate-bounce [animation-delay:300ms]"
-            />
+            <span class="flex items-center gap-1">
+              <span
+                class="size-1.5 rounded-full bg-n-slate-10 animate-bounce"
+              />
+              <span
+                class="size-1.5 rounded-full bg-n-slate-10 animate-bounce [animation-delay:150ms]"
+              />
+              <span
+                class="size-1.5 rounded-full bg-n-slate-10 animate-bounce [animation-delay:300ms]"
+              />
+            </span>
+            <span class="text-xs text-n-slate-11">
+              {{ thinkingSteps[thinkingStep] }}
+            </span>
           </div>
         </div>
       </div>
