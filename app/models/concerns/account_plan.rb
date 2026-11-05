@@ -27,14 +27,28 @@ module AccountPlan
     plan_cycle_start.to_date.iso8601
   end
 
+  # Accounts without a plan still get a cap on AI work, so one account cannot use up the shared AI quota.
+  # Change the caps with these env vars; 0 means no cap.
+  NO_PLAN_LIMITS = {
+    'ai_replies_daily' => ['NO_PLAN_AI_REPLIES_DAILY', 100],
+    'copilot_tasks_monthly' => ['NO_PLAN_COPILOT_TASKS_MONTHLY', 300]
+  }.freeze
+
   # nil means unlimited
   def plan_limit(key)
-    return nil if plan.nil?
+    return no_plan_limit(key) if plan.nil?
 
     base = plan.limits[key.to_s]
     return nil unless base.is_a?(Integer)
 
     base + plan_addon(key)
+  end
+
+  def no_plan_limit(key)
+    env, default = NO_PLAN_LIMITS[key.to_s]
+    return if env.nil?
+
+    ENV.fetch(env, default).to_i.nonzero?
   end
 
   def plan_addon(key)
