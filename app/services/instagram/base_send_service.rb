@@ -1,4 +1,6 @@
 class Instagram::BaseSendService < Base::SendOnChannelService
+  include Facebook::QuickRepliesPayload
+
   pattr_initialize [:message!]
 
   private
@@ -29,9 +31,7 @@ class Instagram::BaseSendService < Base::SendOnChannelService
   def message_params
     params = {
       recipient: { id: contact.get_source_id(inbox.id) },
-      message: {
-        text: message.outgoing_content
-      }
+      message: text_message_payload
     }
 
     merge_human_agent_tag(params)

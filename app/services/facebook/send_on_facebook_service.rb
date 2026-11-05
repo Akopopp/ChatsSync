@@ -1,4 +1,6 @@
 class Facebook::SendOnFacebookService < Base::SendOnChannelService
+  include Facebook::QuickRepliesPayload
+
   private
 
   def channel_class
@@ -47,27 +49,10 @@ class Facebook::SendOnFacebookService < Base::SendOnChannelService
   def fb_text_message_params
     params = {
       recipient: { id: contact.get_source_id(inbox.id) },
-      message: fb_text_message_payload
+      message: text_message_payload
     }
 
     merge_human_agent_tag(params)
-  end
-
-  def fb_text_message_payload
-    if message.content_type == 'input_select' && message.content_attributes['items'].any?
-      {
-        text: message.content,
-        quick_replies: message.content_attributes['items'].map do |item|
-          {
-            content_type: 'text',
-            payload: item['title'],
-            title: item['title']
-          }
-        end
-      }
-    else
-      { text: message.outgoing_content }
-    end
   end
 
   def external_error(response)
