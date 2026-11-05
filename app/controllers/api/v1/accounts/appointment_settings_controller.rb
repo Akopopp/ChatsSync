@@ -11,6 +11,12 @@ class Api::V1::Accounts::AppointmentSettingsController < Api::V1::Accounts::Base
     render json: setting_json
   end
 
+  # Tries again to create the WhatsApp booking form in the account's WhatsApp numbers.
+  def setup_whatsapp_form
+    Appointments::WhatsappFlowSetupJob.perform_later(Current.account, force: true)
+    render json: setting_json
+  end
+
   private
 
   def fetch_setting
@@ -30,7 +36,15 @@ class Api::V1::Accounts::AppointmentSettingsController < Api::V1::Accounts::Base
     @setting.as_json(only: %i[enabled timezone slot_minutes capacity days_ahead min_notice_minutes hours services notes closed_dates]).merge(
       booking_page_url: Appointments::PublicLink.url(@setting),
       calendar_feed_url: "#{ENV.fetch('FRONTEND_URL', '').chomp('/')}/calendars/#{@setting.ics_token!}.ics",
-      feature_available: Current.account.plan_feature?(:appointments)
+      feature_available: Current.account.plan_feature?(:appointments),
+      whatsapp_forms: whatsapp_forms
     )
+  end
+
+  def whatsapp_forms
+    Current.account.inboxes.select { |inbox| Appointments::WhatsappFlow.supported?(inbox) }.map do |inbox|
+      state = Appointments::WhatsappFlow.new(inbox: inbox).state
+      { inbox: inbox.name, status: state['status'] || 'NOT_SET_UP', error: state['error'] }
+    end
   end
 end

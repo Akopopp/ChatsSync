@@ -20,6 +20,7 @@ class AppointmentSetting < ApplicationRecord
 
   before_validation :normalize
   before_create { self.public_token ||= SecureRandom.alphanumeric(20) }
+  after_commit :set_up_whatsapp_form, if: -> { enabled && saved_change_to_enabled? }
 
   def zone
     ActiveSupport::TimeZone[timezone] || ActiveSupport::TimeZone['Asia/Karachi']
@@ -105,6 +106,10 @@ class AppointmentSetting < ApplicationRecord
   end
 
   private
+
+  def set_up_whatsapp_form
+    Appointments::WhatsappFlowSetupJob.perform_later(account)
+  end
 
   def booked_ranges(from, to, except = nil)
     account.appointments.booked.where(starts_at: (from - 1.day)..to).where.not(id: except).pluck(:starts_at, :ends_at)

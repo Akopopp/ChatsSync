@@ -4,6 +4,8 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
 
     if message.attachments.present?
       send_attachment_message(phone_number, message)
+    elsif message.content_attributes['whatsapp_flow'].present?
+      send_flow_message(phone_number, message)
     elsif message.content_type == 'input_select'
       send_interactive_text_message(phone_number, message)
     else
@@ -219,6 +221,24 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
     {
       message_id: reply_to
     }
+  end
+
+  # A WhatsApp Flow form (like the booking calendar) that opens inside WhatsApp.
+  def send_flow_message(phone_number, message)
+    flow = message.content_attributes['whatsapp_flow']
+    response = HTTParty.post(
+      "#{phone_id_path('v21.0')}/messages",
+      headers: api_headers,
+      body: {
+        messaging_product: 'whatsapp', recipient_type: 'individual', to: phone_number, type: 'interactive',
+        interactive: {
+          type: 'flow', body: { text: message.outgoing_content.presence || flow['cta'] },
+          action: { name: 'flow', parameters: { flow_message_version: '3', flow_token: flow['token'], flow_id: flow['flow_id'],
+                                                flow_cta: flow['cta'], flow_action: 'data_exchange' } }
+        }
+      }.to_json
+    )
+    process_response(response, message)
   end
 
   def send_interactive_text_message(phone_number, message)

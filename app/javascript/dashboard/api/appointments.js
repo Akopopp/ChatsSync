@@ -17,6 +17,12 @@ class AppointmentsAPI extends ApiClient {
     });
   }
 
+  setupWhatsappForm() {
+    return axios.post(
+      `${this.baseUrl()}/appointment_setting/setup_whatsapp_form`
+    );
+  }
+
   list(params = {}) {
     return axios.get(this.url, { params });
   }

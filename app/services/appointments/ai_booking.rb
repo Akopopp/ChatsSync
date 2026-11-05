@@ -4,6 +4,7 @@
 class Appointments::AiBooking
   BOOK_TAG = /\[BOOK:\s*([^\]|]+)\|?([^\]|]*)\|?([^\]]*)\]/i
   CANCEL_TAG = /\[CANCEL_BOOKING\]/i
+  FORM_TAG = /\[BOOKING_FORM\]/i
   DAYS_SHOWN = 5
   SLOTS_PER_DAY = 24
 
@@ -19,7 +20,54 @@ class Appointments::AiBooking
     @setting ||= account.appointment_setting
   end
 
-  def prompt_text(_question = nil)
+  # On WhatsApp the customer books in a calendar form inside WhatsApp, so the AI only sends the form.
+  def whatsapp_form?
+    return true if conversation.nil? # the AI preview shows what WhatsApp customers get
+
+    inbox = conversation.inbox
+    return false unless Appointments::WhatsappFlow.supported?(inbox)
+
+    flow = Appointments::WhatsappFlow.new(inbox: inbox)
+    Appointments::WhatsappFlowSetupJob.perform_later(account) if !flow.ready? && flow.retry_due?
+    flow.ready?
+  end
+
+  # Something to send with the reply instead of plain text, like the WhatsApp booking form.
+  def interactive
+    return unless @send_form && conversation
+
+    flow = Appointments::WhatsappFlow.new(inbox: conversation.inbox)
+    return unless flow.ready?
+
+    { 'whatsapp_flow' => { 'flow_id' => flow.flow_id, 'token' => Appointments::FlowBooking.token_for(conversation),
+                           'cta' => Appointments::WhatsappFlow::CTA } }
+  end
+
+  def form_requested?
+    @send_form.present?
+  end
+
+  def prompt_text(question = nil)
+    whatsapp_form? ? form_prompt_text : text_prompt_text(question)
+  end
+
+  def form_prompt_text
+    zone = setting.zone
+    <<~TEXT
+      Appointments:
+      - You can book appointments. Now: #{zone.now.strftime('%A %-d %B %Y, %-I:%M %p')} (#{setting.timezone}).
+      - Services: #{services_text}
+      - Days with free times: #{free_slots.keys.map { |date| date.strftime('%a %-d %b') }.join(', ').presence || 'none in the next days'}
+      - When the customer wants to book, or asks about free days or times, write one short line inviting them to choose
+        and put [BOOKING_FORM] on its own line. They get a calendar form inside WhatsApp to pick the service, day, time
+        and name, and the booking is confirmed automatically. Do not list times yourself and do not send links.
+      - If the customer wants to cancel, confirm and put [CANCEL_BOOKING] on its own line. To change the time,
+        put [CANCEL_BOOKING] and then [BOOKING_FORM].
+      #{existing_text}#{setting.notes.present? ? "- Notes from the business: #{setting.notes}\n" : ''}
+    TEXT
+  end
+
+  def text_prompt_text(_question = nil)
     zone = setting.zone
     <<~TEXT
       Appointments:
@@ -45,6 +93,10 @@ class Appointments::AiBooking
   # Turns the tags in the AI reply into bookings. Returns the reply text to send.
   def apply(reply, roman_urdu:)
     text = reply.dup
+    if text.match?(FORM_TAG)
+      text = text.gsub(FORM_TAG, '')
+      @send_form = true
+    end
     messages = []
     if text.match?(CANCEL_TAG)
       text = text.gsub(CANCEL_TAG, '')
@@ -97,7 +149,10 @@ class Appointments::AiBooking
     existing ? "- This customer already has an appointment: #{existing.label(setting.zone)}.\n" : ''
   end
 
+  # The booking page link is only for chats outside WhatsApp, like the website chat.
   def page_text
+    return '' if conversation.nil? || Appointments::WhatsappFlow.supported?(conversation.inbox)
+
     url = Appointments::PublicLink.url(setting)
     url ? "- If the customer wants to see the full calendar, send this link: #{url}\n" : ''
   end
@@ -119,11 +174,9 @@ class Appointments::AiBooking
     appointment = setting.book!(start: start, service: service, conversation: conversation, contact: contact, name: name)
     tell_team(appointment)
     label = appointment.label(setting.zone)
-    if roman_urdu
-      "✅ Appointment confirm: #{label}\nTime change ya cancel karna ho to: #{appointment.manage_url}"
-    else
-      "✅ Appointment confirmed: #{label}\nTo change or cancel: #{appointment.manage_url}"
-    end
+    return I18n.t('appointments.form.confirmed', label: label) unless roman_urdu
+
+    "✅ Appointment confirm: #{label}. Time change ya cancel karna ho to yahan bata dein."
   rescue AppointmentSetting::SlotTaken
     roman_urdu ? 'Maazrat, ye time ab available nahi hai. Koi aur time bata dein.' : 'Sorry, that time is no longer free. Please choose another time.'
   end

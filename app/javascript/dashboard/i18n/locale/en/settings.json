@@ -1253,6 +1253,18 @@
       "TITLE": "Appointments",
       "NONE": "No upcoming appointments.",
       "BOOK": "Book appointment"
+    },
+    "WHATSAPP": {
+      "TITLE": "WhatsApp booking form",
+      "NOTE": "On WhatsApp, customers book in a calendar form that opens inside WhatsApp. It is set up automatically for each number after you turn on appointments.",
+      "RETRY": "Set up again",
+      "RETRYING": "Setting up the WhatsApp form. Check again in a minute.",
+      "STATUS": {
+        "PUBLISHED": "Ready",
+        "SETTING_UP": "Setting up",
+        "FAILED": "Failed",
+        "NOT_SET_UP": "Not set up yet"
+      }
     }
   },
   "CATALOG": {

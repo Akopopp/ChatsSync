@@ -12,6 +12,15 @@ class Ai::Actions
     handlers.reduce(reply) { |text, handler| handler.apply(text, roman_urdu: roman_urdu) }
   end
 
+  # A form or list to send with the reply (like the WhatsApp booking calendar), from the first handler that has one.
+  def interactive
+    handlers.lazy.filter_map { |handler| handler.interactive if handler.respond_to?(:interactive) }.first
+  end
+
+  def form_requested?
+    handlers.any? { |handler| handler.respond_to?(:form_requested?) && handler.form_requested? }
+  end
+
   # Pictures the handlers want sent with the reply (like product pictures from the catalog).
   def media
     handlers.flat_map { |handler| handler.respond_to?(:media) ? handler.media : [] }

@@ -35,6 +35,7 @@ en:
       handoff: '(The AI would pass this chat to your team and send: "%{message}")'
       image: '(sends the picture: %{name})'
       video: '(sends the video: %{name})'
+      booking_form: '(sends the WhatsApp calendar form to choose a day and time)'
   copilot:
     done: Done.
     image_only: Please attach a picture (JPG or PNG) or a video (MP4).
@@ -57,6 +58,16 @@ en:
     saml_not_available: SAML authentication is not available in this installation.
     inbox_deletetion_response: Your inbox deletion request will be processed in some time.
 
+  appointments:
+    form:
+      booked: Booked
+      day_full: That day is full. Please choose another day.
+      taken: Sorry, that time was just taken. Please choose another time.
+      done: You're booked!
+      confirmed: "✅ Appointment confirmed: %{label}. Reply here if you need to change or cancel it."
+      expired_heading: Form expired
+      expired: This form has expired. Please message us to book.
+      submitted: 📅 Booking form submitted
   errors:
     appointments:
       slot_taken: That time is full or not available. Please choose another time.

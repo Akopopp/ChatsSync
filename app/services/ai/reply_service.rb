@@ -32,7 +32,7 @@ class Ai::ReplyService
     )
     reply = prompt_builder.tidy(reply, question)
     reply = actions.apply(reply, roman_urdu: prompt_builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
-    deliver(reply, turn.last.id, actions.media)
+    deliver(reply, turn.last.id, actions.media, actions.interactive)
   end
 
   private
@@ -93,6 +93,8 @@ class Ai::ReplyService
   end
 
   def message_text(item, images)
+    return if item.content == I18n.t('appointments.form.submitted') # the booking form already confirmed it
+
     parts = [item.content.presence]
     item.attachments.each do |attachment|
       next unless account.plan_feature?(:ai_voice_images)
@@ -139,16 +141,23 @@ class Ai::ReplyService
   end
 
   # media: product pictures from the catalog, sent along with any AI product media the reply asks for.
-  def deliver(reply, answered_up_to, media = [])
+  # interactive: content attributes for a form sent with the text, like the WhatsApp booking calendar.
+  def deliver(reply, answered_up_to, media = [], interactive = nil)
     if reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
       hand_off(answered_up_to)
     else
       ids = reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i)
       text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
       items = prompt_builder.image_items(ids) + media
-      return if text.blank? && items.empty?
+      return if text.blank? && items.empty? && interactive.nil?
 
-      create_message(text, items, answered_up_to)
+      if interactive
+        # A form message carries only text, so pictures go first in their own message.
+        create_message('', items, answered_up_to) if items.any?
+        create_message(text, [], answered_up_to, interactive)
+      else
+        create_message(text, items, answered_up_to)
+      end
     end
     account.increment_plan_usage!(:ai_replies)
   end
@@ -159,11 +168,11 @@ class Ai::ReplyService
     conversation.add_labels(['needs-human'])
   end
 
-  def create_message(text, image_items, answered_up_to)
+  def create_message(text, image_items, answered_up_to, interactive = nil)
     reply = conversation.messages.new(
       account_id: account.id, inbox_id: conversation.inbox_id, message_type: :outgoing,
       content: text.presence, sender: agent.bot,
-      content_attributes: { 'ai_generated' => true, 'ai_answered_up_to' => answered_up_to }
+      content_attributes: { 'ai_generated' => true, 'ai_answered_up_to' => answered_up_to }.merge(interactive || {})
     )
     image_items.each { |item| reply.attachments.new(account_id: account.id, file_type: item.video? ? :video : :image, file: item.image.blob) }
     reply.save!

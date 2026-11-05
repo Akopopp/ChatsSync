@@ -58,6 +58,7 @@ module Whatsapp::IncomingMessageServiceHelpers
       message.dig(:button, :text) ||
       message.dig(:interactive, :button_reply, :title) ||
       message.dig(:interactive, :list_reply, :title) ||
+      (I18n.t('appointments.form.submitted') if message.dig(:interactive, :nfm_reply).present?) ||
       message.dig(:name, :formatted_name)
   end
 

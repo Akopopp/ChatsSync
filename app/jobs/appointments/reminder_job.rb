@@ -39,9 +39,9 @@ class Appointments::ReminderJob < ApplicationJob
   def text(appointment, conversation)
     label = appointment.label(appointment.account.appointment_setting.zone)
     if Ai::PromptBuilder.roman_urdu?(conversation.messages.incoming.last&.content)
-      "⏰ Yaad dahani: aap ki appointment #{label} par hai. Time change ya cancel karna ho to: #{appointment.manage_url}"
+      "⏰ Yaad dahani: aap ki appointment #{label} par hai. Time change ya cancel karna ho to yahan bata dein."
     else
-      "⏰ Reminder: your appointment is on #{label}. To change or cancel: #{appointment.manage_url}"
+      "⏰ Reminder: your appointment is on #{label}. Reply here if you need to change or cancel it."
     end
   end
 end

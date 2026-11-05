@@ -164,6 +164,12 @@ const copy = async (text, message) => {
   useAlert(message);
 };
 
+const retryWhatsappForm = async () => {
+  const response = await AppointmentsAPI.setupWhatsappForm();
+  setting.value.whatsapp_forms = response.data.whatsapp_forms;
+  useAlert(t('APPOINTMENTS.WHATSAPP.RETRYING'));
+};
+
 const calendarRoute = computed(() =>
   accountScopedRoute('appointments_calendar', { accountId: accountId.value })
 );
@@ -222,6 +228,43 @@ onMounted(fetchSetting);
               <input v-model="setting.enabled" type="checkbox" />
               {{ $t('APPOINTMENTS.STATUS.ENABLED') }}
             </label>
+            <div v-if="setting.whatsapp_forms?.length" class="grid gap-1">
+              <span class="font-medium">
+                {{ $t('APPOINTMENTS.WHATSAPP.TITLE') }}
+              </span>
+              <span class="text-xs text-n-slate-11">
+                {{ $t('APPOINTMENTS.WHATSAPP.NOTE') }}
+              </span>
+              <div
+                v-for="form in setting.whatsapp_forms"
+                :key="form.inbox"
+                class="flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span class="font-medium">{{ form.inbox }}</span>
+                <span
+                  class="px-2 py-0.5 rounded-md"
+                  :class="
+                    form.status === 'PUBLISHED'
+                      ? 'bg-n-teal-3 text-n-teal-11'
+                      : form.status === 'FAILED'
+                        ? 'bg-n-ruby-3 text-n-ruby-11'
+                        : 'bg-n-amber-3 text-n-amber-11'
+                  "
+                >
+                  {{ $t(`APPOINTMENTS.WHATSAPP.STATUS.${form.status}`) }}
+                </span>
+                <span v-if="form.error" class="text-n-ruby-11">
+                  {{ form.error }}
+                </span>
+                <button
+                  v-if="form.status !== 'PUBLISHED'"
+                  class="text-n-blue-11"
+                  @click="retryWhatsappForm"
+                >
+                  {{ $t('APPOINTMENTS.WHATSAPP.RETRY') }}
+                </button>
+              </div>
+            </div>
             <router-link
               :to="calendarRoute"
               class="flex items-center gap-2 text-n-blue-11 w-fit"

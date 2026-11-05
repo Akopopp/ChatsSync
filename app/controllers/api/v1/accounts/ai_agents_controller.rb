@@ -20,7 +20,9 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
                                messages: [{ role: 'user', text: question }], within: 13)
     reply = builder.tidy(reply, question)
     reply = actions.apply(reply, roman_urdu: builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
-    render json: { reply: readable_preview(reply, builder, actions.media) }
+    reply = readable_preview(reply, builder, actions.media)
+    reply += "\n#{I18n.t('ai.preview.booking_form')}" if actions.form_requested?
+    render json: { reply: reply }
   rescue Ai::LlmClient::Error
     render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end
