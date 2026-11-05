@@ -400,7 +400,7 @@ onMounted(fetchAll);
                     :description="$t('AI_AGENT.SCOPE.ALL_NOTE')"
                     :is-active="agent.reply_scope === 'all'"
                     :disabled="!canReplyToAllChats"
-                    :disabled-label="$t('AI_AGENT.SCOPE.NOT_IN_PLAN')"
+                    :disabled-label="$t('AI_AGENT.SCOPE.NOT_IN_PLAN_SHORT')"
                     :disabled-message="$t('AI_AGENT.SCOPE.NOT_IN_PLAN')"
                     @select="agent.reply_scope = 'all'"
                   />

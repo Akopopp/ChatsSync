@@ -27,7 +27,7 @@ class Ai::PromptBuilder
 
   LANGUAGES = {
     'roman_urdu' => 'Always reply in Roman Urdu (Urdu in English letters), whatever language the customer uses.',
-    'english' => 'Always reply in English, whatever language the customer uses.',
+    'english' => 'Always reply in English, whatever language the customer uses, with no Urdu words such as aap or ji.',
     'urdu' => 'Always reply in Urdu script, whatever language the customer uses.'
   }.freeze
 
@@ -116,7 +116,7 @@ class Ai::PromptBuilder
     if roman_urdu?(text)
       'The customer wrote in Roman Urdu (Urdu in English letters): reply only in Roman Urdu, not in English.'
     elsif text.scan(/[a-zA-Z]+/).size >= 3
-      'The customer wrote in English: reply only in English, not in Roman Urdu.'
+      'The customer wrote in English: reply only in English, with no Urdu words such as aap, ji or bhai.'
     else
       'Reply in the same language the customer used.'
     end

@@ -483,13 +483,7 @@
     "MULTIPLE": "{user} and {count} others are typing"
   },
   "COPILOT": {
-    "TRY_THESE_PROMPTS": "Try these prompts",
-    "REGENERATE": "Regenerate",
-    "THINKING": {
-      "READING": "Reading your question…",
-      "CHECKING": "Checking your account…",
-      "WRITING": "Writing the answer…"
-    }
+    "TRY_THESE_PROMPTS": "Try these prompts"
   },
   "GALLERY_VIEW": {
     "ERROR_DOWNLOADING": "Unable to download attachment. Please try again"

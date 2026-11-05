@@ -478,12 +478,17 @@
     "UPLOAD_FAILED": "Could not upload the file. Please try again.",
     "COPY": "Copy",
     "COPIED": "Copied",
-    "THINKING": "Copilot is working...",
+    "THINKING": {
+      "READING": "Reading your question…",
+      "CHECKING": "Checking your account…",
+      "WRITING": "Writing the answer…"
+    },
     "CONFIRM_TITLE": "Please confirm",
     "CONFIRM": "Yes, do it",
     "CANCEL": "Cancel",
     "CANCELLED": "Okay, I did not change anything.",
-    "ERROR": "Copilot could not answer right now. Please try again."
+    "ERROR": "Copilot could not answer right now. Please try again.",
+    "REGENERATE": "Regenerate"
   },
   "AI_AGENT": {
     "TITLE": "AI Agent",
@@ -509,7 +514,8 @@
       "NOT_IN_PLAN": "Replying to all chats is not included in your plan.",
       "AD_LEADS_NOTE": "Customers who message you from a Click-to-WhatsApp ad. Replies in the free ad window cost nothing.",
       "ALL_TITLE": "All WhatsApp chats",
-      "AD_TITLE": "Ad chats only"
+      "AD_TITLE": "Ad chats only",
+      "NOT_IN_PLAN_SHORT": "Not in your plan"
     },
     "INBOXES": {
       "TITLE": "Inboxes",
