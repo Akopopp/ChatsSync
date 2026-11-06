@@ -180,6 +180,7 @@ onMounted(load);
               {{ $t('WHATSAPP_FORMS.FORM.NAME') }}
               <input
                 v-model="editing.name"
+                type="text"
                 maxlength="60"
                 class="!mb-0"
                 :placeholder="$t('WHATSAPP_FORMS.FORM.NAME_PLACEHOLDER')"
@@ -189,6 +190,7 @@ onMounted(load);
               {{ $t('WHATSAPP_FORMS.FORM.HEADING') }}
               <input
                 v-model="editing.title"
+                type="text"
                 maxlength="30"
                 class="!mb-0"
                 :placeholder="$t('WHATSAPP_FORMS.FORM.HEADING_PLACEHOLDER')"
@@ -208,11 +210,21 @@ onMounted(load);
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="grid gap-1 text-n-slate-12">
               {{ $t('WHATSAPP_FORMS.FORM.BUTTON') }}
-              <input v-model="editing.button_label" maxlength="20" class="!mb-0" />
+              <input
+                v-model="editing.button_label"
+                type="text"
+                maxlength="20"
+                class="!mb-0"
+              />
             </label>
             <label class="grid gap-1 text-n-slate-12">
               {{ $t('WHATSAPP_FORMS.FORM.SUBMIT') }}
-              <input v-model="editing.submit_label" maxlength="30" class="!mb-0" />
+              <input
+                v-model="editing.submit_label"
+                type="text"
+                maxlength="30"
+                class="!mb-0"
+              />
             </label>
           </div>
 
@@ -233,6 +245,7 @@ onMounted(load);
               <div class="flex flex-wrap items-center gap-2">
                 <input
                   v-model="field.label"
+                  type="text"
                   :maxlength="LABEL_LENGTH"
                   class="!mb-0 flex-1 min-w-40"
                   :placeholder="$t('WHATSAPP_FORMS.FORM.LABEL_PLACEHOLDER')"
@@ -346,7 +359,13 @@ onMounted(load);
           >
             {{ $t('WHATSAPP_FORMS.DOWNLOAD') }}
           </ButtonV4>
-          <ButtonV4 sm faded ruby icon="i-lucide-trash-2" @click="remove(form)" />
+          <ButtonV4
+            sm
+            faded
+            ruby
+            icon="i-lucide-trash-2"
+            @click="remove(form)"
+          />
         </div>
       </section>
     </template>

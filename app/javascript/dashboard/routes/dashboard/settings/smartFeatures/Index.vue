@@ -361,12 +361,11 @@ onMounted(load);
                     {{ $t('SMART_FEATURES.COD.LINK') }}
                   </span>
                   <div class="flex items-center gap-2">
-                    <input
-                      :value="cod.url"
-                      readonly
-                      class="!mb-0 flex-1 min-w-0 text-xs"
-                      @focus="$event.target.select()"
-                    />
+                    <code
+                      class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-n-alpha-1 text-xs text-n-slate-12 break-all select-all"
+                    >
+                      {{ cod.url }}
+                    </code>
                     <button
                       class="px-3 py-1.5 rounded-lg text-sm outline outline-1 outline-n-weak text-n-slate-12 hover:outline-n-strong"
                       @click="copyCodLink"
