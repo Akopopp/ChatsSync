@@ -559,7 +559,7 @@ watch(
         </button>
         <div
           v-if="openFly === settingsItem.name"
-          class="cs-rl-sub"
+          class="cs-rl-sub cs-rl-sub--foot"
           :class="{ inline: expanded }"
           :style="expanded ? null : { top: flyPos.top + 'px', left: flyPos.left + 'px' }"
           @click.stop
@@ -882,6 +882,13 @@ watch(
   padding: 5px 0;
   background: var(--rail-hov);
   max-height: none;
+}
+/* Settings neeche wale hisse mein hai jo scroll nahi hota. Mobile drawer mein
+   lambi list screen se bahar nikal jaati thi: ab apne andar scroll hoti hai. */
+.cs-rl-sub.inline.cs-rl-sub--foot {
+  max-height: 45vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cs-rl-subh {
   font-size: 11.5px;
