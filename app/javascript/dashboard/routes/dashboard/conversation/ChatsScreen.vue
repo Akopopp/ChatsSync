@@ -15,6 +15,7 @@ import MessageFormatter from 'shared/helpers/MessageFormatter.js';
 import AudioChip from 'next/message/chips/Audio.vue';
 import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
 import AiAgentAPI from 'dashboard/api/aiAgent';
+import WhatsappFormsAPI from 'dashboard/api/whatsappForms';
 
 const props = defineProps({
   conversationId: { type: [String, Number], default: 0 },
@@ -729,6 +730,20 @@ const showProfile = ref(false);
 const isNote = ref(false);
 const showEmoji = ref(false);
 const showTpl = ref(false);
+/* Smart features > "WhatsApp forms": forms that open inside WhatsApp, sent from
+   the form button next to templates. The list is empty when the feature is off. */
+const waForms = ref([]);
+const showForms = ref(false);
+WhatsappFormsAPI.available()
+  .then(({ data }) => {
+    waForms.value = data.payload || [];
+  })
+  .catch(() => {});
+const formsHere = computed(
+  () =>
+    waForms.value.length > 0 &&
+    currentChat.value?.meta?.channel === 'Channel::Whatsapp'
+);
 const replyTo = ref(null);
 const fwdMsg = ref(null);
 const fwdPick = ref([]);
@@ -764,6 +779,16 @@ const toast = (text, kind = 'ok') => {
   setTimeout(() => {
     toasts.value = toasts.value.filter(t => t.id !== id);
   }, 3200);
+};
+const sendForm = async form => {
+  showForms.value = false;
+  if (!currentChat.value?.id) return;
+  try {
+    await WhatsappFormsAPI.deliver(form.id, currentChat.value.id);
+    toast('Form sent');
+  } catch (e) {
+    toast(e?.response?.data?.error || 'Could not send the form', 'err');
+  }
 };
 
 /* ===================================================================
@@ -3969,6 +3994,18 @@ watch(
           </div>
         </div>
 
+        <div v-if="showForms && !isRecording" class="cs-tplbox" @click.stop>
+          <div
+            v-for="f in waForms"
+            :key="f.id"
+            class="cs-tpl"
+            @click="sendForm(f)"
+          >
+            <div class="cs-tpln">{{ f.name }}</div>
+            <div class="cs-tplt">{{ f.title }}</div>
+          </div>
+        </div>
+
         <div v-if="showTpl && !isRecording" class="cs-tplbox" @click.stop>
           <div v-if="!templates.length" class="cs-tplempty">
             No templates in this inbox
@@ -4025,6 +4062,17 @@ watch(
             :class="{ act: showTpl }"
             @click.stop="
               showTpl = !showTpl;
+              showEmoji = false;
+              showCanned = false;
+            "
+          />
+          <span
+            v-if="formsHere && windowOpen && !isNote"
+            class="cs-ci i-lucide-clipboard-list"
+            :class="{ act: showForms }"
+            @click.stop="
+              showForms = !showForms;
+              showTpl = false;
               showEmoji = false;
               showCanned = false;
             "

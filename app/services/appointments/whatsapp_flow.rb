@@ -38,9 +38,9 @@ class Appointments::WhatsappFlow
 
     save('status' => 'SETTING_UP', 'error' => nil, 'started_at' => Time.current.to_i)
     upload_public_key
-    id = create_flow
-    upload_json(id)
-    request(:post, "#{GRAPH}/#{id}/publish")
+    id = WhatsappFlows::Graph.publish(channel, name: "ChatsSync booking #{Time.current.strftime('%Y%m%d%H%M%S')}",
+                                               categories: ['APPOINTMENT_BOOKING'], json: Appointments::WhatsappFlowJson.build,
+                                               endpoint_uri: self.class.endpoint_url)
     save('status' => 'PUBLISHED', 'flow_id' => id, 'version' => VERSION, 'error' => nil)
   rescue StandardError => e
     Rails.logger.warn("[ChatsSync] WhatsApp booking form setup failed for inbox #{inbox.id}: #{e.message}")
@@ -62,41 +62,10 @@ class Appointments::WhatsappFlow
     inbox.channel
   end
 
-  def token
-    channel.provider_config['api_key']
-  end
-
   def upload_public_key
-    request(:post, "#{GRAPH}/#{channel.provider_config['phone_number_id']}/whatsapp_business_encryption",
-            body: { business_public_key: WhatsappFlows::Crypto.public_pem })
-  end
-
-  def create_flow
-    result = request(:post, "#{GRAPH}/#{channel.provider_config['business_account_id']}/flows",
-                     body: { name: "ChatsSync booking #{Time.current.strftime('%Y%m%d%H%M%S')}", categories: ['APPOINTMENT_BOOKING'],
-                             endpoint_uri: self.class.endpoint_url })
-    result['id'] || raise('WhatsApp did not return a form id')
-  end
-
-  def upload_json(id)
-    Tempfile.create(['flow', '.json']) do |file|
-      file.write(Appointments::WhatsappFlowJson.build.to_json)
-      file.rewind
-      result = request(:post, "#{GRAPH}/#{id}/assets", body: { name: 'flow.json', asset_type: 'FLOW_JSON', file: file }, multipart: true)
-      errors = Array(result['validation_errors'])
-      raise "Form check failed: #{errors.map { |error| error['message'] }.join('; ')}" if errors.any?
-    end
-  end
-
-  # Sends JSON, or a multipart form when a file is attached.
-  def request(method, url, body: {}, multipart: false)
-    headers = { 'Authorization' => "Bearer #{token}" }
-    headers['Content-Type'] = 'application/json' unless multipart
-    response = HTTParty.public_send(method, url, headers: headers, body: multipart ? body : body.to_json, multipart: multipart, timeout: 20)
-    parsed = response.parsed_response.is_a?(Hash) ? response.parsed_response : {}
-    return parsed if response.success?
-
-    raise(parsed.dig('error', 'error_user_msg').presence || parsed.dig('error', 'message').presence || response.body.to_s.truncate(200))
+    WhatsappFlows::Graph.request(channel.provider_config['api_key'], :post,
+                                 "#{GRAPH}/#{channel.provider_config['phone_number_id']}/whatsapp_business_encryption",
+                                 body: { business_public_key: WhatsappFlows::Crypto.public_pem })
   end
 
   def save(changes)

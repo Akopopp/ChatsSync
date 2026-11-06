@@ -12,6 +12,7 @@ module AccountSmartFeatures
     'review_request' => false,
     'review_link' => '',
     'broadcast_tools' => false,
+    'whatsapp_forms' => false,
     'repeat_reminder' => false,
     'repeat_reminder_days' => 30,
     'repeat_reminder_inbox_id' => 0,

@@ -3,6 +3,20 @@ module Whatsapp::IncomingMessageServiceHelpers
     Down.download(inbox.channel.media_url(attachment_payload[:id]), headers: inbox.channel.api_headers)
   end
 
+  # What the chat shows when the customer sends a WhatsApp form back: the booking calendar or a form from Settings.
+  def form_reply_text(message)
+    reply = message.dig(:interactive, :nfm_reply)
+    return if reply.blank?
+
+    reply[:response_json].to_s.include?('"csform:') ? I18n.t('whatsapp_forms.submitted') : I18n.t('appointments.form.submitted')
+  end
+
+  # A WhatsApp form the customer filled in: its answers stay on the message for WhatsappForms::Response.
+  def attach_form_reply(message)
+    reply = message.dig(:interactive, :nfm_reply, :response_json)
+    @message.content_attributes = @message.content_attributes.merge('form_reply' => reply.to_s.first(10_000)) if reply.present?
+  end
+
   # Which ad brought the chat, for Smart features > "Ad report" and "Send sales to Meta".
   def ad_details(referral)
     {
@@ -68,7 +82,7 @@ module Whatsapp::IncomingMessageServiceHelpers
       message.dig(:button, :text) ||
       message.dig(:interactive, :button_reply, :title) ||
       message.dig(:interactive, :list_reply, :title) ||
-      (I18n.t('appointments.form.submitted') if message.dig(:interactive, :nfm_reply).present?) ||
+      form_reply_text(message) ||
       message.dig(:name, :formatted_name)
   end
 

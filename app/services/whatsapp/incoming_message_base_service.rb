@@ -165,6 +165,7 @@ class Whatsapp::IncomingMessageBaseService
 
   def create_regular_message(message)
     create_message(message, source_id: message[:id])
+    attach_form_reply(message)
     attach_files
     attach_location if message_type == 'location'
     @message.save!

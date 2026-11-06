@@ -80,6 +80,12 @@ Rails.application.routes.draw do
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
           resources :exports, only: [:show]
+          resources :whatsapp_forms, only: [:index, :create, :update, :destroy] do
+            member do
+              post :deliver
+              get :responses
+            end
+          end
           resource :copilot, only: [], controller: 'copilot' do
             post :chat
             post :confirm

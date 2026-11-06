@@ -53,6 +53,14 @@ en:
     cod:
       confirmed: 'Thank you! Your order %{number} is confirmed. We will send it soon.'
       cancelled: 'Your order %{number} has been cancelled. Message us anytime if you want to order again.'
+  whatsapp_forms:
+    submitted: 📝 Form submitted
+    note_title: 'Form filled: %{name}'
+    errors:
+      whatsapp_only: 'Forms can only be sent in WhatsApp chats on a WhatsApp Cloud number.'
+      not_enabled: 'Turn on WhatsApp forms in Settings > Smart features first.'
+      window_closed: 'The 24-hour reply window is closed. Send a template first; the form can go once the customer replies.'
+      send_failed: 'Could not send the form: %{error}'
   copilot:
     done: Done.
     image_only: Please attach a picture (JPG or PNG) or a video (MP4).

@@ -9,6 +9,7 @@ module SmartFeatures::IncomingMessage
     SmartFeatures::ReviewRequest.handle_answer(message) if account.smart_feature_on?(:review_request)
     SmartFeatures::CodConfirmation.handle_answer(message) if account.smart_feature_on?(:cod_confirm)
     SmartFeatures::BroadcastStats.reply(message) if account.smart_feature_on?(:broadcast_tools)
+    WhatsappForms::Response.record(message) if account.smart_feature_on?(:whatsapp_forms) && message.content_attributes&.dig('form_reply')
   end
 
   # Messages already answered by a smart feature, so the AI stays out of them.

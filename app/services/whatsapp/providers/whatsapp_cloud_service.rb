@@ -224,7 +224,8 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
     }
   end
 
-  # A WhatsApp Flow form (like the booking calendar) that opens inside WhatsApp.
+  # A WhatsApp Flow form that opens inside WhatsApp: the booking calendar (asks our endpoint for its first screen)
+  # or a WhatsApp form from Settings (opens straight on its screen, flow action "navigate").
   def send_flow_message(phone_number, message)
     flow = message.content_attributes['whatsapp_flow']
     response = HTTParty.post(
@@ -232,14 +233,17 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
       headers: api_headers,
       body: {
         messaging_product: 'whatsapp', **recipient_params(phone_number), type: 'interactive',
-        interactive: {
-          type: 'flow', body: { text: message.outgoing_content.presence || flow['cta'] },
-          action: { name: 'flow', parameters: { flow_message_version: '3', flow_token: flow['token'], flow_id: flow['flow_id'],
-                                                flow_cta: flow['cta'], flow_action: 'data_exchange' } }
-        }
+        interactive: { type: 'flow', body: { text: message.outgoing_content.presence || flow['cta'] },
+                       action: { name: 'flow', parameters: flow_parameters(flow) } }
       }.to_json
     )
     process_response(response, message)
+  end
+
+  def flow_parameters(flow)
+    action = flow['action'] || 'data_exchange'
+    parameters = { flow_message_version: '3', flow_token: flow['token'], flow_id: flow['flow_id'], flow_cta: flow['cta'], flow_action: action }
+    action == 'navigate' ? parameters.merge(flow_action_payload: { screen: flow['screen'] }) : parameters
   end
 
   def send_interactive_text_message(phone_number, message)

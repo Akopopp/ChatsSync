@@ -65,6 +65,7 @@ class Account < ApplicationRecord
   has_one :catalog_setting, dependent: :destroy
   has_many :products, dependent: :destroy_async
   has_many :orders, dependent: :destroy_async
+  has_many :whatsapp_forms, dependent: :destroy_async
   has_many :appointments, dependent: :destroy_async
   has_many :agent_bot_inboxes, dependent: :destroy_async
   has_many :agent_bots, dependent: :destroy_async

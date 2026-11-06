@@ -100,7 +100,7 @@ class Ai::ReplyService
   end
 
   def message_text(item, images)
-    return if item.content == I18n.t('appointments.form.submitted') # the booking form already confirmed it
+    return if [I18n.t('appointments.form.submitted'), I18n.t('whatsapp_forms.submitted')].include?(item.content) # already confirmed
 
     parts = [item.content.presence]
     item.attachments.each do |attachment|

@@ -36,7 +36,12 @@ const GROUPS = [
   {
     key: 'CUSTOMERS',
     icon: 'i-lucide-star',
-    items: ['review_request', 'repeat_reminder', 'broadcast_tools'],
+    items: [
+      'review_request',
+      'repeat_reminder',
+      'broadcast_tools',
+      'whatsapp_forms',
+    ],
   },
   { key: 'STORE', icon: 'i-lucide-shopping-bag', items: ['cod_confirm'] },
   {
@@ -251,6 +256,15 @@ onMounted(load);
                   @keyup.enter="saveReviewLink"
                 />
               </div>
+
+              <router-link
+                v-if="key === 'whatsapp_forms' && features.whatsapp_forms"
+                :to="{ name: 'whatsapp_forms_settings' }"
+                class="inline-flex items-center gap-1 text-sm text-n-blue-11"
+              >
+                <span class="i-lucide-clipboard-list size-4" />
+                {{ $t('SMART_FEATURES.MANAGE_FORMS') }}
+              </router-link>
 
               <div
                 v-if="
