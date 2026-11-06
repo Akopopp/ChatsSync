@@ -348,11 +348,7 @@ class Message < ApplicationRecord
 
   # Smart features that react to a customer's message; each one runs only when switched on in Settings > Smart features.
   def run_smart_features
-    return unless incoming? && sender_type == 'Contact'
-
-    Ai::PaymentCheckJob.set(wait: 5.seconds).perform_later(id) if account.smart_feature_on?(:payment_check) && attachments.any?
-    Whatsapp::StopOptOut.new(message: self).perform if account.smart_feature_on?(:stop_opt_out)
-    SmartFeatures::ReviewRequest.handle_answer(self) if account.smart_feature_on?(:review_request)
+    SmartFeatures::IncomingMessage.run(self) if incoming? && sender_type == 'Contact'
   end
 
   # A new contact beyond the plan's monthly contact limit gets a locked chat:

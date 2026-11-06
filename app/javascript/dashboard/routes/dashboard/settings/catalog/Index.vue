@@ -4,7 +4,9 @@ import { useI18n } from 'vue-i18n';
 import { useAlert } from 'dashboard/composables';
 import { useMapGetter } from 'dashboard/composables/store';
 import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
+import { downloadCsvFile } from 'dashboard/helper/downloadHelper';
 import CatalogAPI from 'dashboard/api/catalog';
+import ExportsAPI from 'dashboard/api/exports';
 
 import BillingCard from '../billing/components/BillingCard.vue';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
@@ -14,7 +16,13 @@ import ButtonV4 from 'next/button/Button.vue';
 const { t } = useI18n();
 const accountId = useMapGetter('getCurrentAccountId');
 
-const ORDER_STATUSES = ['new', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+const ORDER_STATUSES = [
+  'new',
+  'confirmed',
+  'shipped',
+  'delivered',
+  'cancelled',
+];
 const emptyProduct = () => ({
   id: null,
   name: '',
@@ -26,6 +34,7 @@ const emptyProduct = () => ({
 
 const isLoading = ref(true);
 const isSaving = ref(false);
+const isDownloading = ref(false);
 const isSavingProduct = ref(false);
 const setting = ref(null);
 const products = ref([]);
@@ -57,6 +66,21 @@ const groupedProducts = computed(() =>
 const fetchProducts = async () => {
   const response = await CatalogAPI.get();
   products.value = response.data;
+};
+
+const downloadOrders = async () => {
+  isDownloading.value = true;
+  try {
+    const { data } = await ExportsAPI.csv('orders');
+    downloadCsvFile(
+      `orders-${new Date().toISOString().slice(0, 10)}.csv`,
+      data
+    );
+  } catch (error) {
+    useAlert(errorMessage(error));
+  } finally {
+    isDownloading.value = false;
+  }
 };
 
 const fetchOrders = async () => {
@@ -398,6 +422,19 @@ onMounted(fetchAll);
           :title="$t('CATALOG.ORDERS.TITLE')"
           :description="$t('CATALOG.ORDERS.DESCRIPTION')"
         >
+          <template #action>
+            <ButtonV4
+              sm
+              faded
+              slate
+              icon="i-lucide-download"
+              :is-loading="isDownloading"
+              :disabled="!orders.length"
+              @click="downloadOrders"
+            >
+              {{ $t('CATALOG.ORDERS.DOWNLOAD') }}
+            </ButtonV4>
+          </template>
           <div class="px-5 grid gap-2 text-sm">
             <p v-if="!orders.length" class="text-n-slate-11">
               {{ $t('CATALOG.ORDERS.EMPTY') }}
@@ -413,6 +450,14 @@ onMounted(fetchAll);
                 </span>
                 <span class="text-xs text-n-slate-11">
                   {{ formatDate(order.created_at) }}
+                </span>
+                <span
+                  v-if="order.external_ref"
+                  class="px-2 py-0.5 rounded-full bg-n-alpha-2 text-xs text-n-slate-11"
+                >
+                  {{
+                    $t('CATALOG.ORDERS.FROM_STORE', { ref: order.external_ref })
+                  }}
                 </span>
                 <span class="flex-1" />
                 <span class="font-semibold text-n-slate-12">
@@ -433,7 +478,10 @@ onMounted(fetchAll);
                 </select>
               </div>
               <div class="text-n-slate-11">
-                <div v-for="item in order.items" :key="item.product_id">
+                <div
+                  v-for="(item, index) in order.items"
+                  :key="`${order.id}-${index}`"
+                >
                   {{
                     $t('CATALOG.ORDERS.ITEM', {
                       name: item.name,

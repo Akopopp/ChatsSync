@@ -19,7 +19,8 @@ class Api::V1::Accounts::OrdersController < Api::V1::Accounts::BaseController
   end
 
   def order_json(order)
-    order.as_json(only: %i[id number customer_name customer_phone address items subtotal delivery_fee total status source notes created_at])
+    order.as_json(only: %i[id number customer_name customer_phone address items subtotal delivery_fee total status source notes external_ref
+                           created_at])
          .merge(conversation_id: order.conversation&.display_id)
   end
 end

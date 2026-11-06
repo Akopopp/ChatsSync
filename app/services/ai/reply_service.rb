@@ -24,7 +24,7 @@ class Ai::ReplyService
     show_typing(turn.last)
     actions = Ai::Actions.new(account: account, conversation: conversation)
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: prompt_extra(actions, question),
+      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: prompt_extra(actions, question, images),
                                                      earlier: earlier_customer_text(turn)) + earlier_messages(turn),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
@@ -59,10 +59,9 @@ class Ai::ReplyService
     within_scope?
   end
 
-  # STOP / START and review ratings get their own reply from Smart features, so the AI stays out of them.
+  # STOP / START, review ratings and COD answers get their own reply from Smart features, so the AI stays out of them.
   def answered_by_smart_features?
-    (account.smart_feature_on?(:stop_opt_out) && Whatsapp::StopOptOut.keyword?(message.content)) ||
-      conversation.additional_attributes&.dig(SmartFeatures::ReviewRequest::ANSWER_KEY) == message.id
+    SmartFeatures::IncomingMessage.answered?(message)
   end
 
   def newer_incoming?
@@ -122,10 +121,13 @@ class Ai::ReplyService
     !conversation.messages.where(message_type: :outgoing, private: false).exists?
   end
 
-  # Free appointment times, the catalog and, when switched on, what we know about a returning customer.
-  def prompt_extra(actions, question)
+  # Free appointment times, the catalog and, when switched on, what we know about a returning customer
+  # and how to match a customer's photo to the catalog (Ai::PhotoSearch).
+  def prompt_extra(actions, question, images)
     history = Ai::CustomerHistory.new(conversation: conversation).prompt_text if account.smart_feature_on?(:returning_customers)
-    [actions.prompt_text(question), history].compact.join("\n\n").presence
+    photo = Ai::PhotoSearch.on?(account, images)
+    catalog_question = photo ? Ai::PhotoSearch.catalog_question(account, question, images) : question
+    [actions.prompt_text(catalog_question), history, (Ai::PhotoSearch::RULE if photo)].compact.join("\n\n").presence
   end
 
   # On WhatsApp the customer sees their message read and "typing..." while the reply is written (Smart features switch).

@@ -197,7 +197,7 @@ class Whatsapp::IncomingMessageBaseService
       'cs_ad_lead' => true,
       'cs_ad_lead_at' => Time.current.to_i,
       'cs_ad_source' => referral[:source_type].to_s
-    )
+    ).merge(ad_details(referral))
     @conversation.update!(additional_attributes: attrs)
   end
 

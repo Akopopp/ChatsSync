@@ -37,6 +37,17 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
     render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
   end
 
+  # "Fill from website": a draft of the business name and info from one public page. Nothing is saved here.
+  def import_website
+    return render_payment_required(I18n.t('errors.ai.copilot_limit')) if Current.account.plan_limit_reached?(:copilot_tasks_monthly)
+
+    render json: Ai::WebsiteImporter.new(agent: @agent, url: params.require(:url).to_s.truncate(500)).perform
+  rescue Ai::WebsiteImporter::Error
+    render json: { error: I18n.t('errors.ai.website_unreadable') }, status: :unprocessable_entity
+  rescue Ai::LlmClient::Error
+    render json: { error: I18n.t('errors.ai.busy') }, status: :service_unavailable
+  end
+
   private
 
   # Shows the business what would happen instead of the AI's internal tags.

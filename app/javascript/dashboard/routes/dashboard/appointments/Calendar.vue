@@ -1,14 +1,30 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import { useMapGetter } from 'dashboard/composables/store';
+import { useAdmin } from 'dashboard/composables/useAdmin';
 import { frontendURL, conversationUrl } from 'dashboard/helper/URLHelper';
+import { downloadCsvFile } from 'dashboard/helper/downloadHelper';
 import AppointmentsAPI from 'dashboard/api/appointments';
+import ExportsAPI from 'dashboard/api/exports';
 import ButtonV4 from 'next/button/Button.vue';
 import AppointmentModal from './AppointmentModal.vue';
 
-const { t } = useI18n();
+const { isAdmin } = useAdmin();
 const accountId = useMapGetter('getCurrentAccountId');
+const isDownloading = ref(false);
+
+const downloadCsv = async () => {
+  isDownloading.value = true;
+  try {
+    const { data } = await ExportsAPI.csv('appointments');
+    downloadCsvFile(
+      `appointments-${new Date().toISOString().slice(0, 10)}.csv`,
+      data
+    );
+  } finally {
+    isDownloading.value = false;
+  }
+};
 
 const view = ref('week');
 const timezone = ref('Asia/Karachi');
@@ -124,8 +140,7 @@ const formatTime = value =>
     timeZone: timezone.value,
   }).format(new Date(value));
 
-const formatHour = hour =>
-  `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`;
+const formatHour = hour => `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`;
 
 const STATUS_CLASS = {
   booked: 'border-l-n-blue-9 bg-n-blue-2',
@@ -156,7 +171,10 @@ const openDay = value => {
 
 const chatLink = appointment =>
   frontendURL(
-    conversationUrl({ accountId: accountId.value, id: appointment.conversation_id })
+    conversationUrl({
+      accountId: accountId.value,
+      id: appointment.conversation_id,
+    })
   );
 
 const onSaved = () => {
@@ -221,7 +239,24 @@ onMounted(fetchAppointments);
           {{ $t(`APPOINTMENTS.CALENDAR.${option.toUpperCase()}`) }}
         </button>
       </div>
-      <ButtonV4 sm solid blue icon="i-lucide-plus" @click="modal = { prefill: { date: anchor } }">
+      <ButtonV4
+        v-if="isAdmin"
+        sm
+        faded
+        slate
+        icon="i-lucide-download"
+        :is-loading="isDownloading"
+        @click="downloadCsv"
+      >
+        {{ $t('APPOINTMENTS.CALENDAR.DOWNLOAD') }}
+      </ButtonV4>
+      <ButtonV4
+        sm
+        solid
+        blue
+        icon="i-lucide-plus"
+        @click="modal = { prefill: { date: anchor } }"
+      >
         {{ $t('APPOINTMENTS.CALENDAR.NEW') }}
       </ButtonV4>
     </header>
@@ -259,7 +294,9 @@ onMounted(fetchAppointments);
               <span class="block font-semibold">
                 {{ formatTime(item.starts_at) }}
               </span>
-              <span class="block truncate">{{ item.customer_name || '-' }}</span>
+              <span class="block truncate">{{
+                item.customer_name || '-'
+              }}</span>
               <span v-if="item.service" class="block truncate text-n-slate-11">
                 {{ item.service }}
               </span>
@@ -293,13 +330,20 @@ onMounted(fetchAppointments);
               class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 rounded-md border-l-4 text-sm text-n-slate-12 flex-1 min-w-60"
               :class="STATUS_CLASS[item.status]"
             >
-              <button class="text-left grid" @click="modal = { appointment: item }">
+              <button
+                class="text-left grid"
+                @click="modal = { appointment: item }"
+              >
                 <span class="font-semibold">
                   {{ formatTime(item.starts_at) }} –
                   {{ item.customer_name || '-' }}
                 </span>
                 <span class="text-xs text-n-slate-11">
-                  {{ [item.service, item.customer_phone].filter(Boolean).join(' · ') }}
+                  {{
+                    [item.service, item.customer_phone]
+                      .filter(Boolean)
+                      .join(' · ')
+                  }}
                 </span>
               </button>
               <span class="text-xs text-n-slate-11 ml-auto">
@@ -317,7 +361,10 @@ onMounted(fetchAppointments);
         </div>
       </div>
 
-      <p v-if="!isLoading && !appointments.length" class="mt-4 text-sm text-n-slate-11">
+      <p
+        v-if="!isLoading && !appointments.length"
+        class="mt-4 text-sm text-n-slate-11"
+      >
         {{ $t('APPOINTMENTS.LIST.EMPTY') }}
       </p>
     </div>

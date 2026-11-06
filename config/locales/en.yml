@@ -50,6 +50,9 @@ en:
       thanks_with_link: 'Thank you so much! It would mean a lot if you shared it on Google: %{link}'
       sorry: 'We are sorry it was not better. Our team will contact you to make it right.'
       team_note: 'Customer rated their experience %{score} out of 5. Please call or message them.'
+    cod:
+      confirmed: 'Thank you! Your order %{number} is confirmed. We will send it soon.'
+      cancelled: 'Your order %{number} has been cancelled. Message us anytime if you want to order again.'
   copilot:
     done: Done.
     image_only: Please attach a picture (JPG or PNG) or a video (MP4).
@@ -88,6 +91,7 @@ en:
     ai:
       business_info_missing: Add your business information first, then generate FAQs from it.
       busy: The AI is busy right now. Please try again in a minute.
+      website_unreadable: We could not read that page. Check the link, or paste your business details yourself.
       copilot_limit: Your plan's monthly AI assistant limit is used up. Upgrade your plan or buy a pack.
       image_too_big: This picture is too big. Please use one under 5 MB.
       video_too_big: This video is too big. WhatsApp allows videos up to 16 MB, so please use a shorter or smaller MP4.

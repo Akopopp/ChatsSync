@@ -64,6 +64,7 @@ Rails.application.routes.draw do
           resource :ai_agent, only: [:show, :update] do
             post :preview
             post :generate_faqs
+            post :import_website
           end
           resources :ai_knowledge_items, only: [:index, :create, :update, :destroy]
           resource :appointment_setting, only: [:show, :update] do
@@ -76,6 +77,7 @@ Rails.application.routes.draw do
           resource :smart_features, only: [:show, :update]
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
+          resources :exports, only: [:show]
           resource :copilot, only: [], controller: 'copilot' do
             post :chat
             post :confirm
@@ -655,6 +657,7 @@ Rails.application.routes.draw do
   post 'webhooks/instagram', to: 'webhooks/instagram#events'
   post 'webhooks/tiktok', to: 'webhooks/tiktok#events'
   post 'webhooks/shopify', to: 'webhooks/shopify#events'
+  post 'webhooks/store_orders/:token', to: 'webhooks/store_orders#create'
 
   namespace :twitter do
     resource :callback, only: [:show]

@@ -182,6 +182,25 @@ const toggleInbox = id => {
     : [...ids, id];
 };
 
+const websiteUrl = ref('');
+const isImporting = ref(false);
+
+const importWebsite = async () => {
+  if (!websiteUrl.value.trim()) return;
+  isImporting.value = true;
+  try {
+    const { data } = await AiAgentAPI.importWebsite(websiteUrl.value.trim());
+    if (!agent.value.business_name)
+      agent.value.business_name = data.business_name;
+    agent.value.business_info = data.business_info;
+    useAlert(t('AI_AGENT.BUSINESS.WEBSITE_DONE'));
+  } catch (error) {
+    useAlert(errorMessage(error));
+  } finally {
+    isImporting.value = false;
+  }
+};
+
 const generateFaqs = async () => {
   isGenerating.value = true;
   try {
@@ -536,6 +555,36 @@ onMounted(fetchAll);
                   >
                     {{ $t(`AI_AGENT.BUSINESS.TONES.${tone.toUpperCase()}`) }}
                   </button>
+                </div>
+              </div>
+              <div
+                class="grid gap-2 p-3 rounded-lg bg-n-alpha-1 text-sm text-n-slate-12"
+              >
+                <span class="flex items-center gap-2 font-medium">
+                  <span class="i-lucide-globe size-4 text-n-slate-11" />
+                  {{ $t('AI_AGENT.BUSINESS.WEBSITE') }}
+                </span>
+                <span class="text-xs text-n-slate-11">
+                  {{ $t('AI_AGENT.BUSINESS.WEBSITE_HINT') }}
+                </span>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="websiteUrl"
+                    type="url"
+                    class="!mb-0 flex-1 min-w-0"
+                    :placeholder="$t('AI_AGENT.BUSINESS.WEBSITE_PLACEHOLDER')"
+                    @keyup.enter="importWebsite"
+                  />
+                  <ButtonV4
+                    sm
+                    faded
+                    blue
+                    :is-loading="isImporting"
+                    :disabled="!websiteUrl.trim()"
+                    @click="importWebsite"
+                  >
+                    {{ $t('AI_AGENT.BUSINESS.WEBSITE_BUTTON') }}
+                  </ButtonV4>
                 </div>
               </div>
               <label class="grid gap-1 text-sm text-n-slate-12">

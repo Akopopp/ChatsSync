@@ -22,6 +22,11 @@ class AiAgentAPI extends ApiClient {
   generateFaqs() {
     return axios.post(`${this.url}/generate_faqs`);
   }
+
+  // Draft business name and info from one public page; nothing is saved.
+  importWebsite(url) {
+    return axios.post(`${this.url}/import_website`, { url });
+  }
 }
 
 export default new AiAgentAPI();

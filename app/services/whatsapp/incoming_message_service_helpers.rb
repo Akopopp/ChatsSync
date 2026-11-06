@@ -3,6 +3,16 @@ module Whatsapp::IncomingMessageServiceHelpers
     Down.download(inbox.channel.media_url(attachment_payload[:id]), headers: inbox.channel.api_headers)
   end
 
+  # Which ad brought the chat, for Smart features > "Ad report" and "Send sales to Meta".
+  def ad_details(referral)
+    {
+      'cs_ad_id' => referral[:source_id].to_s.presence,
+      'cs_ad_headline' => referral[:headline].to_s.truncate(120).presence,
+      'cs_ad_url' => referral[:source_url].to_s.truncate(500).presence,
+      'cs_ctwa_clid' => referral[:ctwa_clid].to_s.presence
+    }.compact
+  end
+
   # FEP (Free Entry Point) — QADAM 1: sirf dekhna, kuch badalna nahi.
   #
   # Meta "muft conversation" ke liye alag se koi jhanda nahi bhejta.

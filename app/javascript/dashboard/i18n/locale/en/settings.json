@@ -537,6 +537,11 @@
       },
       "EXAMPLES": "Sample replies (optional)",
       "EXAMPLES_PLACEHOLDER": "Write 2-3 replies the way your best team member would. The AI copies this style.\nCustomer: price kya hai?\nYou: Ji, is article ki price Rs 3,200 hai. Order ke liye apna naam, address aur size bhej dein.",
+      "WEBSITE": "Fill from your website",
+      "WEBSITE_HINT": "Paste a link to your website or online store. The AI reads the page and drafts your business info below. Check it, then save.",
+      "WEBSITE_PLACEHOLDER": "https://yourshop.com",
+      "WEBSITE_BUTTON": "Read page",
+      "WEBSITE_DONE": "Draft added below. Check it, then press Save.",
       "INFO": "About your business",
       "INFO_PLACEHOLDER": "Products, prices, delivery areas and charges, timings, payment methods, return policy, address...",
       "INSTRUCTIONS": "Extra instructions (optional)",
@@ -1307,7 +1312,8 @@
       "DAY": "Day",
       "WEEK": "Week",
       "NEW": "New appointment",
-      "ADD": "+ Add"
+      "ADD": "+ Add",
+      "DOWNLOAD": "Download CSV"
     },
     "CHAT": {
       "TITLE": "Appointments",
@@ -1380,7 +1386,9 @@
         "SHIPPED": "Shipped",
         "DELIVERED": "Delivered",
         "CANCELLED": "Cancelled"
-      }
+      },
+      "DOWNLOAD": "Download CSV",
+      "FROM_STORE": "From {ref}"
     }
   },
   "SMART_FEATURES": {
@@ -1393,6 +1401,8 @@
     "GROUPS": {
       "AI": "AI agent",
       "CUSTOMERS": "Customers",
+      "STORE": "Online store",
+      "ADS": "Ads",
       "OWNER": "For you",
       "SAFETY": "Number safety"
     },
@@ -1409,6 +1419,10 @@
         "TITLE": "Check payment screenshots",
         "HINT": "When a customer sends a JazzCash, Easypaisa or bank screenshot, the AI reads the amount and transaction ID and leaves a private note for your team. The customer sees nothing."
       },
+      "PHOTO_SEARCH": {
+        "TITLE": "Find products from photos",
+        "HINT": "When a customer sends a photo of something they want, the AI finds the closest products in your catalog and shows them with price and picture. Needs the catalog turned on."
+      },
       "FOLLOW_UP": {
         "TITLE": "Follow up with quiet customers",
         "HINT": "If a customer goes quiet after the AI answered (for example after asking a price), the AI sends one short follow-up. Only inside the 24-hour reply window, and never more than once."
@@ -1416,6 +1430,18 @@
       "REVIEW_REQUEST": {
         "TITLE": "Ask for a rating",
         "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team."
+      },
+      "COD_CONFIRM": {
+        "TITLE": "Confirm COD orders on WhatsApp",
+        "HINT": "New Shopify or WooCommerce orders come into ChatsSync, and the customer gets your WhatsApp template with Confirm and Cancel buttons. The order updates on its own when they tap. Meta charges for each template message."
+      },
+      "AD_REPORT": {
+        "TITLE": "Ad report",
+        "HINT": "See which Facebook and Instagram ads brought chats, orders, bookings and sales in the last 30 days. Counts chats that start from a Click-to-WhatsApp ad."
+      },
+      "META_SALES": {
+        "TITLE": "Send sales to Meta",
+        "HINT": "When an order from an ad chat reaches the status you choose, ChatsSync tells Meta about the sale, so your ads find more people who buy. Only the amount and Meta's ad click code are sent."
       },
       "DAILY_REPORT": {
         "TITLE": "Daily report by email",
@@ -1445,6 +1471,38 @@
       "EMPTY": "No WhatsApp Cloud numbers in this account yet.",
       "LIMIT": "Daily limit: {limit}",
       "NOT_CHECKED": "Not checked yet"
+    },
+    "META_SALES_WHEN": "Send when the order is",
+    "META_SALES_STATUS": {
+      "NEW": "Placed",
+      "CONFIRMED": "Confirmed",
+      "DELIVERED": "Delivered"
+    },
+    "COD": {
+      "NUMBER": "WhatsApp number",
+      "NUMBER_PLACEHOLDER": "Choose a number",
+      "TEMPLATE": "Message template",
+      "TEMPLATE_PLACEHOLDER": "Choose a template",
+      "NO_TEMPLATES": "No approved template with two quick reply buttons on this number yet. Create one in WhatsApp Manager (first button Confirm, second Cancel), then refresh this page.",
+      "TEMPLATE_HELP": "Template variables are filled in this order: customer name, order number, total, items, address.",
+      "COD_ONLY": "Only cash on delivery orders",
+      "LINK": "Store webhook link",
+      "COPY": "Copy",
+      "COPIED": "Link copied",
+      "HELP_SHOPIFY": "Shopify: Settings > Notifications > Webhooks > Create webhook. Event: Order creation, format JSON, then paste this link.",
+      "HELP_WOO": "WooCommerce: Settings > Advanced > Webhooks > Add webhook. Topic: Order created, then paste this link as the Delivery URL.",
+      "LINK_PRIVATE": "Keep this link private. Anyone who has it can send orders to your account."
+    },
+    "ADS": {
+      "EMPTY": "No chats from ads in the last {days} days yet. New chats from your ads will show here.",
+      "TOTAL": "Last {days} days",
+      "CHATS": "{count} chats",
+      "ORDERS": "{count} orders",
+      "BOOKINGS": "{count} bookings",
+      "POST": "Facebook or Instagram post",
+      "AD_ID": "Ad {id}",
+      "UNKNOWN": "Ad (no details)",
+      "OPEN": "Open"
     }
   }
 }
