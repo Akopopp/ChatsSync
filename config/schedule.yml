@@ -116,3 +116,10 @@ appointments_daily_summary_job:
   cron: '5 * * * *'
   class: 'Appointments::DailySummaryJob'
   queue: scheduled_jobs
+
+# executed once a day at 11:05 am Pakistan time
+# Smart features: "Bring customers back" reminders after a visit or a delivered order
+smart_features_repeat_reminder_job:
+  cron: '5 6 * * *'
+  class: 'SmartFeatures::RepeatReminderJob'
+  queue: scheduled_jobs

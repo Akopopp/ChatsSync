@@ -9,7 +9,6 @@ class SmartFeatures::CodConfirmation
   CANCELLED_LABEL = 'cod-cancelled'.freeze
   CONFIRM_WORDS = ['confirm', 'confirmed', 'confirm order', 'yes', 'ok', 'haan', 'han', 'ji', 'jee'].freeze
   CANCEL_WORDS = ['cancel', 'cancelled', 'cancel order', 'no', 'nahi', 'nhi', 'cancel kar do', 'cancel kr do'].freeze
-  PLACEHOLDER = /\{\{\s*([\w.]+)\s*\}\}/
 
   pattr_initialize [:account!, :data!]
 
@@ -20,28 +19,8 @@ class SmartFeatures::CodConfirmation
     {
       url: "#{ENV.fetch('FRONTEND_URL', '')}/webhooks/store_orders/#{account.smart_feature(:cod_token)}",
       inboxes: inboxes.map { |item| { id: item.id, name: item.name } },
-      templates: inbox ? templates(inbox.channel).map { |item| item.slice('name', 'language').merge('body' => body(item)) } : []
+      templates: inbox ? SmartFeatures::TemplateMessage.choices(inbox.channel, min_buttons: 2) : []
     }
-  end
-
-  # Approved templates with at least two quick reply buttons and no picture or variable in the header.
-  def self.templates(channel)
-    Array(channel.message_templates).select do |item|
-      item['status'].to_s.casecmp?('approved') && buttons(item).size >= 2 && Array(item['components']).none? { |part| header_needs_input?(part) }
-    end
-  end
-
-  def self.header_needs_input?(part)
-    part['type'].to_s.casecmp?('header') && (part['format'] != 'TEXT' || part['text'].to_s.include?('{{'))
-  end
-
-  def self.buttons(template)
-    part = Array(template['components']).find { |item| item['type'].to_s.casecmp?('buttons') }
-    Array(part&.dig('buttons')).select { |button| button['type'].to_s.casecmp?('quick_reply') }.pluck('text')
-  end
-
-  def self.body(template)
-    Array(template['components']).find { |item| item['type'].to_s.casecmp?('body') }&.dig('text').to_s
   end
 
   # The customer's button tap (or a typed "confirm" / "cancel") on a chat waiting for a COD answer.
@@ -78,7 +57,7 @@ class SmartFeatures::CodConfirmation
     phone = SmartFeatures::StoreOrder.phone(data['phone'])
     return if phone.blank? || account.orders.exists?(external_ref: ref) # stores send the same order again on retries
 
-    conversation = conversation_for(phone)
+    conversation = sender.conversation_for(phone, data['name'])
     ask(conversation, create_order(conversation, phone))
   end
 
@@ -93,20 +72,16 @@ class SmartFeatures::CodConfirmation
   end
 
   def template
-    @template ||= self.class.templates(inbox.channel).find do |item|
-      item['name'] == account.smart_feature(:cod_template) && item['language'] == account.smart_feature(:cod_template_language)
-    end
+    @template ||= SmartFeatures::TemplateMessage.find(inbox.channel, account.smart_feature(:cod_template),
+                                                     account.smart_feature(:cod_template_language), min_buttons: 2)
+  end
+
+  def sender
+    SmartFeatures::TemplateMessage.new(inbox: inbox, template: template)
   end
 
   def ref
     data['ref'].to_s.truncate(80)
-  end
-
-  def conversation_for(phone)
-    contact_inbox = ContactInboxWithContactBuilder.new(inbox: inbox, source_id: phone.delete('+'),
-                                                       contact_attributes: { name: data['name'].presence || phone, phone_number: phone }).perform
-    contact_inbox.conversations.where.not(status: :resolved).last ||
-      ::Conversation.create!(account_id: account.id, inbox_id: inbox.id, contact_id: contact_inbox.contact_id, contact_inbox_id: contact_inbox.id)
   end
 
   def create_order(conversation, phone)
@@ -128,28 +103,13 @@ class SmartFeatures::CodConfirmation
 
   # Template variables are filled in this order: customer name, order number, total, items, address.
   def ask(conversation, order)
-    params = param_keys.each_with_index.to_h { |key, index| [key, param_values(order)[index].to_s.squish.truncate(300).presence || '-'] }
     conversation.update!(additional_attributes: (conversation.additional_attributes || {})
-                           .merge(ORDER_KEY => order.id, BUTTONS_KEY => self.class.buttons(template)))
-    conversation.messages.create!(
-      account_id: account.id, inbox_id: inbox.id, message_type: :outgoing,
-      content: self.class.body(template).gsub(PLACEHOLDER) { params[Regexp.last_match(1)] },
-      additional_attributes: { 'template_params' => template_params(params) }
-    )
-  end
-
-  def template_params(params)
-    { 'name' => template['name'], 'language' => template['language'], 'category' => template['category'],
-      'processed_params' => { 'body' => params } }
-  end
-
-  def param_keys
-    keys = self.class.body(template).scan(PLACEHOLDER).flatten.uniq
-    keys.all? { |key| key.match?(/\A\d+\z/) } ? keys.sort_by(&:to_i) : keys
+                           .merge(ORDER_KEY => order.id, BUTTONS_KEY => SmartFeatures::TemplateMessage.buttons(template)))
+    sender.deliver(conversation, param_values(order))
   end
 
   def param_values(order)
-    @param_values ||= [
+    [
       order.customer_name || 'Customer', ref.split.last, (account.catalog_setting || CatalogSetting.new).money(order.total),
       order.items.map { |item| "#{item['name']} x#{item['quantity']}" }.join(', '), order.address
     ]

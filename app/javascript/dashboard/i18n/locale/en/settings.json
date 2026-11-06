@@ -1431,6 +1431,10 @@
         "TITLE": "Ask for a rating",
         "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team."
       },
+      "REPEAT_REMINDER": {
+        "TITLE": "Bring customers back",
+        "HINT": "Some days after an appointment is done or an order is delivered, the customer gets your WhatsApp template, like a reminder for the next visit, a follow-up or a refill. One reminder per visit or order. Meta charges for each template message."
+      },
       "BROADCAST_TOOLS": {
         "TITLE": "Broadcast tools",
         "HINT": "In Campaigns > WhatsApp: send to everyone who messaged you, customers from ads or customers who bought, see about how much Meta charges before sending, and see who got, read and replied to each broadcast and what they ordered."
@@ -1483,10 +1487,6 @@
       "DELIVERED": "Delivered"
     },
     "COD": {
-      "NUMBER": "WhatsApp number",
-      "NUMBER_PLACEHOLDER": "Choose a number",
-      "TEMPLATE": "Message template",
-      "TEMPLATE_PLACEHOLDER": "Choose a template",
       "NO_TEMPLATES": "No approved template with two quick reply buttons on this number yet. Create one in WhatsApp Manager (first button Confirm, second Cancel), then refresh this page.",
       "TEMPLATE_HELP": "Template variables are filled in this order: customer name, order number, total, items, address.",
       "COD_ONLY": "Only cash on delivery orders",
@@ -1507,6 +1507,18 @@
       "AD_ID": "Ad {id}",
       "UNKNOWN": "Ad (no details)",
       "OPEN": "Open"
+    },
+    "TEMPLATE_PICKER": {
+      "NUMBER": "WhatsApp number",
+      "NUMBER_PLACEHOLDER": "Choose a number",
+      "TEMPLATE": "Message template",
+      "TEMPLATE_PLACEHOLDER": "Choose a template"
+    },
+    "REMINDER": {
+      "AFTER": "Send after",
+      "DAYS": "{count} days",
+      "NO_TEMPLATES": "No approved template on this number yet. Create one in WhatsApp Manager, then refresh this page.",
+      "TEMPLATE_HELP": "Template variables are filled in this order: customer name, the service or items, your business name."
     }
   }
 }

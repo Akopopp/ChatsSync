@@ -7,6 +7,7 @@ import SmartFeaturesAPI from 'dashboard/api/smartFeatures';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import Switch from 'next/switch/Switch.vue';
+import TemplatePicker from './TemplatePicker.vue';
 
 const { t } = useI18n();
 
@@ -15,6 +16,7 @@ const features = ref({});
 const numbers = ref([]);
 const ads = ref(null);
 const cod = ref(null);
+const reminder = ref(null);
 const currency = ref('Rs');
 const reviewLink = ref('');
 
@@ -34,7 +36,7 @@ const GROUPS = [
   {
     key: 'CUSTOMERS',
     icon: 'i-lucide-star',
-    items: ['review_request', 'broadcast_tools'],
+    items: ['review_request', 'repeat_reminder', 'broadcast_tools'],
   },
   { key: 'STORE', icon: 'i-lucide-shopping-bag', items: ['cod_confirm'] },
   {
@@ -51,6 +53,7 @@ const GROUPS = [
 ];
 const FOLLOW_UP_HOURS = [1, 2, 3, 4, 6, 8, 12, 20];
 const META_SALES_WHEN = ['new', 'confirmed', 'delivered'];
+const REMINDER_DAYS = [7, 14, 21, 30, 45, 60, 90, 180];
 const QUALITY_CLASS = {
   GREEN: 'bg-n-teal-3 text-n-teal-11',
   YELLOW: 'bg-n-amber-3 text-n-amber-11',
@@ -69,6 +72,7 @@ const apply = data => {
   numbers.value = data.numbers;
   ads.value = data.ads;
   cod.value = data.cod;
+  reminder.value = data.reminder;
   currency.value = data.currency || 'Rs';
   reviewLink.value = data.features.review_link || '';
 };
@@ -109,23 +113,13 @@ const saveReviewLink = () => {
   save({ review_link: link });
 };
 
-const codTemplateValue = computed(() =>
-  features.value.cod_template
-    ? `${features.value.cod_template}|${features.value.cod_template_language}`
-    : ''
-);
-
-const chooseCodInbox = id =>
+// prefix: 'cod' or 'repeat_reminder'; saves the number and template the feature sends from.
+const pickTemplate = (prefix, { inboxId, template, language }) =>
   save({
-    cod_inbox_id: Number(id),
-    cod_template: '',
-    cod_template_language: '',
+    [`${prefix}_inbox_id`]: inboxId,
+    [`${prefix}_template`]: template,
+    [`${prefix}_template_language`]: language,
   });
-
-const chooseCodTemplate = value => {
-  const [name, language] = value.split('|');
-  save({ cod_template: name || '', cod_template_language: language || '' });
-};
 
 const copyCodLink = async () => {
   await copyTextToClipboard(cod.value.url);
@@ -258,6 +252,48 @@ onMounted(load);
                 />
               </div>
 
+              <div
+                v-if="
+                  key === 'repeat_reminder' &&
+                  features.repeat_reminder &&
+                  reminder
+                "
+                class="grid gap-3 text-sm"
+              >
+                <label
+                  class="flex flex-wrap items-center gap-2 text-n-slate-11"
+                >
+                  {{ $t('SMART_FEATURES.REMINDER.AFTER') }}
+                  <select
+                    :value="features.repeat_reminder_days"
+                    class="!mb-0 !w-auto !py-1 text-sm"
+                    @change="
+                      save({
+                        repeat_reminder_days: Number($event.target.value),
+                      })
+                    "
+                  >
+                    <option
+                      v-for="days in REMINDER_DAYS"
+                      :key="days"
+                      :value="days"
+                    >
+                      {{ $t('SMART_FEATURES.REMINDER.DAYS', { count: days }) }}
+                    </option>
+                  </select>
+                </label>
+                <TemplatePicker
+                  :inboxes="reminder.inboxes"
+                  :templates="reminder.templates"
+                  :inbox-id="features.repeat_reminder_inbox_id"
+                  :template="features.repeat_reminder_template"
+                  :language="features.repeat_reminder_template_language"
+                  :empty-text="$t('SMART_FEATURES.REMINDER.NO_TEMPLATES')"
+                  :help-text="$t('SMART_FEATURES.REMINDER.TEMPLATE_HELP')"
+                  @update="pickTemplate('repeat_reminder', $event)"
+                />
+              </div>
+
               <label
                 v-if="key === 'meta_sales' && features.meta_sales"
                 class="flex flex-wrap items-center gap-2 text-sm text-n-slate-11"
@@ -286,57 +322,16 @@ onMounted(load);
                 v-if="key === 'cod_confirm' && features.cod_confirm && cod"
                 class="grid gap-3 text-sm"
               >
-                <label class="grid gap-1 text-n-slate-11">
-                  {{ $t('SMART_FEATURES.COD.NUMBER') }}
-                  <select
-                    :value="features.cod_inbox_id || ''"
-                    class="!mb-0 text-sm"
-                    @change="chooseCodInbox($event.target.value)"
-                  >
-                    <option value="" disabled>
-                      {{ $t('SMART_FEATURES.COD.NUMBER_PLACEHOLDER') }}
-                    </option>
-                    <option
-                      v-for="inbox in cod.inboxes"
-                      :key="inbox.id"
-                      :value="inbox.id"
-                    >
-                      {{ inbox.name }}
-                    </option>
-                  </select>
-                </label>
-                <label
-                  v-if="features.cod_inbox_id"
-                  class="grid gap-1 text-n-slate-11"
-                >
-                  {{ $t('SMART_FEATURES.COD.TEMPLATE') }}
-                  <select
-                    v-if="cod.templates.length"
-                    :value="codTemplateValue"
-                    class="!mb-0 text-sm"
-                    @change="chooseCodTemplate($event.target.value)"
-                  >
-                    <option value="" disabled>
-                      {{ $t('SMART_FEATURES.COD.TEMPLATE_PLACEHOLDER') }}
-                    </option>
-                    <option
-                      v-for="item in cod.templates"
-                      :key="`${item.name}|${item.language}`"
-                      :value="`${item.name}|${item.language}`"
-                    >
-                      {{ `${item.name} (${item.language})` }}
-                    </option>
-                  </select>
-                  <span
-                    v-else
-                    class="px-3 py-2 rounded-lg bg-n-amber-2 text-n-amber-11"
-                  >
-                    {{ $t('SMART_FEATURES.COD.NO_TEMPLATES') }}
-                  </span>
-                  <span class="text-xs text-n-slate-10">
-                    {{ $t('SMART_FEATURES.COD.TEMPLATE_HELP') }}
-                  </span>
-                </label>
+                <TemplatePicker
+                  :inboxes="cod.inboxes"
+                  :templates="cod.templates"
+                  :inbox-id="features.cod_inbox_id"
+                  :template="features.cod_template"
+                  :language="features.cod_template_language"
+                  :empty-text="$t('SMART_FEATURES.COD.NO_TEMPLATES')"
+                  :help-text="$t('SMART_FEATURES.COD.TEMPLATE_HELP')"
+                  @update="pickTemplate('cod', $event)"
+                />
                 <div class="flex items-center justify-between gap-4">
                   <span class="text-n-slate-12">
                     {{ $t('SMART_FEATURES.COD.COD_ONLY') }}

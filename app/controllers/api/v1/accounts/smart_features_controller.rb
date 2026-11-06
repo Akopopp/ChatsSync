@@ -32,6 +32,7 @@ class Api::V1::Accounts::SmartFeaturesController < Api::V1::Accounts::BaseContro
       numbers: Whatsapp::NumberHealth.for_account(account),
       ads: account.smart_feature_on?(:ad_report) ? SmartFeatures::AdReport.new(account: account).summary : nil,
       cod: account.smart_feature_on?(:cod_confirm) ? SmartFeatures::CodConfirmation.settings_for(account) : nil,
+      reminder: account.smart_feature_on?(:repeat_reminder) ? SmartFeatures::RepeatReminder.settings_for(account) : nil,
       currency: account.catalog_setting&.currency || 'Rs'
     }
   end
