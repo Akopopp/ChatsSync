@@ -292,8 +292,15 @@ class Conversation < ApplicationRecord
   def allowed_keys?
     (
       previous_changes.keys.intersect?(list_of_keys) ||
+      chatssync_state_changed? ||
       (previous_changes['additional_attributes'].present? && previous_changes['additional_attributes'][1].keys.intersect?(%w[conversation_language]))
     )
+  end
+
+  # ChatsSync AI on/off and plan lock: the open chat must show the change right away.
+  def chatssync_state_changed?
+    before, after = previous_changes['additional_attributes']
+    %w[ai_off ai_resumed_at plan_locked].any? { |key| (before || {})[key] != (after || {})[key] }
   end
 
   def load_attributes_created_by_db_triggers

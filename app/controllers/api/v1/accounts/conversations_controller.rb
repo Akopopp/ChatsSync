@@ -15,6 +15,8 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
     enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
     attrs = enabled ? attrs.except('ai_off').merge('ai_resumed_at' => Time.current.to_i) : attrs.merge('ai_off' => true)
     @conversation.update!(additional_attributes: attrs)
+    @conversation.messages.create!(account_id: Current.account.id, inbox_id: @conversation.inbox_id, message_type: :activity,
+                                   content: I18n.t(enabled ? 'ai.activity.turned_on' : 'ai.activity.turned_off', name: Current.user&.name))
     head :ok
   end
 

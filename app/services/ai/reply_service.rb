@@ -178,6 +178,8 @@ class Ai::ReplyService
     create_message(agent.default_handoff_message, [], answered_up_to)
     conversation.update!(additional_attributes: (conversation.additional_attributes || {}).merge('ai_off' => true))
     conversation.add_labels(['needs-human'])
+    conversation.messages.create!(account_id: account.id, inbox_id: conversation.inbox_id, message_type: :activity,
+                                  content: I18n.t('ai.activity.handed_off'))
   end
 
   def create_message(text, image_items, answered_up_to, interactive = nil)

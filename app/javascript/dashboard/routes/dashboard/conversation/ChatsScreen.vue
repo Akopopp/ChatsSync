@@ -2500,24 +2500,29 @@ const planLocked = computed(
 const aiOff = computed(
   () => !!currentChat.value?.additional_attributes?.ai_off
 );
-const turnAiOn = async () => {
+const setChatAi = async enabled => {
   const chat = currentChat.value;
   if (!chat?.id) return;
   try {
     await window.axios.post(
       `/api/v1/accounts/${accountId.value}/conversations/${chat.id}/toggle_ai`,
-      { enabled: true }
+      { enabled }
     );
-    chat.additional_attributes = {
-      ...chat.additional_attributes,
-      ai_off: false,
-      ai_resumed_at: Math.floor(Date.now() / 1000),
-    };
-    toast('AI turned on for this chat');
+    chat.additional_attributes = enabled
+      ? {
+          ...chat.additional_attributes,
+          ai_off: false,
+          ai_resumed_at: Math.floor(Date.now() / 1000),
+        }
+      : { ...chat.additional_attributes, ai_off: true };
+    toast(
+      enabled ? 'AI turned on for this chat' : 'AI turned off for this chat'
+    );
   } catch (e) {
-    toast('Could not turn AI on', 'err');
+    toast(enabled ? 'Could not turn AI on' : 'Could not turn AI off', 'err');
   }
 };
+const turnAiOn = () => setChatAi(true);
 /* Team ke jawab ke baad AI 12 ghante chup rehti hai (Ai::ReplyService HUMAN_QUIET_PERIOD).
    Banner batata hai kab tak, aur "Turn AI on now" se foran chalu ho jati hai. */
 const AI_QUIET_SECONDS = 12 * 3600;
@@ -2568,6 +2573,32 @@ const aiPausedUntilText = computed(() => {
   return at.toDateString() === new Date().toDateString()
     ? time
     : `${at.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+});
+/* Header ka chhota badge: AI on / paused / off, click se on ya off */
+const aiChip = computed(() => {
+  if (aiOff.value) {
+    return {
+      label: 'AI off',
+      cls: 'text-n-slate-11',
+      title: 'The AI does not reply in this chat. Click to turn it on.',
+      action: () => setChatAi(true),
+    };
+  }
+  if (aiPausedUntil.value) {
+    return {
+      label: 'AI paused',
+      cls: 'text-n-amber-11',
+      title: `Your team replied, so the AI is quiet until ${aiPausedUntilText.value}. Click to turn it on now.`,
+      action: () => setChatAi(true),
+    };
+  }
+  return {
+    label: 'AI on',
+    cls: 'text-n-teal-11',
+    title:
+      'The AI replies to this customer. Click to turn it off in this chat.',
+    action: () => setChatAi(false),
+  };
 });
 const openPlanPage = () => {
   router.push({ name: 'plan_usage_index', params: { accountId: accountId.value } });
@@ -3371,6 +3402,17 @@ watch(
           </div>
         </div>
 
+        <button
+          v-if="aiRepliesHere"
+          class="flex items-center gap-1 px-2 py-1 mx-1 rounded-full bg-n-alpha-2 text-xs font-medium whitespace-nowrap"
+          :class="aiChip.cls"
+          :title="aiChip.title"
+          @click.stop="aiChip.action"
+        >
+          <span class="i-lucide-bot size-3.5" />
+          {{ aiChip.label }}
+        </button>
+
         <span
           class="cs-asg"
           :class="{ none: !currentChat.meta?.assignee?.name }"
@@ -3825,7 +3867,7 @@ watch(
           <span class="i-lucide-bot-off" />
           <div class="cs-winb">
             <b>AI is off in this chat</b>
-            <span>The AI passed this chat to your team. Turn it back on if you want it to keep replying.</span>
+            <span>It will not reply here until you turn it back on.</span>
           </div>
           <button class="cs-winbtn" @click.stop="turnAiOn">Turn AI on</button>
         </div>
