@@ -1,6 +1,6 @@
 # Decides whether the AI should answer a customer's latest messages and sends the reply.
 # The AI stays quiet when the rule-based bot is still handling the chat (status pending),
-# when a team member replied in the last 12 hours, when the chat is locked or handed off,
+# when a team member replied in the last 12 hours (unless "Turn AI on" was pressed after it), when the chat is locked or handed off,
 # when plan limits are used up, and on WhatsApp chats outside Meta's free ad window
 # (unless the business turned on replies to all chats and the plan allows it).
 class Ai::ReplyService
@@ -63,9 +63,11 @@ class Ai::ReplyService
     conversation.messages.where(message_type: :incoming).where('id > ?', message.id).exists?
   end
 
+  # "Turn AI on" in the chat ends the quiet period early (ai_resumed_at).
   def human_replied_recently?
+    resumed_at = Time.zone.at(conversation.additional_attributes&.dig('ai_resumed_at').to_i)
     conversation.messages.where(message_type: :outgoing, private: false, sender_type: 'User')
-                .where('created_at > ?', HUMAN_QUIET_PERIOD.ago).exists?
+                .where('created_at > ?', [HUMAN_QUIET_PERIOD.ago, resumed_at].max).exists?
   end
 
   def within_scope?

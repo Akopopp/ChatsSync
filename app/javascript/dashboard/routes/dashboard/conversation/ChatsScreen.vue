@@ -14,6 +14,7 @@ import { BUS_EVENTS } from 'shared/constants/busEvents';
 import MessageFormatter from 'shared/helpers/MessageFormatter.js';
 import AudioChip from 'next/message/chips/Audio.vue';
 import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
+import AiAgentAPI from 'dashboard/api/aiAgent';
 
 const props = defineProps({
   conversationId: { type: [String, Number], default: 0 },
@@ -2507,12 +2508,67 @@ const turnAiOn = async () => {
       `/api/v1/accounts/${accountId.value}/conversations/${chat.id}/toggle_ai`,
       { enabled: true }
     );
-    chat.additional_attributes = { ...chat.additional_attributes, ai_off: false };
+    chat.additional_attributes = {
+      ...chat.additional_attributes,
+      ai_off: false,
+      ai_resumed_at: Math.floor(Date.now() / 1000),
+    };
     toast('AI turned on for this chat');
   } catch (e) {
     toast('Could not turn AI on', 'err');
   }
 };
+/* Team ke jawab ke baad AI 12 ghante chup rehti hai (Ai::ReplyService HUMAN_QUIET_PERIOD).
+   Banner batata hai kab tak, aur "Turn AI on now" se foran chalu ho jati hai. */
+const AI_QUIET_SECONDS = 12 * 3600;
+const AI_CHANNELS = [
+  'Channel::Whatsapp',
+  'Channel::FacebookPage',
+  'Channel::Instagram',
+  'Channel::WebWidget',
+  'Channel::Api',
+];
+const aiAgent = ref(null);
+AiAgentAPI.get()
+  .then(({ data }) => {
+    aiAgent.value = data;
+  })
+  .catch(() => {});
+const aiRepliesHere = computed(() => {
+  const agent = aiAgent.value;
+  const chat = currentChat.value;
+  const channel = chat?.meta?.channel;
+  if (!agent?.enabled || !AI_CHANNELS.includes(channel)) return false;
+  const ids = (agent.inbox_ids || []).map(Number);
+  if (ids.length && !ids.includes(Number(chat.inbox_id))) return false;
+  return (
+    channel !== 'Channel::Whatsapp' ||
+    agent.reply_scope === 'all' ||
+    !!chat.additional_attributes?.cs_ad_lead
+  );
+});
+const aiPausedUntil = computed(() => {
+  if (!aiRepliesHere.value || aiOff.value) return 0;
+  const resumedAt = Number(
+    currentChat.value?.additional_attributes?.ai_resumed_at || 0
+  );
+  const lastTeamReply = [...messages.value]
+    .reverse()
+    .find(m => m.message_type === 1 && !m.private && m.sender?.type === 'user');
+  if (!lastTeamReply || lastTeamReply.created_at <= resumedAt) return 0;
+  const until = lastTeamReply.created_at + AI_QUIET_SECONDS;
+  return until > Date.now() / 1000 ? until : 0;
+});
+const aiPausedUntilText = computed(() => {
+  const at = new Date(aiPausedUntil.value * 1000);
+  const time = at.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return at.toDateString() === new Date().toDateString()
+    ? time
+    : `${at.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+});
 const openPlanPage = () => {
   router.push({ name: 'plan_usage_index', params: { accountId: accountId.value } });
 };
@@ -3772,6 +3828,24 @@ watch(
             <span>The AI passed this chat to your team. Turn it back on if you want it to keep replying.</span>
           </div>
           <button class="cs-winbtn" @click.stop="turnAiOn">Turn AI on</button>
+        </div>
+
+        <!-- team ne jawab diya: AI kuch der chup -->
+        <div
+          v-if="aiPausedUntil && !planLocked && !isRecording && !isNote"
+          class="cs-winbar"
+        >
+          <span class="i-lucide-bot" />
+          <div class="cs-winb">
+            <b>AI is paused in this chat</b>
+            <span>
+              Your team replied, so the AI stays quiet until
+              {{ aiPausedUntilText }}.
+            </span>
+          </div>
+          <button class="cs-winbtn" @click.stop="turnAiOn">
+            Turn AI on now
+          </button>
         </div>
 
         <!-- plan ki contact limit poori: chat locked -->

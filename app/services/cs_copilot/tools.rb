@@ -312,7 +312,11 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
   def tool_set_chat_ai(args)
     updated = chats(args).each do |chat|
       attrs = (chat.additional_attributes || {}).except('ai_off')
-      attrs['ai_off'] = true unless args[:on]
+      if args[:on]
+        attrs['ai_resumed_at'] = Time.current.to_i
+      else
+        attrs['ai_off'] = true
+      end
       chat.update!(additional_attributes: attrs)
     end
     { done: true, chats: updated.size }

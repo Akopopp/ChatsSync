@@ -9,9 +9,11 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   ATTACHMENT_RESULTS_PER_PAGE = 100
 
   # Turns the ChatsSync AI on or off for this one chat (it is turned off when it hands a chat to the team).
+  # Turning it on also ends the quiet period after a team reply.
   def toggle_ai
     attrs = @conversation.additional_attributes || {}
-    attrs = ActiveModel::Type::Boolean.new.cast(params[:enabled]) ? attrs.except('ai_off') : attrs.merge('ai_off' => true)
+    enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
+    attrs = enabled ? attrs.except('ai_off').merge('ai_resumed_at' => Time.current.to_i) : attrs.merge('ai_off' => true)
     @conversation.update!(additional_attributes: attrs)
     head :ok
   end
