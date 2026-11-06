@@ -24,6 +24,13 @@ class Instagram::BaseSendService < Base::SendOnChannelService
     send_message(message_params)
   end
 
+  # Text and each picture go out as separate Instagram messages. Keep every id so the echo of each part
+  # is recognised as ours instead of showing up again in the chat (see Messages::Instagram::BaseMessageBuilder).
+  def remember_sent_id(mid)
+    ids = Array(message.content_attributes['external_ids']) | [mid]
+    message.update!(source_id: mid, content_attributes: message.content_attributes.merge('external_ids' => ids))
+  end
+
   def handle_error(error)
     ChatwootExceptionTracker.new(error, account: message.account, user: message.sender).capture_exception
   end
@@ -56,7 +63,7 @@ class Instagram::BaseSendService < Base::SendOnChannelService
   def process_response(response, message_content)
     parsed_response = response.parsed_response
     if response.success? && parsed_response['error'].blank?
-      message.update!(source_id: parsed_response['message_id'])
+      remember_sent_id(parsed_response['message_id'])
       parsed_response
     else
       external_error = external_error(parsed_response)

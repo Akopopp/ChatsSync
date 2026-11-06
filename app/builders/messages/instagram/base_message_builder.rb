@@ -173,7 +173,16 @@ class Messages::Instagram::BaseMessageBuilder < Messages::Messenger::MessageBuil
   end
 
   def message_already_exists?
-    find_message_by_source_id(@messaging[:message][:mid]).present?
+    mid = @messaging[:message][:mid]
+    find_message_by_source_id(mid).present? || sent_as_part_of_message?(mid)
+  end
+
+  # Echo of one part (text or a picture) of a message ChatsSync sent in several parts.
+  def sent_as_part_of_message?(mid)
+    return false unless @outgoing_echo && mid
+
+    @inbox.messages.where(message_type: :outgoing, created_at: 1.hour.ago..)
+          .exists?(["jsonb_exists(content_attributes::jsonb -> 'external_ids', ?)", mid])
   end
 
   def find_message_by_source_id(source_id)
