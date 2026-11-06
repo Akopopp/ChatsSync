@@ -81,14 +81,22 @@ class Whatsapp::OneoffCampaignService
     # Poora hissa rescue mein hai: kuch bhi ghalat ho to purana raasta
     # chal jaata hai aur campaign nahi rukti.
     # ===================================================================
-    return if try_free_text(contact, processed_template_params)
+    if try_free_text(contact, processed_template_params)
+      record_sent(contact, nil)
+    else
+      message_id = send_whatsapp_template_message(to: contact.phone_number, template_params: processed_template_params)
+      record_sent(contact, message_id) if message_id.present?
+    end
+  end
 
-    send_whatsapp_template_message(to: contact.phone_number, template_params: processed_template_params)
+  # Smart features > "Broadcast tools": remember who got it, for the sent / read / replied / orders numbers.
+  def record_sent(contact, message_id)
+    SmartFeatures::BroadcastStats.sent(campaign, contact, message_id) if campaign.account.smart_feature_on?(:broadcast_tools)
   end
 
   def process_audience(audience_labels)
-    # Customers who sent STOP (label "opted-out") never get broadcasts.
-    contacts = campaign.account.contacts.tagged_with(audience_labels, any: true).tagged_with(Whatsapp::StopOptOut::LABEL, exclude: true)
+    # Labels plus, with Smart features > "Broadcast tools", segments; customers who sent STOP never get broadcasts.
+    contacts = SmartFeatures::BroadcastAudience.for_campaign(campaign, audience_labels)
     Rails.logger.info "Processing #{contacts.count} contacts for campaign #{campaign.id}"
 
     contacts.each { |contact| process_contact(contact) }

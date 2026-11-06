@@ -1431,6 +1431,10 @@
         "TITLE": "Ask for a rating",
         "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team."
       },
+      "BROADCAST_TOOLS": {
+        "TITLE": "Broadcast tools",
+        "HINT": "In Campaigns > WhatsApp: send to everyone who messaged you, customers from ads or customers who bought, see about how much Meta charges before sending, and see who got, read and replied to each broadcast and what they ordered."
+      },
       "COD_CONFIRM": {
         "TITLE": "Confirm COD orders on WhatsApp",
         "HINT": "New Shopify or WooCommerce orders come into ChatsSync, and the customer gets your WhatsApp template with Confirm and Cancel buttons. The order updates on its own when they tap. Meta charges for each template message."

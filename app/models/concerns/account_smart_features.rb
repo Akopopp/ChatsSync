@@ -11,6 +11,7 @@ module AccountSmartFeatures
     'follow_up_hours' => 3,
     'review_request' => false,
     'review_link' => '',
+    'broadcast_tools' => false,
     'cod_confirm' => false,
     'cod_only' => true,
     'cod_inbox_id' => 0,

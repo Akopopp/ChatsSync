@@ -51,10 +51,13 @@ class Whatsapp::IncomingMessageBaseService
     # FEP ka nishan status webhook mein aata hai, message webhook mein nahi.
     # Isi liye ye line message wale raste se pehle chalti hai.
     record_free_entry_point(status)
-    return unless find_message_by_source_id(status[:id])
+    # Template broadcasts have no message in a chat; their statuses only count for the broadcast's numbers.
+    return SmartFeatures::BroadcastStats.status(status[:id], status[:status]) unless find_message_by_source_id(status[:id])
 
     update_whatsapp_identifiers_from_status(status)
     update_message_with_status(@message, status)
+    campaign_id = @message.additional_attributes&.dig('campaign_id')
+    SmartFeatures::BroadcastStats.status(status[:id], status[:status], campaign_id) if campaign_id
   rescue ArgumentError => e
     Rails.logger.error "Error while processing whatsapp status update #{e.message}"
   end

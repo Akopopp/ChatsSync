@@ -74,7 +74,9 @@ Rails.application.routes.draw do
             get :free_times, on: :collection
           end
           resource :catalog_setting, only: [:show, :update]
-          resource :smart_features, only: [:show, :update]
+          resource :smart_features, only: [:show, :update] do
+            get :broadcast_estimate
+          end
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
           resources :exports, only: [:show]

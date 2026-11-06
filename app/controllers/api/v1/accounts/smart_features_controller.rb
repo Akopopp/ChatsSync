@@ -12,6 +12,17 @@ class Api::V1::Accounts::SmartFeaturesController < Api::V1::Accounts::BaseContro
     render json: features_json
   end
 
+  # Campaigns > WhatsApp (with "Broadcast tools" on): how many customers a broadcast reaches and Meta's charge.
+  def broadcast_estimate
+    account = Current.account
+    return render json: { enabled: false } unless account.smart_feature_on?(:broadcast_tools)
+
+    labels = account.labels.where(id: Array(params[:label_ids])).pluck(:title)
+    render json: SmartFeatures::BroadcastAudience.estimate(account, account.inboxes.find_by(id: params[:inbox_id]), labels,
+                                                           Array(params[:segments]) & SmartFeatures::BroadcastAudience::SEGMENTS,
+                                                           params[:category])
+  end
+
   private
 
   def features_json

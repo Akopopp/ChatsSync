@@ -1,9 +1,10 @@
 <script setup>
-import { reactive, computed, watch, ref } from 'vue';
+import { reactive, computed, watch, ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useVuelidate } from '@vuelidate/core';
 import { required, minLength } from '@vuelidate/validators';
 import { useMapGetter } from 'dashboard/composables/store';
+import SmartFeaturesAPI from 'dashboard/api/smartFeatures';
 
 import Input from 'dashboard/components-next/input/Input.vue';
 import Button from 'dashboard/components-next/button/Button.vue';
@@ -60,9 +61,26 @@ const mapToOptions = (items, valueKey, labelKey) =>
     label: item[labelKey],
   })) ?? [];
 
-const audienceList = computed(() =>
-  mapToOptions(formState.labels.value, 'id', 'title')
-);
+// Smart features > "Broadcast tools": segments next to labels, and Meta's charge before sending.
+const SEGMENT_PREFIX = 'segment:';
+const SEGMENTS = ['all_contacts', 'ad_leads', 'buyers'];
+const broadcastTools = ref(false);
+const estimate = ref(null);
+const isEstimating = ref(false);
+
+const audienceList = computed(() => [
+  ...(broadcastTools.value
+    ? SEGMENTS.map(segment => ({
+        value: `${SEGMENT_PREFIX}${segment}`,
+        label: t(
+          `CAMPAIGN.WHATSAPP.CREATE.FORM.AUDIENCE.SEGMENTS.${segment.toUpperCase()}`
+        ),
+      }))
+    : []),
+  ...mapToOptions(formState.labels.value, 'id', 'title'),
+]);
+
+const isSegment = value => String(value).startsWith(SEGMENT_PREFIX);
 
 const inboxOptions = computed(() =>
   mapToOptions(formState.inboxes.value, 'id', 'name')
@@ -145,10 +163,11 @@ const prepareCampaignDetails = () => {
     template_params: templateParams,
     inbox_id: state.inboxId,
     scheduled_at: formatToUTCString(state.scheduledAt),
-    audience: state.selectedAudience?.map(id => ({
-      id,
-      type: 'Label',
-    })),
+    audience: state.selectedAudience?.map(id =>
+      isSegment(id)
+        ? { id: id.slice(SEGMENT_PREFIX.length), type: 'Segment' }
+        : { id, type: 'Label' }
+    ),
   };
 };
 
@@ -160,6 +179,44 @@ const handleSubmit = async () => {
   resetState();
   handleCancel();
 };
+
+const fetchEstimate = async () => {
+  if (!broadcastTools.value) return;
+  if (!state.inboxId || !state.selectedAudience.length) {
+    estimate.value = null;
+    return;
+  }
+  isEstimating.value = true;
+  try {
+    const { data } = await SmartFeaturesAPI.broadcastEstimate({
+      inbox_id: state.inboxId,
+      label_ids: state.selectedAudience.filter(id => !isSegment(id)),
+      segments: state.selectedAudience
+        .filter(isSegment)
+        .map(id => id.slice(SEGMENT_PREFIX.length)),
+      category: selectedTemplate.value?.category,
+    });
+    estimate.value = data.enabled ? data : null;
+  } catch (error) {
+    estimate.value = null;
+  } finally {
+    isEstimating.value = false;
+  }
+};
+
+watch(
+  () => [state.inboxId, state.templateId, [...state.selectedAudience]],
+  fetchEstimate
+);
+
+onMounted(async () => {
+  try {
+    const { data } = await SmartFeaturesAPI.broadcastEstimate();
+    broadcastTools.value = !!data.enabled;
+  } catch (error) {
+    broadcastTools.value = false;
+  }
+});
 
 // Reset template selection when inbox changes
 watch(
@@ -233,6 +290,22 @@ watch(
         :message="formErrors.audience"
         class="[&>div>button]:bg-n-alpha-black2"
       />
+      <p v-if="isEstimating" class="mt-1 text-xs text-n-slate-11">
+        {{ t('CAMPAIGN.WHATSAPP.CREATE.FORM.AUDIENCE.ESTIMATE_LOADING') }}
+      </p>
+      <p
+        v-else-if="estimate"
+        class="mt-1 px-3 py-2 rounded-lg bg-n-alpha-1 text-xs text-n-slate-12"
+      >
+        {{
+          t('CAMPAIGN.WHATSAPP.CREATE.FORM.AUDIENCE.ESTIMATE', {
+            count: estimate.contacts.toLocaleString('en-US'),
+            cost: estimate.cost.toLocaleString('en-US'),
+            rate: estimate.rate,
+            currency: estimate.currency,
+          })
+        }}
+      </p>
     </div>
 
     <Input

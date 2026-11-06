@@ -42,6 +42,11 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  // Smart features > "Broadcast tools": sent, delivered, read, replied, orders.
+  stats: {
+    type: Object,
+    default: null,
+  },
 });
 
 const emit = defineEmits(['edit', 'delete']);
@@ -82,6 +87,19 @@ const campaignStatus = computed(() => {
 
 const inboxName = computed(() => props.inbox?.name || '');
 
+const statsText = computed(() => {
+  if (!props.stats) return '';
+  const { sent, delivered, read, replied, orders, sales } = props.stats;
+  return t('CAMPAIGN.WHATSAPP.CARD.STATS', {
+    sent,
+    delivered,
+    read,
+    replied,
+    orders,
+    sales: Math.round(Number(sales || 0)).toLocaleString('en-US'),
+  });
+});
+
 const inboxIcon = computed(() => {
   const { medium, channel_type: type } = props.inbox;
   return getInboxIconByType(type, medium);
@@ -108,6 +126,9 @@ const inboxIcon = computed(() => {
         v-dompurify-html="formatMessage(message, false, false, false)"
         class="text-sm text-n-slate-11 line-clamp-1 [&>p]:mb-0 h-6"
       />
+      <span v-if="statsText" class="text-xs text-n-slate-11">
+        {{ statsText }}
+      </span>
       <div class="flex items-center w-full h-6 gap-2 overflow-hidden">
         <LiveChatCampaignDetails
           v-if="isLiveChatType"

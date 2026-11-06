@@ -31,7 +31,11 @@ const GROUPS = [
       'follow_up',
     ],
   },
-  { key: 'CUSTOMERS', icon: 'i-lucide-star', items: ['review_request'] },
+  {
+    key: 'CUSTOMERS',
+    icon: 'i-lucide-star',
+    items: ['review_request', 'broadcast_tools'],
+  },
   { key: 'STORE', icon: 'i-lucide-shopping-bag', items: ['cod_confirm'] },
   {
     key: 'ADS',

@@ -8,6 +8,7 @@ module SmartFeatures::IncomingMessage
     Whatsapp::StopOptOut.new(message: message).perform if account.smart_feature_on?(:stop_opt_out)
     SmartFeatures::ReviewRequest.handle_answer(message) if account.smart_feature_on?(:review_request)
     SmartFeatures::CodConfirmation.handle_answer(message) if account.smart_feature_on?(:cod_confirm)
+    SmartFeatures::BroadcastStats.reply(message) if account.smart_feature_on?(:broadcast_tools)
   end
 
   # Messages already answered by a smart feature, so the AI stays out of them.

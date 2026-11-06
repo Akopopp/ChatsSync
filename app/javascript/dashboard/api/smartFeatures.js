@@ -14,6 +14,11 @@ class SmartFeaturesAPI extends ApiClient {
   update(smartFeatures) {
     return axios.patch(this.url, { smart_features: smartFeatures });
   }
+
+  // params: { inbox_id, label_ids: [], segments: [], category }
+  broadcastEstimate(params = {}) {
+    return axios.get(`${this.url}/broadcast_estimate`, { params });
+  }
 }
 
 export default new SmartFeaturesAPI();

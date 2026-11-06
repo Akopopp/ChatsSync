@@ -154,7 +154,8 @@
         "CAMPAIGN_DETAILS": {
           "SENT_FROM": "Sent from",
           "ON": "on"
-        }
+        },
+        "STATS": "Sent {sent} · Delivered {delivered} · Read {read} · Replied {replied} · Orders {orders} ({sales})"
       },
       "CREATE": {
         "TITLE": "Create WhatsApp campaign",
@@ -185,7 +186,14 @@
           "AUDIENCE": {
             "LABEL": "Audience",
             "PLACEHOLDER": "Select the customer labels",
-            "ERROR": "Audience is required"
+            "ERROR": "Audience is required",
+            "SEGMENTS": {
+              "ALL_CONTACTS": "Everyone who messaged this number",
+              "AD_LEADS": "Customers from ads (last 30 days)",
+              "BUYERS": "Customers who ordered or booked"
+            },
+            "ESTIMATE": "About {count} customers will get this. Meta's charge: about {currency} {cost} ({currency} {rate} each, estimate).",
+            "ESTIMATE_LOADING": "Counting customers..."
           },
           "SCHEDULED_AT": {
             "LABEL": "Scheduled time",
