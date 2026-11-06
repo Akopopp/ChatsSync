@@ -112,7 +112,11 @@ export async function loadScript(src, options) {
       return;
     }
 
-    const handleError = () => reject(new ScriptLoaderError(src));
+    // Remove a script that failed (slow network, blocked once) so the next try loads it again.
+    const handleError = () => {
+      el.remove();
+      reject(new ScriptLoaderError(src));
+    };
 
     el.addEventListener('error', handleError);
     el.addEventListener('abort', handleError);
