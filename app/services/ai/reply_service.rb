@@ -24,14 +24,14 @@ class Ai::ReplyService
     show_typing(turn.last)
     actions = Ai::Actions.new(account: account, conversation: conversation)
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: actions.prompt_text(question)) +
-              earlier_messages(turn),
+      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: actions.prompt_text(question),
+                                                     earlier: earlier_customer_text(turn)) + earlier_messages(turn),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
       within: 75
     )
     reply = prompt_builder.tidy(reply, question)
-    reply = actions.apply(reply, roman_urdu: prompt_builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
+    reply = actions.apply(reply, roman_urdu: roman_urdu_chat?(question, turn)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
     deliver(reply, turn.last.id, actions.media, actions.interactive)
   end
 
@@ -135,6 +135,16 @@ class Ai::ReplyService
     return '' if lines.empty?
 
     "\nEarlier messages in this chat, oldest first (already answered, for context only):\n#{lines.join("\n")}\n"
+  end
+
+  # The customer's messages before this turn, so the AI keeps the language they asked for.
+  def earlier_customer_text(turn)
+    @earlier_customer_text ||= conversation.messages.where(message_type: :incoming).where.not(id: turn.map(&:id))
+                                           .reorder(id: :desc).limit(HISTORY_LIMIT).pluck(:content).compact.reverse.join("\n")
+  end
+
+  def roman_urdu_chat?(question, turn)
+    prompt_builder.chat_language(question, earlier_customer_text(turn)) == :roman_urdu
   end
 
   # Customer phone numbers and emails never leave ChatsSync.

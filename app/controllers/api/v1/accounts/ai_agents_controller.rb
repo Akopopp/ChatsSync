@@ -19,7 +19,7 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
     reply = Ai::LlmClient.chat(system: builder.system_prompt(question, extra: actions.prompt_text(question)),
                                messages: [{ role: 'user', text: question }], within: 13)
     reply = builder.tidy(reply, question)
-    reply = actions.apply(reply, roman_urdu: builder.roman_urdu?(question)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
+    reply = actions.apply(reply, roman_urdu: builder.chat_language(question) == :roman_urdu) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
     reply = readable_preview(reply, builder, actions.media)
     reply += "\n#{I18n.t('ai.preview.booking_form')}" if actions.form_requested?
     render json: { reply: reply }
