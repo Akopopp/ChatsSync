@@ -73,6 +73,7 @@ Rails.application.routes.draw do
             get :free_times, on: :collection
           end
           resource :catalog_setting, only: [:show, :update]
+          resource :smart_features, only: [:show, :update]
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
           resource :copilot, only: [], controller: 'copilot' do

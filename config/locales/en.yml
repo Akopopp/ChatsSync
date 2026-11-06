@@ -40,6 +40,16 @@ en:
       handed_off: 'AI passed this chat to your team and stopped replying here.'
       turned_on: 'AI turned on in this chat by %{name}'
       turned_off: 'AI turned off in this chat by %{name}'
+  smart_features:
+    stop_opt_out:
+      stopped: 'Done. You will not get offers or updates from us anymore. Reply START if you want them again.'
+      started: 'Welcome back! You will get our offers and updates again.'
+    review_request:
+      ask: 'Thank you for choosing %{business}! How was your experience? Please reply with a number from 1 to 5 (5 is the best).'
+      thanks: 'Thank you so much for your feedback! We are glad you liked it.'
+      thanks_with_link: 'Thank you so much! It would mean a lot if you shared it on Google: %{link}'
+      sorry: 'We are sorry it was not better. Our team will contact you to make it right.'
+      team_note: 'Customer rated their experience %{score} out of 5. Please call or message them.'
   copilot:
     done: Done.
     image_only: Please attach a picture (JPG or PNG) or a video (MP4).

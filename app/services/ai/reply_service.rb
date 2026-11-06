@@ -24,7 +24,7 @@ class Ai::ReplyService
     show_typing(turn.last)
     actions = Ai::Actions.new(account: account, conversation: conversation)
     reply = Ai::LlmClient.chat(
-      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: actions.prompt_text(question),
+      system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: prompt_extra(actions, question),
                                                      earlier: earlier_customer_text(turn)) + earlier_messages(turn),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
@@ -53,10 +53,16 @@ class Ai::ReplyService
     return false unless agent&.enabled && agent.inbox_allowed?(conversation.inbox)
     return false unless conversation.open?
     return false if conversation.additional_attributes&.dig('plan_locked') || conversation.additional_attributes&.dig('ai_off')
-    return false if newer_incoming? || human_replied_recently?
+    return false if newer_incoming? || human_replied_recently? || answered_by_smart_features?
     return false if account.plan_limit_reached?(:ai_replies_monthly) || account.plan_limit_reached?(:ai_replies_daily)
 
     within_scope?
+  end
+
+  # STOP / START and review ratings get their own reply from Smart features, so the AI stays out of them.
+  def answered_by_smart_features?
+    (account.smart_feature_on?(:stop_opt_out) && Whatsapp::StopOptOut.keyword?(message.content)) ||
+      conversation.additional_attributes&.dig(SmartFeatures::ReviewRequest::ANSWER_KEY) == message.id
   end
 
   def newer_incoming?
@@ -116,9 +122,16 @@ class Ai::ReplyService
     !conversation.messages.where(message_type: :outgoing, private: false).exists?
   end
 
-  # On WhatsApp the customer sees their message read and "typing..." while the reply is written.
+  # Free appointment times, the catalog and, when switched on, what we know about a returning customer.
+  def prompt_extra(actions, question)
+    history = Ai::CustomerHistory.new(conversation: conversation).prompt_text if account.smart_feature_on?(:returning_customers)
+    [actions.prompt_text(question), history].compact.join("\n\n").presence
+  end
+
+  # On WhatsApp the customer sees their message read and "typing..." while the reply is written (Smart features switch).
   def show_typing(customer_message)
     channel = conversation.inbox.channel
+    return unless account.smart_feature_on?(:typing_indicator)
     return unless channel.is_a?(Channel::Whatsapp) && channel.provider == 'whatsapp_cloud' && customer_message.source_id.present?
 
     channel.provider_service.send_typing_indicator(customer_message.source_id)

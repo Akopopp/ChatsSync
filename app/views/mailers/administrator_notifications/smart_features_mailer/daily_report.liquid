@@ -1,0 +1,20 @@
+<p>Good morning,</p>
+
+<p>Here is how {{ meta['date'] }} went:</p>
+
+<ul>
+  <li>New chats: {{ meta['new_chats'] }}</li>
+  <li>Messages from customers: {{ meta['customer_messages'] }}</li>
+  <li>Replies by the AI: {{ meta['ai_replies'] }}</li>
+  <li>Replies by your team: {{ meta['team_replies'] }}</li>
+  <li>Orders: {{ meta['orders'] }} (total {{ meta['orders_total'] }})</li>
+  <li>Appointments booked: {{ meta['appointments'] }}</li>
+</ul>
+
+{% if meta['waiting_now'] > 0 %}
+<p><strong>{{ meta['waiting_now'] }} chat(s) are waiting for a reply right now.</strong></p>
+{% endif %}
+
+<p><a href="{{ action_url }}">Open ChatsSync</a></p>
+
+<p style="color:#888;font-size:12px">You get this email because the daily report is on in Settings &gt; Smart features. Turn it off there any time.</p>

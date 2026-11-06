@@ -387,7 +387,8 @@
     "CAPTAIN_AI": "Captain",
     "CONVERSATION_WORKFLOW": "Conversation Workflow",
     "APPOINTMENTS": "Appointments",
-    "CATALOG": "Catalog & orders"
+    "CATALOG": "Catalog & orders",
+    "SMART_FEATURES": "Smart features"
   },
   "CAPTAIN_SETTINGS": {
     "TITLE": "Captain Settings",
@@ -1380,6 +1381,70 @@
         "DELIVERED": "Delivered",
         "CANCELLED": "Cancelled"
       }
+    }
+  },
+  "SMART_FEATURES": {
+    "TITLE": "Smart features",
+    "DESCRIPTION": "Extra tools that save time and protect your WhatsApp number. Each one has its own switch, and all are off until you turn them on.",
+    "LOADING": "Loading smart features...",
+    "SAVED": "Saved",
+    "ERROR": "Could not save. Please try again.",
+    "ALL_OPTIONAL": "Turn on only what you need. {count} turned on.",
+    "GROUPS": {
+      "AI": "AI agent",
+      "CUSTOMERS": "Customers",
+      "OWNER": "For you",
+      "SAFETY": "Number safety"
+    },
+    "ITEMS": {
+      "TYPING_INDICATOR": {
+        "TITLE": "Show \"typing...\" while the AI writes",
+        "HINT": "On WhatsApp the customer sees \"typing...\" and their message as read while the AI prepares the reply."
+      },
+      "RETURNING_CUSTOMERS": {
+        "TITLE": "Remember returning customers",
+        "HINT": "The AI knows a customer's earlier chats, orders and appointments, and welcomes them back."
+      },
+      "PAYMENT_CHECK": {
+        "TITLE": "Check payment screenshots",
+        "HINT": "When a customer sends a JazzCash, Easypaisa or bank screenshot, the AI reads the amount and transaction ID and leaves a private note for your team. The customer sees nothing."
+      },
+      "FOLLOW_UP": {
+        "TITLE": "Follow up with quiet customers",
+        "HINT": "If a customer goes quiet after the AI answered (for example after asking a price), the AI sends one short follow-up. Only inside the 24-hour reply window, and never more than once."
+      },
+      "REVIEW_REQUEST": {
+        "TITLE": "Ask for a rating",
+        "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team."
+      },
+      "DAILY_REPORT": {
+        "TITLE": "Daily report by email",
+        "HINT": "Every morning at 9 you get yesterday's chats, AI replies, orders, appointments and the chats still waiting for a reply."
+      },
+      "HEALTH_GUARD": {
+        "TITLE": "WhatsApp number health",
+        "HINT": "See each number's quality rating and daily message limit from Meta, and get an email when quality drops."
+      },
+      "STOP_OPT_OUT": {
+        "TITLE": "STOP to unsubscribe",
+        "HINT": "A customer who sends STOP stops getting broadcasts, and START brings them back. This keeps your number's quality high."
+      }
+    },
+    "FOLLOW_UP_AFTER": "Follow up after",
+    "HOURS": "{count} hour | {count} hours",
+    "REVIEW_LINK": "Google review link (optional)",
+    "REVIEW_LINK_PLACEHOLDER": "https://g.page/r/your-business/review",
+    "REVIEW_LINK_INVALID": "Please enter a full link that starts with https://",
+    "QUALITY": {
+      "GREEN": "High quality",
+      "YELLOW": "Medium quality",
+      "RED": "Low quality",
+      "UNKNOWN": "Not checked yet"
+    },
+    "NUMBERS": {
+      "EMPTY": "No WhatsApp Cloud numbers in this account yet.",
+      "LIMIT": "Daily limit: {limit}",
+      "NOT_CHECKED": "Not checked yet"
     }
   }
 }

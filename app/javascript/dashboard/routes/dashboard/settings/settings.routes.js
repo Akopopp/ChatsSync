@@ -29,6 +29,7 @@ import plan from './plan/plan.routes';
 import aiAgent from './aiAgent/aiAgent.routes';
 import appointments from './appointments/appointments.routes';
 import catalog from './catalog/catalog.routes';
+import smartFeatures from './smartFeatures/smartFeatures.routes';
 export default {
   routes: [
     {
@@ -72,5 +73,6 @@ export default {
     ...aiAgent.routes,
     ...appointments.routes,
     ...catalog.routes,
+    ...smartFeatures.routes,
   ],
 };

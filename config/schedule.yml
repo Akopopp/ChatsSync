@@ -89,6 +89,27 @@ appointments_reminder_job:
   class: 'Appointments::ReminderJob'
   queue: scheduled_jobs
 
+# executed every 15 minutes
+# Smart features: one AI follow-up for customers who went quiet after an AI answer
+ai_follow_up_job:
+  cron: '*/15 * * * *'
+  class: 'Ai::FollowUpJob'
+  queue: scheduled_jobs
+
+# executed every hour; sends at 9 am (PLAN_TIMEZONE)
+# Smart features: yesterday's numbers emailed to the account admins
+smart_features_daily_report_job:
+  cron: '10 * * * *'
+  class: 'SmartFeatures::DailyReportJob'
+  queue: scheduled_jobs
+
+# executed every 6 hours
+# Smart features: WhatsApp number quality and message limit, with an email when quality drops
+whatsapp_number_health_job:
+  cron: '20 */6 * * *'
+  class: 'Whatsapp::NumberHealthJob'
+  queue: scheduled_jobs
+
 # executed every hour
 # emails each account's admins their appointments for today at 8 am local time
 appointments_daily_summary_job:

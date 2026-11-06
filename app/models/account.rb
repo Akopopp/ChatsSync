@@ -31,6 +31,7 @@ class Account < ApplicationRecord
   include AccountEmailRateLimitable
   include AccountSettingsSchema
   include AccountPlan
+  include AccountSmartFeatures
 
   DEFAULT_QUERY_SETTING = {
     flag_query_mode: :bit_operator,

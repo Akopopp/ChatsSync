@@ -87,7 +87,8 @@ class Whatsapp::OneoffCampaignService
   end
 
   def process_audience(audience_labels)
-    contacts = campaign.account.contacts.tagged_with(audience_labels, any: true)
+    # Customers who sent STOP (label "opted-out") never get broadcasts.
+    contacts = campaign.account.contacts.tagged_with(audience_labels, any: true).tagged_with(Whatsapp::StopOptOut::LABEL, exclude: true)
     Rails.logger.info "Processing #{contacts.count} contacts for campaign #{campaign.id}"
 
     contacts.each { |contact| process_contact(contact) }

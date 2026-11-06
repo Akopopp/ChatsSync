@@ -325,6 +325,7 @@ class Message < ApplicationRecord
     # rails issue with order of active record callbacks being executed https://github.com/rails/rails/issues/20911
     lock_conversation_over_plan_contacts
     schedule_ai_reply
+    run_smart_features
     reopen_conversation
     mark_pending_conversation_as_open_for_human_response
     set_conversation_activity
@@ -343,6 +344,15 @@ class Message < ApplicationRecord
     return unless incoming? && sender_type == 'Contact' && account.ai_agent&.enabled
 
     Ai::ReplyJob.set(wait: 2.seconds).perform_later(id)
+  end
+
+  # Smart features that react to a customer's message; each one runs only when switched on in Settings > Smart features.
+  def run_smart_features
+    return unless incoming? && sender_type == 'Contact'
+
+    Ai::PaymentCheckJob.set(wait: 5.seconds).perform_later(id) if account.smart_feature_on?(:payment_check) && attachments.any?
+    Whatsapp::StopOptOut.new(message: self).perform if account.smart_feature_on?(:stop_opt_out)
+    SmartFeatures::ReviewRequest.handle_answer(self) if account.smart_feature_on?(:review_request)
   end
 
   # A new contact beyond the plan's monthly contact limit gets a locked chat:

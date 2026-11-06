@@ -13,6 +13,9 @@ class Order < ApplicationRecord
   validates :customer_phone, length: { maximum: 40 }
   validates :address, :notes, length: { maximum: 1000 }
 
+  # Smart features > "Ask for a review" (does nothing unless switched on).
+  after_update_commit -> { SmartFeatures::ReviewRequest.ask(self) }, if: -> { saved_change_to_status? && status == 'delivered' }
+
   def summary(setting)
     lines = items.map { |item| "- #{item['name']} x#{item['quantity']} – #{setting.money(item['price'].to_d * item['quantity'])}" }
     lines << "Delivery: #{setting.money(delivery_fee)}" if delivery_fee.positive?
