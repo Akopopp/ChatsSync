@@ -207,7 +207,7 @@ onMounted(fetchAll);
       />
     </template>
     <template #body>
-      <section v-if="setting" class="grid gap-4">
+      <section v-if="setting" class="grid grid-cols-1 gap-4">
         <div
           v-if="!setting.feature_available"
           class="px-4 py-3 rounded-lg bg-n-amber-3 text-n-amber-11 text-sm"
@@ -224,7 +224,7 @@ onMounted(fetchAll);
               {{ $t('CATALOG.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-3 text-sm text-n-slate-12">
+          <div class="px-5 grid grid-cols-1 gap-3 text-sm text-n-slate-12">
             <label class="flex items-center gap-2">
               <input v-model="setting.enabled" type="checkbox" />
               {{ $t('CATALOG.STATUS.ENABLED') }}
@@ -298,7 +298,7 @@ onMounted(fetchAll);
           :title="$t('CATALOG.PRODUCTS.TITLE')"
           :description="$t('CATALOG.PRODUCTS.DESCRIPTION')"
         >
-          <div class="px-5 grid gap-4 text-sm">
+          <div class="px-5 grid grid-cols-1 gap-4 text-sm">
             <div class="grid gap-2 p-3 rounded-lg bg-n-alpha-1">
               <div class="grid sm:grid-cols-3 gap-2">
                 <input
@@ -334,7 +334,7 @@ onMounted(fetchAll);
                 ref="imageInput"
                 type="file"
                 accept="image/*"
-                class="!mb-0"
+                class="!mb-0 w-full min-w-0"
                 @change="onImageSelected"
               />
               <div class="flex gap-2">

@@ -189,7 +189,7 @@ onMounted(fetchSetting);
       />
     </template>
     <template #body>
-      <section v-if="setting" class="grid gap-4">
+      <section v-if="setting" class="grid grid-cols-1 gap-4">
         <div
           v-if="!setting.feature_available"
           class="px-4 py-3 rounded-lg bg-n-amber-3 text-n-amber-11 text-sm"
@@ -223,7 +223,7 @@ onMounted(fetchSetting);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-4 text-sm text-n-slate-12">
+          <div class="px-5 grid grid-cols-1 gap-4 text-sm text-n-slate-12">
             <label class="flex items-center gap-2">
               <input v-model="setting.enabled" type="checkbox" />
               {{ $t('APPOINTMENTS.STATUS.ENABLED') }}
@@ -341,7 +341,7 @@ onMounted(fetchSetting);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-3 text-sm text-n-slate-12">
+          <div class="px-5 grid grid-cols-1 gap-3 text-sm text-n-slate-12">
             <div
               v-for="day in DAYS"
               :key="day"
@@ -428,7 +428,7 @@ onMounted(fetchSetting);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid sm:grid-cols-2 gap-3 text-sm">
+          <div class="px-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <label class="grid gap-1">
               {{ $t('APPOINTMENTS.RULES.SLOT') }}
               <select v-model.number="setting.slot_minutes" class="w-full">
@@ -491,7 +491,7 @@ onMounted(fetchSetting);
               {{ $t('APPOINTMENTS.SAVE') }}
             </ButtonV4>
           </template>
-          <div class="px-5 grid gap-2 text-sm">
+          <div class="px-5 grid grid-cols-1 gap-2 text-sm">
             <div
               v-for="(service, index) in setting.services"
               :key="index"

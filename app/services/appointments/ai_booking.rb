@@ -149,9 +149,9 @@ class Appointments::AiBooking
     existing ? "- This customer already has an appointment: #{existing.label(setting.zone)}.\n" : ''
   end
 
-  # The booking page link is only for chats outside WhatsApp, like the website chat.
+  # The booking page link, for chats that can't get the WhatsApp calendar form (website chat, or a form not ready yet).
   def page_text
-    return '' if conversation.nil? || Appointments::WhatsappFlow.supported?(conversation.inbox)
+    return '' if conversation.nil?
 
     url = Appointments::PublicLink.url(setting)
     url ? "- If the customer wants to see the full calendar, send this link: #{url}\n" : ''

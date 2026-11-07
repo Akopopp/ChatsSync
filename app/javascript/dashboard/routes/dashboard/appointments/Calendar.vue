@@ -26,7 +26,10 @@ const downloadCsv = async () => {
   }
 };
 
-const view = ref('week');
+// Phones show one day at a time; a week of narrow columns does not fit.
+const view = ref(
+  window.matchMedia('(max-width: 640px)').matches ? 'day' : 'week'
+);
 const timezone = ref('Asia/Karachi');
 const services = ref([]);
 const appointments = ref([]);

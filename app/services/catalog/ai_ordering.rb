@@ -70,9 +70,16 @@ class Catalog::AiOrdering
     rules
   end
 
+  # Products are shown in the chat first; the menu page link is extra. The AI is already in the customer's chat
+  # (WhatsApp, Instagram, ...), so it must never say the business is not available here.
   def page_text
     url = Catalog::PublicLink.url(setting)
-    url ? "- If the customer wants to see the full menu or catalog with pictures, send this link: #{url}\n" : ''
+    text = +"- If the customer asks to see products, the catalog or the menu, show up to #{MAX_PICTURES} matching products " \
+            "right here in the chat: name and price on one line each, with [PRODUCT:<id>] for those with a picture. " \
+            "Then ask which one they like.\n"
+    text << "- After showing products, you can also share the full catalog with pictures: #{url}\n" if url
+    text << "- You are already chatting with the customer here. Never say the business is not available on WhatsApp or in this chat.\n"
+    text
   end
 
   # Small catalogs go in whole; big ones send the products whose words match the question first.

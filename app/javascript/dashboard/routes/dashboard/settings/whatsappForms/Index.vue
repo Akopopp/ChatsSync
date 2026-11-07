@@ -328,7 +328,7 @@ onMounted(load);
           :key="form.id"
           class="flex flex-wrap items-center gap-3 px-5 py-4 rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1"
         >
-          <div class="grid gap-0.5 flex-1 min-w-0">
+          <div class="grid gap-0.5 flex-1 min-w-0 basis-full sm:basis-0">
             <span class="font-medium text-n-slate-12 truncate">
               {{ form.name }}
             </span>

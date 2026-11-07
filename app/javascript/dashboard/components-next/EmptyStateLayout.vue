@@ -30,14 +30,14 @@ defineProps({
     >
       <div
         v-if="showBackdrop"
-        class="w-full h-full space-y-4 overflow-y-hidden opacity-50 pointer-events-none"
+        class="hidden sm:block w-full h-full space-y-4 overflow-y-hidden opacity-50 pointer-events-none"
       >
         <slot name="empty-state-item" />
       </div>
       <div
-        class="flex flex-col items-center justify-end w-full h-full pb-20"
+        class="flex flex-col items-center justify-center sm:justify-end w-full h-full px-4 pb-20"
         :class="{
-          'absolute inset-x-0 bottom-0 bg-gradient-to-t from-n-surface-1 from-25% to-transparent':
+          'sm:absolute inset-x-0 bottom-0 sm:bg-gradient-to-t from-n-surface-1 from-25% to-transparent':
             showBackdrop,
         }"
       >
@@ -48,12 +48,14 @@ defineProps({
           }"
         >
           <div class="flex flex-col items-center justify-center gap-3">
-            <h2 class="text-3xl font-medium text-center text-n-slate-12">
+            <h2
+              class="text-xl sm:text-3xl font-medium text-center text-n-slate-12"
+            >
               {{ title }}
             </h2>
             <p
               v-if="subtitle"
-              class="max-w-xl text-base text-center text-n-slate-11 tracking-[0.3px]"
+              class="max-w-xl text-sm sm:text-base text-center text-n-slate-11 tracking-[0.3px]"
             >
               {{ subtitle }}
             </p>
