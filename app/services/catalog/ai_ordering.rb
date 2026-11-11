@@ -8,6 +8,7 @@ class Catalog::AiOrdering
   QUANTITY = /[x×*]\s*(\d+)/i
   MAX_PRODUCTS = 60
   MAX_PICTURES = 4
+  PICTURE_RULE = 'These products have no pictures yet; if asked for pictures, say they are not available in chat right now.'.freeze
   NO_ORDERS = "- Do not take orders in chat; tell the customer how to order using the business information.\n".freeze
 
   # conversation is nil in the AI preview, where nothing is saved.
@@ -36,19 +37,16 @@ class Catalog::AiOrdering
       Catalog and ordering (prices in #{setting.currency}):
       #{lines.join("\n")}
       - Only quote products and prices from this catalog. If something is not in it, say it is not available.
+      - The numbers after # are internal ids. Never write them or a # to the customer.
       - Never add up prices yourself. To tell a total, write [TOTAL:<id> x <quantity>, <id> x <quantity>] in your sentence
         where the amount goes; the system replaces it with the exact total#{' including delivery' if setting.delivery_fee.positive?}.
-      - To show a product picture, put [PRODUCT:<id>] on its own line (at most #{MAX_PICTURES}, only products that have a picture).
-      #{setting.take_orders ? order_rules : NO_ORDERS}#{page_text}
+      #{setting.take_orders ? order_rules : NO_ORDERS}#{show_rules}
     TEXT
   end
 
   # Turns the tags in the AI reply into product pictures and an order. Returns the reply text to send.
   def apply(reply, roman_urdu:)
-    ids = reply.scan(PRODUCT_TAG).flatten.map(&:to_i)
-    pictures = account.products.available.with_attached_image.where(id: ids).select { |product| product.image.attached? }
-    media.concat(pictures.first(MAX_PICTURES))
-    text = reply.gsub(PRODUCT_TAG, '').gsub(TOTAL_TAG) { total_text(Regexp.last_match(1)) }
+    text = show_products(reply, roman_urdu: roman_urdu).gsub(TOTAL_TAG) { total_text(Regexp.last_match(1)) }
     match = text.match(ORDER_TAG)
     return text.strip if match.nil? || !setting.take_orders
 
@@ -70,16 +68,35 @@ class Catalog::AiOrdering
     rules
   end
 
-  # Products are shown in the chat first; the menu page link is extra. The AI is already in the customer's chat
-  # (WhatsApp, Instagram, ...), so it must never say the business is not available here.
-  def page_text
+  # The AI only writes [PRODUCT:id]; the name, price, details, picture and the catalog link are put in here,
+  # so the customer always gets the real product in the chat and never a bare link or a made-up price.
+  def show_rules
+    "- To show a product, put [PRODUCT:<id>] on its own line. The system replaces it with the product's name, price, " \
+      "details and picture, so do not type those yourself.\n" \
+      "- If the customer asks to see products, pictures, the catalog or the menu, show up to #{MAX_PICTURES} matching products " \
+      "this way and ask which one they like. Never send a link instead and never say you cannot show products here.\n" \
+      "- Never say you sent a picture. #{PICTURE_RULE unless pictures?}\n" \
+      "- You are already chatting with the customer here. Never say the business is not available on WhatsApp or in this chat.\n"
+  end
+
+  def pictures?
+    account.products.available.joins(:image_attachment).exists?
+  end
+
+  def show_products(reply, roman_urdu:)
+    shown = account.products.available.with_attached_image.where(id: reply.scan(PRODUCT_TAG).flatten.map(&:to_i)).index_by(&:id)
+    media.concat(shown.values.select { |product| product.image.attached? }.first(MAX_PICTURES))
+    text = reply.gsub(PRODUCT_TAG) { product_card(shown[Regexp.last_match(1).to_i]) }.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
     url = Catalog::PublicLink.url(setting)
-    text = +"- If the customer asks to see products, the catalog or the menu, show up to #{MAX_PICTURES} matching products " \
-            "right here in the chat: name and price on one line each, with [PRODUCT:<id>] for those with a picture. " \
-            "Then ask which one they like.\n"
-    text << "- After showing products, you can also share the full catalog with pictures: #{url}\n" if url
-    text << "- You are already chatting with the customer here. Never say the business is not available on WhatsApp or in this chat.\n"
-    text
+    return text if shown.empty? || url.nil?
+
+    "#{text.strip}\n\n#{roman_urdu ? 'Poora catalog' : 'Full catalog'}: #{url}"
+  end
+
+  def product_card(product)
+    return '' if product.nil?
+
+    ["*#{product.name}* – #{setting.money(product.price)}", product.description.to_s.squish.truncate(160).presence].compact.join("\n")
   end
 
   # Small catalogs go in whole; big ones send the products whose words match the question first.
