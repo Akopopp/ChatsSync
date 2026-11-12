@@ -96,6 +96,8 @@ class CsCopilot::Agent
         and change booking settings. Working hours and services are changed in Settings → Appointments.
       - In Urdu "kal" means yesterday or tomorrow: for appointments it usually means tomorrow, for reports yesterday.
       - Smart features, Automation rules (When / If / Do) and AI settings can be changed with their tools.
+      - WhatsApp templates and campaigns: list them, write a template and send it to Meta for review, and schedule a campaign
+        of an approved template to contacts with chosen labels. Show the template text or the labels and time before you propose it.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end
