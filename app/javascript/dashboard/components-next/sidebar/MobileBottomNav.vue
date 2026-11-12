@@ -1,10 +1,11 @@
 <script setup>
-// Phones: the main places are one tap away at the bottom, and Menu opens the full sidebar.
+// Phones: the main places are one tap away at the bottom, and Menu opens a sheet with every page.
 // Hidden inside an open chat, where the reply box needs the space.
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAccount } from 'dashboard/composables/useAccount';
 import { CHAT_ROUTES } from './chatRoutes';
+import MobileMenuSheet from './MobileMenuSheet.vue';
 
 defineProps({
   isMobileSidebarOpen: { type: Boolean, default: false },
@@ -14,6 +15,18 @@ const emit = defineEmits(['toggle']);
 
 const route = useRoute();
 const { accountScopedRoute } = useAccount();
+
+const sheetOpen = ref(false);
+watch(
+  () => route.name,
+  () => {
+    sheetOpen.value = false;
+  }
+);
+const openFullMenu = () => {
+  sheetOpen.value = false;
+  emit('toggle');
+};
 
 const items = computed(() => [
   {
@@ -66,12 +79,19 @@ const items = computed(() => [
       type="button"
       class="flex flex-col items-center justify-center gap-0.5 text-xs"
       :class="
-        isMobileSidebarOpen ? 'text-n-brand font-medium' : 'text-n-slate-11'
+        isMobileSidebarOpen || sheetOpen
+          ? 'text-n-brand font-medium'
+          : 'text-n-slate-11'
       "
-      @click="emit('toggle')"
+      @click="sheetOpen = !sheetOpen"
     >
-      <span class="i-lucide-menu size-5" />
+      <span class="i-lucide-layout-grid size-5" />
       {{ $t('MOBILE_NAV.MENU') }}
     </button>
   </nav>
+  <MobileMenuSheet
+    :show="sheetOpen"
+    @close="sheetOpen = false"
+    @full-menu="openFullMenu"
+  />
 </template>

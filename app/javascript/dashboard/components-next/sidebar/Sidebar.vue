@@ -27,6 +27,7 @@ import { useAccount } from 'dashboard/composables/useAccount';
 import { useMapGetter } from 'dashboard/composables/store';
 import { useSidebarKeyboardShortcuts } from './useSidebarKeyboardShortcuts';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
+import { CHAT_ROUTES } from './chatRoutes';
 
 import SidebarProfileMenu from './SidebarProfileMenu.vue';
 
@@ -65,6 +66,15 @@ const brandLogo = computed(() => CS_ICON);
 
 const { width: windowWidth } = useWindowSize();
 const isMobile = computed(() => windowWidth.value < 768);
+/* Phones with the bottom menu don't need the floating hamburger: Menu is at the bottom. */
+const hasBottomNav = computed(
+  () => isMobile.value && !CHAT_ROUTES.includes(route.name)
+);
+watch(
+  hasBottomNav,
+  on => document.body.classList.toggle('cs-bottom-nav', on),
+  { immediate: true }
+);
 
 /* ---- mobile drawer ---- */
 const mobileOpen = ref(false);
@@ -596,7 +606,7 @@ watch(
   <!-- HAR PAGE ka apna hamburger. Jin screens ka apna header-hamburger
        hai (Chats/Contacts/Inbox/Dashboard) wahan CSS se chhup jaata hai. -->
   <button
-    v-if="isMobile && !drawerOpen"
+    v-if="isMobile && !drawerOpen && !hasBottomNav"
     type="button"
     class="cs-rl-ham"
     aria-label="Menu"
@@ -1209,6 +1219,10 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
     /* aakhri zamanat: page KABHI chauRa na ho. Scroll hamesha card ya
        table ke apne frame ke andar rahe, poori screen slide na ho. */
     overflow-x: hidden;
+  }
+  /* bottom menu wale phones par hamburger nahi, to upar ki jagah bhi nahi chahiye */
+  body.cs-bottom-nav:not(.cs-own-header) main {
+    padding-top: 8px;
   }
   body:not(.cs-own-header) main table {
     min-width: max-content;

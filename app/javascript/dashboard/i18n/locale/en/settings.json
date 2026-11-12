@@ -299,7 +299,17 @@
     "CHATS": "Chats",
     "COPILOT": "Copilot",
     "CONTACTS": "Contacts",
-    "MENU": "Menu"
+    "MENU": "Menu",
+    "CHATBOT": "Chatbot",
+    "TEMPLATES": "Templates",
+    "GALLERY": "Gallery",
+    "CLOSE": "Close",
+    "FULL_MENU": "Full menu, profile and log out",
+    "SECTIONS": {
+      "WORK": "Work",
+      "AUTOMATE": "AI and automation",
+      "SETTINGS": "Settings"
+    }
   },
   "SIDEBAR": {
     "NO_ITEMS": "No items",
