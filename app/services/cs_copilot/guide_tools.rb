@@ -23,12 +23,12 @@ class CsCopilot::GuideTools
                       'cancel and change booking settings.',
     'campaigns' => 'Campaigns > WhatsApp: pick an approved template, the inbox and the audience (labels or segments), then send now ' \
                    'or schedule. With Smart features > Broadcast tools on you see the audience size and Meta charge first. ' \
-                   'Meta charges per marketing template message.',
+                   'Meta charges per marketing template message. Copilot can list campaigns and schedule one for labels.',
     'templates' => 'Templates (left menu): create a WhatsApp template (category, language, header, body with {{1}} variables, buttons) ' \
-                   'and submit it; Meta approves in minutes to 24 hours. Needed for messages outside the 24-hour window.',
+                   'and submit it; Meta approves in minutes to 24 hours. Needed for messages outside the 24-hour window. ' \
+                   'Copilot can list templates and write and submit a new one.',
     'smart_features' => 'Settings > Smart features: switches for AI extras (typing, returning customers, payment screenshots, photo search, ' \
-                        'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), online store (COD ' \
-                        'confirmation, shipping updates, cart reminders), ads (ad report, Meta sales), you (daily report, email alerts, ' \
+                        'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), ads (ad report, Meta sales), you (daily report, email alerts, ' \
                         'Google Sheet) and safety. Each has a ? with how to use it. Copilot can switch them with update_smart_features.',
     'online_store' => 'Settings > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
                       'WhatsApp number and an approved template, then copy the store link. Shopify: Settings > Notifications > Webhooks > ' \
