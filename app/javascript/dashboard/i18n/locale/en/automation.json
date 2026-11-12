@@ -196,6 +196,38 @@
       "TEAM_NAME": "Team",
       "PRIORITY": "Priority",
       "LABELS": "Labels"
+    },
+    "READY": {
+      "TITLE": "Ready-made automations",
+      "TEXT": "Add one with a click. It starts working right away, and you can edit or turn it off below.",
+      "ADD": "Add",
+      "ADDED": "Added",
+      "ITEMS": {
+        "ORDER_EMAIL": {
+          "TITLE": "Email me about every new order",
+          "TEXT": "When the AI or a customer places an order, all admins get an email with a link to the chat."
+        },
+        "FORM_EMAIL": {
+          "TITLE": "Email me when a form is filled",
+          "TEXT": "When a customer fills a WhatsApp form, all admins get an email."
+        },
+        "HUMAN": {
+          "TITLE": "Hand over when a customer asks for a person",
+          "TEXT": "If a customer asks for an agent or a human, the AI stops in that chat and you get an email."
+        },
+        "PRICE": {
+          "TITLE": "Label price questions",
+          "TEXT": "Chats asking about price or rate get the label \"price\", so you can follow them up."
+        },
+        "COMPLAINT": {
+          "TITLE": "Catch complaints",
+          "TEXT": "Complaints, refunds and returns get the label \"complaint\" and you get an email."
+        },
+        "BOOKING_LABEL": {
+          "TITLE": "Label booked chats",
+          "TEXT": "When an appointment is booked, the chat gets the label \"booked\"."
+        }
+      }
     }
   }
 }
