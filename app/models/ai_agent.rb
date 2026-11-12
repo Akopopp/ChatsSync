@@ -44,6 +44,7 @@ class AiAgent < ApplicationRecord
   validates :reply_language, inclusion: { in: LANGUAGES }
   validates :always_rules, :never_rules, :handoff_rules, length: { maximum: 2000 }
   validates :lead_fields, length: { maximum: 200 }
+  validates :max_replies_per_chat, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }
 
   before_validation { self.policies = (policies || {}).to_h.slice(*POLICY_KEYS).transform_values { |value| value.to_s.strip.truncate(600) } }
 

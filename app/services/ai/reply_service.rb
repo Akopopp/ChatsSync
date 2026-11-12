@@ -1,5 +1,6 @@
 # Decides whether the AI should answer a customer's latest messages and sends the reply.
-# The AI stays quiet when the rule-based bot is still handling the chat (status pending),
+# With "Use my chatbot flows" on, the chatbot flow gets each message first (Ai::FlowLink) and the AI answers the rest.
+# Otherwise the AI stays quiet while the rule-based bot is still handling the chat (status pending),
 # when a team member replied in the last 12 hours (unless "Turn AI on" was pressed after it), when the chat is locked or handed off,
 # when plan limits are used up, and on WhatsApp chats outside Meta's free ad window
 # (unless the business turned on replies to all chats and the plan allows it).
@@ -11,7 +12,9 @@ class Ai::ReplyService
   pattr_initialize [:conversation!, :message!]
 
   def perform
+    return if routed_to_flow?
     return unless should_reply?
+    return hand_off(message.id) if reply_limit_reached?
 
     turn = customer_turn
     return if turn.empty?
@@ -32,7 +35,7 @@ class Ai::ReplyService
     )
     reply = prompt_builder.tidy(reply, question)
     reply = actions.apply(reply, roman_urdu: roman_urdu_chat?(question, turn)) unless reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
-    deliver(reply, turn.last.id, actions.media, actions.interactive)
+    deliver(reply, turn.last.id, actions)
   end
 
   private
@@ -51,12 +54,45 @@ class Ai::ReplyService
 
   def should_reply?
     return false unless agent&.enabled && agent.inbox_allowed?(conversation.inbox)
-    return false unless conversation.open?
+    return false unless conversation.open? || (conversation.pending? && flow_link?)
     return false if conversation.additional_attributes&.dig('plan_locked') || conversation.additional_attributes&.dig('ai_off')
     return false if newer_incoming? || human_replied_recently? || answered_by_smart_features?
+
+    ai_can_answer?
+  end
+
+  def ai_can_answer?
     return false if account.plan_limit_reached?(:ai_replies_monthly) || account.plan_limit_reached?(:ai_replies_daily)
 
     within_scope?
+  end
+
+  def flow_link?
+    @flow_link = Ai::FlowLink.on?(conversation) if @flow_link.nil?
+    @flow_link
+  end
+
+  # Button taps, flow questions and forms go to the chatbot flow. When the AI cannot answer this chat
+  # (plan limit or outside the ad window) the flow answers it on its own, as it does without the AI.
+  def routed_to_flow?
+    return false unless flow_link?
+    return false if answered_by_smart_features? || message.content_attributes&.dig('form_reply').present?
+
+    Ai::FlowLink.new(account: account, conversation: conversation).route(message, full: !ai_can_answer?)
+  end
+
+  # AI agent > Setup > "AI replies per chat": after this many AI replies since the team last replied
+  # (or "Turn AI on" was pressed), the chat goes to the team.
+  def reply_limit_reached?
+    limit = agent.max_replies_per_chat.to_i
+    return false unless limit.positive?
+
+    since = [last_team_reply_at, Time.zone.at(conversation.additional_attributes&.dig('ai_resumed_at').to_i)].compact.max
+    conversation.messages.where(message_type: :outgoing, sender: agent.bot).where('created_at > ?', since).count >= limit
+  end
+
+  def last_team_reply_at
+    conversation.messages.where(message_type: :outgoing, private: false, sender_type: 'User').maximum(:created_at)
   end
 
   # STOP / START, review ratings and COD answers get their own reply from Smart features, so the AI stays out of them.
@@ -167,29 +203,38 @@ class Ai::ReplyService
     text.to_s.gsub(/[\w.+-]+@[\w-]+\.[\w.]+/, '[email]').gsub(/\+?\d[\d\s\-()]{8,}\d/, '[phone]')
   end
 
-  # media: product pictures from the catalog, sent along with any AI product media the reply asks for.
-  # interactive: content attributes for a form sent with the text, like the WhatsApp booking calendar.
-  def deliver(reply, answered_up_to, media = [], interactive = nil)
+  # actions.media: product pictures from the catalog, sent along with any AI product media the reply asks for.
+  # actions.interactive: content attributes for a form sent with the text, like the WhatsApp booking calendar.
+  # actions.after_send: a chatbot flow box the reply asked for, sent last with its buttons.
+  def deliver(reply, answered_up_to, actions)
     if reply.include?(Ai::PromptBuilder::HANDOFF_TAG)
       hand_off(answered_up_to)
     else
       ids = reply.scan(Ai::PromptBuilder::IMAGE_TAG).flatten.map(&:to_i)
       text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
-      items = prompt_builder.image_items(ids) + media
-      return if text.blank? && items.empty? && interactive.nil?
+      items = prompt_builder.image_items(ids) + actions.media
+      interactive = actions.interactive
+      return if text.blank? && items.empty? && interactive.nil? && !actions.box?
 
-      if interactive
-        # A form message carries only text, so pictures go first in their own message.
-        create_message('', items, answered_up_to) if items.any?
-        create_message(text, [], answered_up_to, interactive)
-      else
-        create_message(text, items, answered_up_to)
-      end
+      send_reply(text, items, answered_up_to, interactive)
+      actions.after_send
     end
     account.increment_plan_usage!(:ai_replies)
   end
 
+  def send_reply(text, items, answered_up_to, interactive)
+    conversation.open! if conversation.pending?
+    if interactive
+      # A form message carries only text, so pictures go first in their own message.
+      create_message('', items, answered_up_to) if items.any?
+      create_message(text, [], answered_up_to, interactive)
+    elsif text.present? || items.any?
+      create_message(text, items, answered_up_to)
+    end
+  end
+
   def hand_off(answered_up_to)
+    conversation.open! if conversation.pending?
     create_message(agent.default_handoff_message, [], answered_up_to)
     conversation.update!(additional_attributes: (conversation.additional_attributes || {}).merge('ai_off' => true))
     conversation.add_labels(['needs-human'])

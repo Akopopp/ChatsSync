@@ -68,15 +68,16 @@ class Api::V1::Accounts::AiAgentsController < Api::V1::Accounts::BaseController
   def agent_params
     params.require(:ai_agent).permit(:enabled, :reply_scope, :business_name, :business_info, :instructions, :handoff_message,
                                      :tone, :agent_name, :reply_examples, :always_rules, :never_rules, :handoff_rules,
-                                     :goal, :lead_fields, :reply_length, :use_emoji, :reply_language,
+                                     :goal, :lead_fields, :reply_length, :use_emoji, :reply_language, :use_flows, :max_replies_per_chat,
                                      inbox_ids: [], policies: AiAgent::POLICY_KEYS)
   end
 
   def agent_json
     @agent.as_json(only: %i[enabled reply_scope inbox_ids business_name business_info instructions handoff_message
                             tone agent_name reply_examples policies always_rules never_rules handoff_rules goal
-                            lead_fields reply_length use_emoji reply_language]).merge(
+                            lead_fields reply_length use_emoji reply_language use_flows max_replies_per_chat]).merge(
       ai_configured: Ai::LlmClient.configured?,
+      flows_available: ENV['CHATSSYNC_BOT_URL'].present?,
       features: Plan::FEATURE_KEYS.index_with { |key| Current.account.plan_feature?(key) },
       inboxes: Current.account.inboxes.where(channel_type: AiAgent::CHANNEL_TYPES).map do |inbox|
         { id: inbox.id, name: inbox.name, channel_type: inbox.channel_type }

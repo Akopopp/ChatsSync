@@ -523,6 +523,19 @@
       "NOTE": "Leave all unticked to use every WhatsApp, Facebook, Instagram and website chat inbox.",
       "ALL": "All inboxes"
     },
+    "FLOWS": {
+      "TITLE": "Chatbot flow + AI",
+      "USE": "Use my chatbot flows",
+      "USE_NOTE": "The AI and your chatbot flow answer together. When a box in your flow answers the customer's question, the AI sends that box with its buttons. Button taps continue the flow, and anything else the customer types is answered by the AI, until your team takes over.",
+      "NEEDS_FLOW": "Works in inboxes that have a published chatbot flow.",
+      "NOT_AVAILABLE": "Chatbot flows are not connected on this server yet.",
+      "OPEN_BUILDER": "Open Chatbot Builder",
+      "LIMIT": "AI replies per chat",
+      "LIMIT_NOTE": "After this many AI replies in a row, the chat goes to your team. Use 0 for no limit.",
+      "HOW_1": "Customer asks a question",
+      "HOW_2": "AI sends the matching flow box",
+      "HOW_3": "Taps continue the flow, typing gets an AI reply"
+    },
     "BUSINESS": {
       "TITLE": "Business information",
       "DESCRIPTION": "The AI only answers from what you write here and in your FAQs.",

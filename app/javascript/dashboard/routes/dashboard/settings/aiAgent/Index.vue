@@ -39,6 +39,8 @@ const SAVE_FIELDS = [
   'reply_length',
   'use_emoji',
   'reply_language',
+  'use_flows',
+  'max_replies_per_chat',
 ];
 const POLICY_KEYS = [
   'delivery',
@@ -452,6 +454,82 @@ onMounted(fetchAll);
                     <span class="text-sm text-n-slate-12 truncate">
                       {{ inbox.name }}
                     </span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="grid gap-3">
+                <h3 class="text-sm font-medium text-n-slate-12">
+                  {{ $t('AI_AGENT.FLOWS.TITLE') }}
+                </h3>
+                <div
+                  class="grid gap-4 p-4 rounded-xl outline outline-1 outline-n-weak"
+                >
+                  <div class="grid sm:grid-cols-3 gap-2">
+                    <div
+                      v-for="(step, index) in ['HOW_1', 'HOW_2', 'HOW_3']"
+                      :key="step"
+                      class="flex items-center gap-2 px-3 py-2 rounded-lg bg-n-alpha-1 text-xs text-n-slate-12"
+                    >
+                      <span
+                        class="flex items-center justify-center flex-shrink-0 rounded-full size-5 bg-n-brand text-white text-xs font-medium"
+                      >
+                        {{ index + 1 }}
+                      </span>
+                      {{ $t(`AI_AGENT.FLOWS.${step}`) }}
+                    </div>
+                  </div>
+                  <label
+                    class="flex items-start justify-between gap-3"
+                    :class="
+                      agent.flows_available ? 'cursor-pointer' : 'opacity-60'
+                    "
+                  >
+                    <span class="grid gap-0.5">
+                      <span class="text-sm text-n-slate-12">
+                        {{ $t('AI_AGENT.FLOWS.USE') }}
+                      </span>
+                      <span class="text-xs text-n-slate-11">
+                        {{ $t('AI_AGENT.FLOWS.USE_NOTE') }}
+                      </span>
+                      <span class="text-xs text-n-slate-11">
+                        {{
+                          agent.flows_available
+                            ? $t('AI_AGENT.FLOWS.NEEDS_FLOW')
+                            : $t('AI_AGENT.FLOWS.NOT_AVAILABLE')
+                        }}
+                        <router-link
+                          v-if="agent.flows_available"
+                          :to="{ name: 'chatbot_builder' }"
+                          class="text-n-brand"
+                        >
+                          {{ $t('AI_AGENT.FLOWS.OPEN_BUILDER') }}
+                        </router-link>
+                      </span>
+                    </span>
+                    <Switch
+                      v-model="agent.use_flows"
+                      :disabled="!agent.flows_available"
+                    />
+                  </label>
+                  <label
+                    class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-n-weak"
+                  >
+                    <span class="grid gap-0.5 min-w-0 flex-1">
+                      <span class="text-sm text-n-slate-12">
+                        {{ $t('AI_AGENT.FLOWS.LIMIT') }}
+                      </span>
+                      <span class="text-xs text-n-slate-11">
+                        {{ $t('AI_AGENT.FLOWS.LIMIT_NOTE') }}
+                      </span>
+                    </span>
+                    <input
+                      v-model.number="agent.max_replies_per_chat"
+                      type="number"
+                      min="0"
+                      max="100"
+                      class="w-24 !mb-0"
+                    />
                   </label>
                 </div>
               </div>

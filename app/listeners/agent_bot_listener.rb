@@ -79,6 +79,8 @@ class AgentBotListener < BaseListener
   def process_message_event(method_name, agent_bot, message, _event)
     # Only webhook bots are supported
     payload = message.webhook_data.merge(event: method_name)
+    # The ChatsSync AI also answers this chat: it hands each new message to the chatbot flow itself (Ai::FlowLink).
+    payload[:chatssync] = { ai_routes: true } if Ai::FlowLink.on?(message.conversation)
     process_webhook_bot_event(agent_bot, payload)
   end
 

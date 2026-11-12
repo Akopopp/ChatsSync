@@ -73,6 +73,8 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
        { ids: { type: 'array', items: { type: 'integer' } } }, ['ids']),
     fn('update_ai_agent', 'Change AI agent settings.',
        { enabled: { type: 'boolean' }, reply_scope: { type: 'string', enum: %w[ad_leads all] },
+         use_flows: { type: 'boolean', description: 'AI and chatbot flow answer together; the AI can send a flow box with its buttons' },
+         max_replies_per_chat: { type: 'integer', description: 'AI replies in a row before the chat goes to the team (0 = no limit)' },
          business_info_to_add: { type: 'string', description: 'Text to add at the end of the business information' },
          instructions: { type: 'string' }, handoff_message: { type: 'string' } })
   ].concat(*EXTENSIONS.map { |extension| extension::DEFINITIONS }).map { |tool| without_empty_parameters(tool) }.freeze
@@ -283,7 +285,8 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
     agent = account.ai_agent
     return { enabled: false, note: 'The AI agent is not set up yet.' } if agent.nil?
 
-    { enabled: agent.enabled, reply_scope: agent.reply_scope, business_name: agent.business_name,
+    { enabled: agent.enabled, reply_scope: agent.reply_scope, use_flows: agent.use_flows, max_replies_per_chat: agent.max_replies_per_chat,
+      business_name: agent.business_name,
       business_info: agent.business_info.to_s.truncate(1500), instructions: agent.instructions,
       faqs: account.ai_knowledge_items.faqs.count, images: account.ai_knowledge_items.images.count }
   end
@@ -407,7 +410,7 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   def tool_update_ai_agent(args)
     agent = account.ai_agent || account.create_ai_agent!(business_name: account.name)
-    attrs = args.slice(:enabled, :reply_scope, :instructions, :handoff_message).compact
+    attrs = args.slice(:enabled, :reply_scope, :instructions, :handoff_message, :use_flows, :max_replies_per_chat).compact
     attrs[:business_info] = [agent.business_info, args[:business_info_to_add]].compact_blank.join("\n") if args[:business_info_to_add].present?
     agent.update!(attrs)
     { done: true }
