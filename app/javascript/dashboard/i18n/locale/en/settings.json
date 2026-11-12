@@ -1270,7 +1270,7 @@
       "OPEN_CALENDAR": "Open the appointments calendar",
       "GOOGLE": "Google Calendar",
       "GOOGLE_NOTE": "Copy this private link. In Google Calendar open Other calendars → + → From URL and paste it. Your bookings will show on your phone too. Do not share this link.",
-      "HELP": "Turn appointments on so the AI can offer free times and book them. Customers can also book from your booking page link."
+      "HELP": "Turn appointments on so the AI can book customers. On WhatsApp they pick the day and time in a calendar inside WhatsApp; no link is sent there. The booking page link is only for your website or Instagram bio."
     },
     "HOURS": {
       "TITLE": "Working hours",

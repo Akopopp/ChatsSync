@@ -111,7 +111,8 @@ class Catalog::AiOrdering
     end
     text = text.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
     url = Catalog::PublicLink.url(setting)
-    return text if shown.empty? || url.nil?
+    # On WhatsApp everything happens inside the chat, so no catalog link that opens outside it.
+    return text if shown.empty? || url.nil? || conversation&.inbox&.channel_type == 'Channel::Whatsapp'
 
     "#{text.strip}\n\n#{roman_urdu ? 'Poora catalog' : 'Full catalog'}: #{url}"
   end

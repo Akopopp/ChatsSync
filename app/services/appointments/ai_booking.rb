@@ -149,9 +149,10 @@ class Appointments::AiBooking
     existing ? "- This customer already has an appointment: #{existing.label(setting.zone)}.\n" : ''
   end
 
-  # The booking page link, for chats that can't get the WhatsApp calendar form (website chat, or a form not ready yet).
+  # The booking page link, only for website chat. On WhatsApp a link opens outside the chat, so when the
+  # calendar form is not ready the AI books by chatting instead.
   def page_text
-    return '' if conversation.nil?
+    return '' if conversation.nil? || conversation.inbox.channel_type == 'Channel::Whatsapp'
 
     url = Appointments::PublicLink.url(setting)
     url ? "- If the customer wants to see the full calendar, send this link: #{url}\n" : ''
