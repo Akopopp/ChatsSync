@@ -86,7 +86,7 @@ class Catalog::AiOrdering
   def show_products(reply, roman_urdu:)
     shown = account.products.available.with_attached_image.where(id: reply.scan(PRODUCT_TAG).flatten.map(&:to_i)).index_by(&:id)
     media.concat(shown.values.select { |product| product.image.attached? }.first(MAX_PICTURES))
-    text = reply.gsub(PRODUCT_TAG) { product_card(shown[Regexp.last_match(1).to_i]) }.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
+    text = reply.gsub(PRODUCT_TAG) { "\n#{product_card(shown[Regexp.last_match(1).to_i])}\n" }.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
     url = Catalog::PublicLink.url(setting)
     return text if shown.empty? || url.nil?
 
