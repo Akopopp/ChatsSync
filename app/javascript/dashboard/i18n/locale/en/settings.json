@@ -1460,6 +1460,14 @@
         "TITLE": "Confirm COD orders on WhatsApp",
         "HINT": "New Shopify or WooCommerce orders come into ChatsSync, and the customer gets your WhatsApp template with Confirm and Cancel buttons. The order updates on its own when they tap. Meta charges for each template message."
       },
+      "SHIP_UPDATES": {
+        "TITLE": "Shipping updates on WhatsApp",
+        "HINT": "When you ship an order in Shopify or WooCommerce, the customer gets your WhatsApp template with the courier name, tracking number and tracking link. Meta charges for each template message."
+      },
+      "CART_RECOVERY": {
+        "TITLE": "Abandoned cart reminder",
+        "HINT": "When a Shopify customer leaves the checkout without ordering, they get your WhatsApp template with their items and a link back to the checkout. Sent once per checkout. Meta charges for each template message."
+      },
       "AD_REPORT": {
         "TITLE": "Ad report",
         "HINT": "See which Facebook and Instagram ads brought chats, orders, bookings and sales in the last 30 days. Counts chats that start from a Click-to-WhatsApp ad."
@@ -1524,6 +1532,33 @@
       "AD_ID": "Ad {id}",
       "UNKNOWN": "Ad (no details)",
       "OPEN": "Open"
+    },
+    "STORE_HOW": {
+      "COD_CONFIRM_1": "A new order comes from your store",
+      "COD_CONFIRM_2": "Customer gets Confirm / Cancel on WhatsApp",
+      "COD_CONFIRM_3": "Order status changes when they tap",
+      "SHIP_UPDATES_1": "You ship the order with tracking",
+      "SHIP_UPDATES_2": "Customer gets courier and tracking on WhatsApp",
+      "SHIP_UPDATES_3": "Order shows as Shipped in Orders",
+      "CART_RECOVERY_1": "Customer leaves the checkout",
+      "CART_RECOVERY_2": "No order after the hours you choose",
+      "CART_RECOVERY_3": "They get a WhatsApp reminder with the checkout link"
+    },
+    "STORE_VARIABLES": {
+      "COD_CONFIRM": "Template variables are filled in this order: customer name, order number, total, items, address. The first button confirms, the second cancels.",
+      "SHIP_UPDATES": "Template variables are filled in this order: customer name, order number, courier, tracking number, tracking link.",
+      "CART_RECOVERY": "Template variables are filled in this order: customer name, items, total, checkout link. Put the link in the message text, not in a button."
+    },
+    "STORE_HELP": {
+      "COD_CONFIRM_SHOPIFY": "Shopify: Settings > Notifications > Webhooks > Create webhook. Event: Order creation, format JSON, then paste this link.",
+      "COD_CONFIRM_WOO": "WooCommerce: Settings > Advanced > Webhooks > Add webhook. Topic: Order created, then paste this link as the Delivery URL.",
+      "SHIP_UPDATES_SHOPIFY": "Shopify: Settings > Notifications > Webhooks > Create webhook. Event: Order fulfillment, format JSON, then paste this link.",
+      "SHIP_UPDATES_WOO": "WooCommerce: add a webhook with Topic: Order updated and this link. The message goes when the order is Completed (tracking comes from the Shipment Tracking plugin).",
+      "CART_RECOVERY_SHOPIFY": "Shopify: create two webhooks with this link, format JSON: Checkout creation and Checkout update. Keep the Order creation webhook too, so bought carts get no reminder."
+    },
+    "CART": {
+      "AFTER": "Send reminder after",
+      "HOURS": "{count} hour | {count} hours"
     },
     "TEMPLATE_PICKER": {
       "NUMBER": "WhatsApp number",

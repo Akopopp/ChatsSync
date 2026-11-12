@@ -17,6 +17,8 @@ const numbers = ref([]);
 const ads = ref(null);
 const cod = ref(null);
 const reminder = ref(null);
+const ship = ref(null);
+const cart = ref(null);
 const currency = ref('Rs');
 const reviewLink = ref('');
 
@@ -43,7 +45,11 @@ const GROUPS = [
       'whatsapp_forms',
     ],
   },
-  { key: 'STORE', icon: 'i-lucide-shopping-bag', items: ['cod_confirm'] },
+  {
+    key: 'STORE',
+    icon: 'i-lucide-shopping-bag',
+    items: ['cod_confirm', 'ship_updates', 'cart_recovery'],
+  },
   {
     key: 'ADS',
     icon: 'i-lucide-megaphone',
@@ -59,6 +65,14 @@ const GROUPS = [
 const FOLLOW_UP_HOURS = [1, 2, 3, 4, 6, 8, 12, 20];
 const META_SALES_WHEN = ['new', 'confirmed', 'delivered'];
 const REMINDER_DAYS = [7, 14, 21, 30, 45, 60, 90, 180];
+const CART_DELAY_HOURS = [1, 2, 3, 6, 12, 24];
+// Online store features: the settings key prefix and the store events each one needs.
+const STORE_ITEMS = {
+  cod_confirm: { prefix: 'cod', data: cod },
+  ship_updates: { prefix: 'ship', data: ship },
+  cart_recovery: { prefix: 'cart', data: cart },
+};
+const storeData = key => STORE_ITEMS[key]?.data.value;
 const QUALITY_CLASS = {
   GREEN: 'bg-n-teal-3 text-n-teal-11',
   YELLOW: 'bg-n-amber-3 text-n-amber-11',
@@ -78,6 +92,8 @@ const apply = data => {
   ads.value = data.ads;
   cod.value = data.cod;
   reminder.value = data.reminder;
+  ship.value = data.ship;
+  cart.value = data.cart;
   currency.value = data.currency || 'Rs';
   reviewLink.value = data.features.review_link || '';
 };
@@ -118,7 +134,7 @@ const saveReviewLink = () => {
   save({ review_link: link });
 };
 
-// prefix: 'cod' or 'repeat_reminder'; saves the number and template the feature sends from.
+// prefix: 'cod', 'ship', 'cart' or 'repeat_reminder'; saves the number and template the feature sends from.
 const pickTemplate = (prefix, { inboxId, template, language }) =>
   save({
     [`${prefix}_inbox_id`]: inboxId,
@@ -126,8 +142,8 @@ const pickTemplate = (prefix, { inboxId, template, language }) =>
     [`${prefix}_template_language`]: language,
   });
 
-const copyCodLink = async () => {
-  await copyTextToClipboard(cod.value.url);
+const copyStoreLink = async url => {
+  await copyTextToClipboard(url);
   useAlert(t('SMART_FEATURES.COD.COPIED'));
 };
 
@@ -333,20 +349,47 @@ onMounted(load);
               </label>
 
               <div
-                v-if="key === 'cod_confirm' && features.cod_confirm && cod"
+                v-if="STORE_ITEMS[key] && features[key] && storeData(key)"
                 class="grid gap-3 text-sm"
               >
+                <ol class="grid gap-2 sm:grid-cols-3 text-xs text-n-slate-12">
+                  <li
+                    v-for="step in [1, 2, 3]"
+                    :key="step"
+                    class="flex items-start gap-2 px-3 py-2 rounded-lg bg-n-alpha-1"
+                  >
+                    <span
+                      class="flex items-center justify-center flex-shrink-0 rounded-full size-5 bg-n-brand text-white"
+                    >
+                      {{ step }}
+                    </span>
+                    {{
+                      $t(`SMART_FEATURES.STORE_HOW.${featureKey(key)}_${step}`)
+                    }}
+                  </li>
+                </ol>
                 <TemplatePicker
-                  :inboxes="cod.inboxes"
-                  :templates="cod.templates"
-                  :inbox-id="features.cod_inbox_id"
-                  :template="features.cod_template"
-                  :language="features.cod_template_language"
-                  :empty-text="$t('SMART_FEATURES.COD.NO_TEMPLATES')"
-                  :help-text="$t('SMART_FEATURES.COD.TEMPLATE_HELP')"
-                  @update="pickTemplate('cod', $event)"
+                  :inboxes="storeData(key).inboxes"
+                  :templates="storeData(key).templates"
+                  :inbox-id="features[`${STORE_ITEMS[key].prefix}_inbox_id`]"
+                  :template="features[`${STORE_ITEMS[key].prefix}_template`]"
+                  :language="
+                    features[`${STORE_ITEMS[key].prefix}_template_language`]
+                  "
+                  :empty-text="
+                    key === 'cod_confirm'
+                      ? $t('SMART_FEATURES.COD.NO_TEMPLATES')
+                      : $t('SMART_FEATURES.REMINDER.NO_TEMPLATES')
+                  "
+                  :help-text="
+                    $t(`SMART_FEATURES.STORE_VARIABLES.${featureKey(key)}`)
+                  "
+                  @update="pickTemplate(STORE_ITEMS[key].prefix, $event)"
                 />
-                <div class="flex items-center justify-between gap-4">
+                <div
+                  v-if="key === 'cod_confirm'"
+                  class="flex items-center justify-between gap-4"
+                >
                   <span class="text-n-slate-12">
                     {{ $t('SMART_FEATURES.COD.COD_ONLY') }}
                   </span>
@@ -356,6 +399,29 @@ onMounted(load);
                     @change="save({ cod_only: !features.cod_only })"
                   />
                 </div>
+                <label
+                  v-if="key === 'cart_recovery'"
+                  class="flex items-center justify-between gap-4"
+                >
+                  <span class="text-n-slate-12">
+                    {{ $t('SMART_FEATURES.CART.AFTER') }}
+                  </span>
+                  <select
+                    :value="features.cart_delay_hours"
+                    class="!mb-0 !w-auto text-sm"
+                    @change="
+                      save({ cart_delay_hours: Number($event.target.value) })
+                    "
+                  >
+                    <option
+                      v-for="hours in CART_DELAY_HOURS"
+                      :key="hours"
+                      :value="hours"
+                    >
+                      {{ $t('SMART_FEATURES.CART.HOURS', { count: hours }) }}
+                    </option>
+                  </select>
+                </label>
                 <div class="grid gap-1">
                   <span class="text-n-slate-11">
                     {{ $t('SMART_FEATURES.COD.LINK') }}
@@ -364,11 +430,11 @@ onMounted(load);
                     <code
                       class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-n-alpha-1 text-xs text-n-slate-12 break-all select-all"
                     >
-                      {{ cod.url }}
+                      {{ storeData(key).url }}
                     </code>
                     <button
                       class="px-3 py-1.5 rounded-lg text-sm outline outline-1 outline-n-weak text-n-slate-12 hover:outline-n-strong"
-                      @click="copyCodLink"
+                      @click="copyStoreLink(storeData(key).url)"
                     >
                       {{ $t('SMART_FEATURES.COD.COPY') }}
                     </button>
@@ -376,8 +442,18 @@ onMounted(load);
                   <ul
                     class="grid gap-1 ltr:pl-4 rtl:pr-4 list-disc text-xs text-n-slate-11"
                   >
-                    <li>{{ $t('SMART_FEATURES.COD.HELP_SHOPIFY') }}</li>
-                    <li>{{ $t('SMART_FEATURES.COD.HELP_WOO') }}</li>
+                    <li>
+                      {{
+                        $t(
+                          `SMART_FEATURES.STORE_HELP.${featureKey(key)}_SHOPIFY`
+                        )
+                      }}
+                    </li>
+                    <li v-if="key !== 'cart_recovery'">
+                      {{
+                        $t(`SMART_FEATURES.STORE_HELP.${featureKey(key)}_WOO`)
+                      }}
+                    </li>
                     <li>{{ $t('SMART_FEATURES.COD.LINK_PRIVATE') }}</li>
                   </ul>
                 </div>
