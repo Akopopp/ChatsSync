@@ -10,6 +10,11 @@ import Switch from 'next/switch/Switch.vue';
 import TemplatePicker from './TemplatePicker.vue';
 import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
+// The Online store page shows only the store group; Smart features shows the rest.
+const props = defineProps({
+  store: { type: Boolean, default: false },
+});
+
 const { t } = useI18n();
 
 const isLoading = ref(true);
@@ -94,10 +99,15 @@ const featureKey = key => key.toUpperCase();
 // What the "?" shows: what the feature does, then how to use it.
 const helpText = key =>
   `${t(`SMART_FEATURES.ITEMS.${featureKey(key)}.HINT`)}\n\n${t('SMART_FEATURES.HOW_TO', { how: t(`SMART_FEATURES.ITEMS.${featureKey(key)}.HOW`) })}`;
+const visibleGroups = computed(() =>
+  GROUPS.filter(group => (group.key === 'STORE') === props.store)
+);
+const page = computed(() => (props.store ? 'STORE_PAGE' : 'PAGE'));
 const onCount = computed(
   () =>
-    GROUPS.flatMap(group => group.items).filter(key => features.value[key])
-      .length
+    visibleGroups.value
+      .flatMap(group => group.items)
+      .filter(key => features.value[key]).length
 );
 
 const apply = data => {
@@ -233,8 +243,9 @@ onMounted(load);
   >
     <template #header>
       <BaseSettingsHeader
-        :title="$t('SMART_FEATURES.TITLE')"
-        :description="$t('SMART_FEATURES.DESCRIPTION')"
+        :title="$t(`SMART_FEATURES.${page}.TITLE`)"
+        :description="$t(`SMART_FEATURES.${page}.DESCRIPTION`)"
+        :help="$t(`SMART_FEATURES.${page}.HELP`)"
       />
     </template>
     <template #body>
@@ -246,8 +257,44 @@ onMounted(load);
           {{ $t('SMART_FEATURES.ALL_OPTIONAL', { count: onCount }) }}
         </div>
 
+        <ol
+          v-if="store"
+          class="grid gap-3 p-0 m-0 list-none sm:grid-cols-3"
+        >
+          <li
+            v-for="step in 3"
+            :key="step"
+            class="flex gap-3 p-4 rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1"
+          >
+            <span
+              class="flex items-center justify-center text-sm font-semibold rounded-full size-7 shrink-0 bg-n-teal-3 text-n-teal-11"
+            >
+              {{ step }}
+            </span>
+            <span class="text-sm text-n-slate-11">
+              {{ $t(`SMART_FEATURES.STORE_PAGE.STEP_${step}`) }}
+            </span>
+          </li>
+        </ol>
+        <router-link
+          v-else
+          :to="{ name: 'online_store_settings' }"
+          class="flex items-center gap-3 px-5 py-4 rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1 hover:bg-n-alpha-1"
+        >
+          <span class="i-lucide-store size-5 text-n-teal-11 shrink-0" />
+          <span class="grid flex-1 min-w-0 gap-0.5">
+            <span class="text-sm font-medium text-n-slate-12">
+              {{ $t('SMART_FEATURES.STORE_PAGE.TITLE') }}
+            </span>
+            <span class="text-sm text-n-slate-11">
+              {{ $t('SMART_FEATURES.STORE_PAGE.LINK') }}
+            </span>
+          </span>
+          <span class="i-lucide-chevron-right size-4 text-n-slate-11" />
+        </router-link>
+
         <div
-          v-for="group in GROUPS"
+          v-for="group in visibleGroups"
           :key="group.key"
           class="rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1"
         >

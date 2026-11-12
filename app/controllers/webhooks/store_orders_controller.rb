@@ -1,4 +1,4 @@
-# Smart features > Online store: Shopify and WooCommerce send new orders, shipped orders and (Shopify) checkouts
+# Settings > Online store: Shopify and WooCommerce send new orders, shipped orders and (Shopify) checkouts
 # to this link. The secret part of the link (made when a store feature is switched on) tells which account it is for.
 class Webhooks::StoreOrdersController < ActionController::API
   def create

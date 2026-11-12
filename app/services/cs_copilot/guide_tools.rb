@@ -30,7 +30,7 @@ class CsCopilot::GuideTools
                         'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), online store (COD ' \
                         'confirmation, shipping updates, cart reminders), ads (ad report, Meta sales), you (daily report, email alerts, ' \
                         'Google Sheet) and safety. Each has a ? with how to use it. Copilot can switch them with update_smart_features.',
-    'online_store' => 'Smart features > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
+    'online_store' => 'Settings > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
                       'WhatsApp number and an approved template, then copy the store link. Shopify: Settings > Notifications > Webhooks > ' \
                       'Create webhook (Order creation, Order fulfillment, Checkout creation and update), format JSON, paste the link. ' \
                       'WooCommerce: Settings > Advanced > Webhooks (Order created / Order updated).',

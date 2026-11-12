@@ -1,4 +1,4 @@
-# One store webhook (Smart features > Online store): a new order, a shipped order or a Shopify checkout.
+# One store webhook (Settings > Online store): a new order, a shipped order or a Shopify checkout.
 class SmartFeatures::StoreEventJob < ApplicationJob
   queue_as :default
 

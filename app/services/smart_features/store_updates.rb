@@ -1,4 +1,4 @@
-# Smart features > Online store: WhatsApp messages from store events sent to the store link.
+# Settings > Online store: WhatsApp messages from store events sent to the store link.
 # - "Shipping updates": when an order is shipped, the customer gets the chosen template with the courier
 #   and tracking. Variables: customer name, order number, courier, tracking number, tracking link.
 # - "Abandoned cart reminder": a Shopify checkout that is not finished within the chosen hours gets the

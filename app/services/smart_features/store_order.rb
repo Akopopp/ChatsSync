@@ -1,4 +1,4 @@
-# Reads the store webhooks sent to the account's store link (Smart features > Online store):
+# Reads the store webhooks sent to the account's store link (Settings > Online store):
 # new orders (COD confirmation), shipped orders (shipping updates) and Shopify checkouts (abandoned carts).
 # Returns nil for anything else, like WooCommerce's test ping.
 module SmartFeatures::StoreOrder

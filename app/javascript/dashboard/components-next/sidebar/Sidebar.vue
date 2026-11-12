@@ -388,7 +388,7 @@ const settingsItem = computed(() => ({
     'settings_inboxes_add_agents', 'labels_list', 'attributes_list',
     'automation_list', 'agent_bots', 'macros_wrapper', 'canned_list',
     'settings_applications', 'plan_usage_index', 'ai_agent_settings', 'appointments_settings', 'catalog_settings',
-    'smart_features_settings',
+    'smart_features_settings', 'online_store_settings',
   ],
   children: [
     { label: t('SIDEBAR.ACCOUNT_SETTINGS'), icon: 'i-lucide-briefcase', to: accountScopedRoute('general_settings_index') },
@@ -408,6 +408,7 @@ const settingsItem = computed(() => ({
           { label: t('SIDEBAR.APPOINTMENTS'), icon: 'i-lucide-calendar-days', to: accountScopedRoute('appointments_settings') },
           { label: t('SIDEBAR.CATALOG'), icon: 'i-lucide-shopping-bag', to: accountScopedRoute('catalog_settings') },
           { label: t('SIDEBAR.SMART_FEATURES'), icon: 'i-lucide-wand-sparkles', to: accountScopedRoute('smart_features_settings') },
+          { label: t('SIDEBAR.ONLINE_STORE'), icon: 'i-lucide-store', to: accountScopedRoute('online_store_settings') },
           { label: t('SIDEBAR.PLAN_USAGE'), icon: 'i-lucide-gauge', to: accountScopedRoute('plan_usage_index') },
         ]
       : []),

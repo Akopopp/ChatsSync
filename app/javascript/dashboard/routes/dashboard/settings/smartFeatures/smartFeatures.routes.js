@@ -26,5 +26,28 @@ export default {
         },
       ],
     },
+    {
+      path: frontendURL('accounts/:accountId/settings/online-store'),
+      meta: {
+        permissions: ['administrator'],
+      },
+      component: SettingsWrapper,
+      props: {
+        headerTitle: 'SMART_FEATURES.STORE_PAGE.TITLE',
+        icon: 'store',
+        showNewButton: false,
+      },
+      children: [
+        {
+          path: '',
+          name: 'online_store_settings',
+          component: Index,
+          props: { store: true },
+          meta: {
+            permissions: ['administrator'],
+          },
+        },
+      ],
+    },
   ],
 };
