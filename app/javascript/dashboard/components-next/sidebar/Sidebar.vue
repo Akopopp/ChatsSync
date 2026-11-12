@@ -1224,6 +1224,11 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
   body.cs-bottom-nav:not(.cs-own-header) main {
     padding-top: 8px;
   }
+  /* Chats, Contacts, Home aur My Inbox ke header wala hamburger bhi nahi —
+     neeche Menu hai, ek hi rasta kaafi hai */
+  body.cs-bottom-nav .cs-ham {
+    display: none !important;
+  }
   body:not(.cs-own-header) main table {
     min-width: max-content;
   }
