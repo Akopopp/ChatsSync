@@ -1,5 +1,9 @@
 <script setup>
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import BackButton from 'dashboard/components/widgets/BackButton.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 defineProps({
   headerTitle: {
@@ -15,6 +19,14 @@ defineProps({
     default: false,
   },
 });
+
+// Each report page gets a short "?" note, looked up by its route name.
+const route = useRoute();
+const { t, te } = useI18n();
+const helpText = computed(() => {
+  const key = `HELP_TIPS.REPORTS.${String(route.name).replace(/_(index|show)$/, '')}`;
+  return te(key) ? t(key) : '';
+});
 </script>
 
 <template>
@@ -26,9 +38,10 @@ defineProps({
       <div class="flex flex-col gap-2">
         <div class="flex flex-col gap-3 items-start">
           <span
-            class="text-heading-1 text-n-slate-12 min-h-10 flex items-center"
+            class="text-heading-1 text-n-slate-12 min-h-10 flex items-center gap-1.5"
           >
             {{ headerTitle }}
+            <HelpTip v-if="helpText" :text="helpText" />
           </span>
           <p
             v-if="headerDescription"

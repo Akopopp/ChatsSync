@@ -1792,6 +1792,18 @@
     "whatsapp_forms": "A form opens inside WhatsApp so the customer fills name, address or other details in one go. Make a form here, then send it from a chat, a chatbot flow or the AI.",
     "copilot": "Ask Copilot in your own words. It can answer questions about your chats and numbers, explain how to use any feature, build a chatbot flow, add products, change smart features and make automation rules. It always asks before it changes anything.",
     "calendar": "All bookings in one place. Customers book from WhatsApp or the AI; you can also add one here. Click a booking to change or cancel it.",
-    "whatsapp_campaigns": "Send an approved WhatsApp template to many contacts at once. Pick the number, the template and the contacts by label, then schedule it."
+    "whatsapp_campaigns": "Send an approved WhatsApp template to many contacts at once. Pick the number, the template and the contacts by label, then schedule it.",
+    "contacts": "Everyone who messaged you. Search by name or phone, add labels, import a CSV or start a new WhatsApp chat. Labels here are used for campaigns.",
+    "REPORTS": {
+      "account_overview_reports": "Live numbers: open chats, chats waiting for a reply and how busy each agent is right now.",
+      "conversation_reports": "Chats, messages and reply times for the dates you pick. Use it to see your busiest days.",
+      "agent_reports": "How many chats each team member handled and how fast they replied.",
+      "label_reports": "Chats per label, like order or price, so you can see what customers ask about most.",
+      "inbox_reports": "Numbers for each WhatsApp number or channel.",
+      "team_reports": "Numbers for each team, like Sales or Support.",
+      "csat_reports": "Ratings customers gave after a chat was resolved.",
+      "bot_reports": "How many chats the bot and AI handled and how many went to your team.",
+      "sla_reports": "Chats that missed the reply time you set in Settings > SLA."
+    }
   }
 }

@@ -2,6 +2,7 @@
 import Button from 'dashboard/components-next/button/Button.vue';
 import Input from 'dashboard/components-next/input/Input.vue';
 import Icon from 'dashboard/components-next/icon/Icon.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 import ContactSortMenu from './components/ContactSortMenu.vue';
 import ContactMoreActions from './components/ContactMoreActions.vue';
 import ComposeConversation from 'dashboard/components-next/NewConversation/ComposeConversation.vue';
@@ -36,8 +37,11 @@ const emit = defineEmits([
     <div
       class="flex items-start sm:items-center justify-between w-full py-6 gap-2 mx-auto max-w-5xl"
     >
-      <span class="text-xl font-medium truncate text-n-slate-12">
-        {{ headerTitle }}
+      <span
+        class="flex items-center min-w-0 gap-1.5 text-xl font-medium text-n-slate-12"
+      >
+        <span class="truncate">{{ headerTitle }}</span>
+        <HelpTip :text="$t('HELP_TIPS.contacts')" />
       </span>
       <div class="flex items-center flex-col sm:flex-row flex-shrink-0 gap-4">
         <div v-if="showSearch" class="flex items-center gap-2 w-full">
