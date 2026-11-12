@@ -5,7 +5,8 @@ class CsCopilot::Tools # rubocop:disable Metrics/ClassLength
 
   TIMEZONE = 'Asia/Karachi'.freeze
   # Tool sets that live in their own classes (chatbot flows and gallery, appointments).
-  EXTENSIONS = [CsCopilot::BotTools, CsCopilot::AppointmentTools, CsCopilot::CatalogTools, CsCopilot::SmartFeatureTools].freeze
+  EXTENSIONS = [CsCopilot::BotTools, CsCopilot::AppointmentTools, CsCopilot::CatalogTools, CsCopilot::SmartFeatureTools,
+                CsCopilot::AutomationTools].freeze
   WRITE_TOOLS = (%w[add_labels assign_conversation change_status add_private_note send_reply set_chat_ai
                     create_canned_response create_label add_faqs add_product_images remove_ai_knowledge update_ai_agent] +
                  EXTENSIONS.flat_map { |extension| extension::WRITE_TOOLS }).freeze
