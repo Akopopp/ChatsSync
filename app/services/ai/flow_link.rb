@@ -60,7 +60,8 @@ class Ai::FlowLink
   def after_send
     return unless extra_messages?
 
-    result = request(:post, '/api/ai/send-box', conversation_id: conversation.display_id, inbox_id: conversation.inbox_id, box_id: @box_id, sender: sender)
+    result = request(:post, '/api/ai/send-box', conversation_id: conversation.display_id, inbox_id: conversation.inbox_id,
+                                                box_id: @box_id, sender: sender)
     stop_ai if result['handover']
   end
 
