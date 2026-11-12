@@ -29,7 +29,8 @@ class CsCopilot::GuideTools
                    'Copilot can list templates and write and submit a new one.',
     'smart_features' => 'Settings > Smart features: switches for AI extras (typing, returning customers, payment screenshots, photo search, ' \
                         'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), ads (ad report, ' \
-                        'Meta sales), you (daily report, email alerts, Google Sheet) and safety. Each has a ? with how to use it. Copilot can switch them with update_smart_features.',
+                        'Meta sales), you (daily report, email alerts, Google Sheet) and safety. Each has a ? with how to use it. ' \
+                        'Copilot can switch them with update_smart_features.',
     'online_store' => 'Settings > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
                       'WhatsApp number and an approved template, then copy the store link. Shopify: Settings > Notifications > Webhooks > ' \
                       'Create webhook (Order creation, Order fulfillment, Checkout creation and update), format JSON, paste the link. ' \
