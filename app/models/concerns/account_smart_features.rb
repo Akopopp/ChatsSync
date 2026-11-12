@@ -41,6 +41,11 @@ module AccountSmartFeatures
     'alert_order' => true,
     'alert_handoff' => true,
     'alert_rules' => '',
+    'google_sheet' => false,
+    'sheet_url' => '',
+    'sheet_leads' => true,
+    'sheet_orders' => true,
+    'sheet_bookings' => true,
     'health_guard' => false,
     'stop_opt_out' => false
   }.freeze
@@ -88,6 +93,7 @@ module AccountSmartFeatures
     when 'follow_up_hours' then value.to_i.clamp(FOLLOW_UP_HOURS.min, FOLLOW_UP_HOURS.max)
     when 'cod_inbox_id', 'repeat_reminder_inbox_id', 'ship_inbox_id', 'cart_inbox_id' then value.to_i
     when 'review_link' then value.to_s.strip.match?(%r{\Ahttps?://\S+\z}) ? value.to_s.strip.truncate(500) : ''
+    when 'sheet_url' then value.to_s.strip.match?(SmartFeatures::GoogleSheet::URL) ? value.to_s.strip : ''
     else ActiveModel::Type::Boolean.new.cast(value) == true
     end
   end

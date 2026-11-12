@@ -18,6 +18,9 @@ class Order < ApplicationRecord
   # Smart features > "Send sales to Meta" (does nothing unless switched on).
   after_commit -> { SmartFeatures::MetaSale.send_if_due(self) }, on: [:create, :update], if: -> { saved_change_to_status? || previously_new_record? }
 
+  # Smart features > "Google Sheet" (does nothing unless switched on).
+  after_create_commit -> { SmartFeatures::GoogleSheet.order(self) }
+
   def summary(setting)
     lines = items.map { |item| "- #{item['name']} x#{item['quantity']} – #{setting.money(item['price'].to_d * item['quantity'])}" }
     lines << "Delivery: #{setting.money(delivery_fee)}" if delivery_fee.positive?

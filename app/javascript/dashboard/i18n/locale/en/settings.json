@@ -1464,6 +1464,10 @@
         "TITLE": "Shipping updates on WhatsApp",
         "HINT": "When you ship an order in Shopify or WooCommerce, the customer gets your WhatsApp template with the courier name, tracking number and tracking link. Meta charges for each template message."
       },
+      "GOOGLE_SHEET": {
+        "TITLE": "Google Sheet",
+        "HINT": "New leads the AI collects, new orders and new appointments go into your own Google Sheet, one tab each. No Google sign-in needed."
+      },
       "EMAIL_ALERTS": {
         "TITLE": "Email alerts",
         "HINT": "Get an email when a chat needs you: a new AI order, the AI passing a chat to your team, or anything you describe in your own words."
@@ -1562,6 +1566,20 @@
     },
     "CART": {
       "AFTER": "Send reminder after"
+    },
+    "SHEET": {
+      "STEP_1": "Open your Google Sheet and go to Extensions > Apps Script.",
+      "STEP_2": "Delete what is there, paste the script below and click Save.",
+      "STEP_3": "Click Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Click Deploy and allow access.",
+      "STEP_4": "Copy the Web app URL and paste it below.",
+      "SCRIPT": "Script for your sheet",
+      "COPIED": "Script copied",
+      "URL": "Web app URL",
+      "URL_PLACEHOLDER": "https://script.google.com/macros/s/.../exec",
+      "URL_INVALID": "Paste the Web app URL from Apps Script. It starts with https://script.google.com/macros/s/ and ends with /exec.",
+      "SHEET_LEADS": "Add new leads (tab: Leads)",
+      "SHEET_ORDERS": "Add new orders (tab: Orders)",
+      "SHEET_BOOKINGS": "Add new appointments (tab: Bookings)"
     },
     "ALERTS": {
       "ALERT_ORDER": "Email me when the AI takes an order",

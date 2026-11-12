@@ -50,6 +50,8 @@ class Ai::LeadCapture
     conversation.add_labels(['lead'])
     conversation.messages.create!(account_id: account.id, inbox_id: conversation.inbox_id, message_type: :activity,
                                   content: "Lead details from AI: #{details.map { |key, value| "#{key}: #{value}" }.join(' · ')}")
+    SmartFeatures::GoogleSheet.add(account, :leads, { 'Name' => contact.name, 'Phone' => contact.phone_number }.merge(details)
+                                                      .merge('Chat' => SmartFeatures::GoogleSheet.chat_link(conversation)))
   end
 
   # Website chat visitors get names like "bitter-glade-754"; WhatsApp contacts are often just their number.

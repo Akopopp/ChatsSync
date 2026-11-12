@@ -22,6 +22,8 @@ const cart = ref(null);
 const currency = ref('Rs');
 const reviewLink = ref('');
 const alertRules = ref('');
+const sheetUrl = ref('');
+const sheetScript = ref('');
 
 // Each group is a card; every item has its own on/off switch.
 const GROUPS = [
@@ -59,7 +61,7 @@ const GROUPS = [
   {
     key: 'OWNER',
     icon: 'i-lucide-mail',
-    items: ['daily_report', 'email_alerts'],
+    items: ['daily_report', 'email_alerts', 'google_sheet'],
   },
   {
     key: 'SAFETY',
@@ -102,6 +104,8 @@ const apply = data => {
   currency.value = data.currency || 'Rs';
   reviewLink.value = data.features.review_link || '';
   alertRules.value = data.features.alert_rules || '';
+  sheetUrl.value = data.features.sheet_url || '';
+  sheetScript.value = data.sheet_script || '';
 };
 
 const load = async () => {
@@ -129,6 +133,24 @@ const save = async changes => {
 };
 
 const toggle = key => save({ [key]: !features.value[key] });
+
+const saveSheetUrl = () => {
+  const url = sheetUrl.value.trim();
+  if (url === (features.value.sheet_url || '')) return;
+  if (
+    url &&
+    !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)
+  ) {
+    useAlert(t('SMART_FEATURES.SHEET.URL_INVALID'));
+    return;
+  }
+  save({ sheet_url: url });
+};
+
+const copySheetScript = async () => {
+  await copyTextToClipboard(sheetScript.value);
+  useAlert(t('SMART_FEATURES.SHEET.COPIED'));
+};
 
 const saveAlertRules = () => {
   const rules = alertRules.value.trim();
@@ -304,6 +326,74 @@ onMounted(load);
                     {{ $t('SMART_FEATURES.ALERTS.RULES_HELP') }}
                   </span>
                 </label>
+              </div>
+
+              <div
+                v-if="key === 'google_sheet' && features.google_sheet"
+                class="grid gap-3 text-sm"
+              >
+                <ol class="grid gap-2 text-xs text-n-slate-12">
+                  <li
+                    v-for="step in [1, 2, 3, 4]"
+                    :key="step"
+                    class="flex items-start gap-2 px-3 py-2 rounded-lg bg-n-alpha-1"
+                  >
+                    <span
+                      class="flex items-center justify-center flex-shrink-0 rounded-full size-5 bg-n-brand text-white"
+                    >
+                      {{ step }}
+                    </span>
+                    {{ $t(`SMART_FEATURES.SHEET.STEP_${step}`) }}
+                  </li>
+                </ol>
+                <div class="grid gap-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-n-slate-11">
+                      {{ $t('SMART_FEATURES.SHEET.SCRIPT') }}
+                    </span>
+                    <button
+                      class="px-3 py-1.5 rounded-lg text-sm outline outline-1 outline-n-weak text-n-slate-12 hover:outline-n-strong"
+                      @click="copySheetScript"
+                    >
+                      {{ $t('SMART_FEATURES.COD.COPY') }}
+                    </button>
+                  </div>
+                  <pre
+                    class="max-h-40 overflow-auto px-3 py-2 rounded-lg bg-n-alpha-1 text-xs text-n-slate-12 whitespace-pre"
+                    >{{ sheetScript }}</pre
+                  >
+                </div>
+                <label class="grid gap-1">
+                  <span class="text-n-slate-11">
+                    {{ $t('SMART_FEATURES.SHEET.URL') }}
+                  </span>
+                  <input
+                    v-model="sheetUrl"
+                    type="url"
+                    class="!mb-0 text-sm"
+                    :placeholder="$t('SMART_FEATURES.SHEET.URL_PLACEHOLDER')"
+                    @blur="saveSheetUrl"
+                    @keyup.enter="saveSheetUrl"
+                  />
+                </label>
+                <div
+                  v-for="kind in [
+                    'sheet_leads',
+                    'sheet_orders',
+                    'sheet_bookings',
+                  ]"
+                  :key="kind"
+                  class="flex items-center justify-between gap-4"
+                >
+                  <span class="text-n-slate-12">
+                    {{ $t(`SMART_FEATURES.SHEET.${featureKey(kind)}`) }}
+                  </span>
+                  <Switch
+                    :model-value="!!features[kind]"
+                    :aria-label="$t(`SMART_FEATURES.SHEET.${featureKey(kind)}`)"
+                    @change="save({ [kind]: !features[kind] })"
+                  />
+                </div>
               </div>
 
               <div

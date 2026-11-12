@@ -35,6 +35,7 @@ class Api::V1::Accounts::SmartFeaturesController < Api::V1::Accounts::BaseContro
       reminder: account.smart_feature_on?(:repeat_reminder) ? SmartFeatures::RepeatReminder.settings_for(account) : nil,
       ship: account.smart_feature_on?(:ship_updates) ? SmartFeatures::StoreUpdates.settings_for(account, 'ship') : nil,
       cart: account.smart_feature_on?(:cart_recovery) ? SmartFeatures::StoreUpdates.settings_for(account, 'cart') : nil,
+      sheet_script: account.smart_feature_on?(:google_sheet) ? SmartFeatures::GoogleSheet::SCRIPT : nil,
       currency: account.catalog_setting&.currency || 'Rs'
     }
   end
