@@ -24,6 +24,8 @@ import CopilotLauncher from 'dashboard/components-next/copilot/CopilotLauncher.v
 import CopilotContainer from 'dashboard/components/copilot/CopilotContainer.vue';
 
 import MobileSidebarLauncher from 'dashboard/components-next/sidebar/MobileSidebarLauncher.vue';
+import MobileBottomNav from 'dashboard/components-next/sidebar/MobileBottomNav.vue';
+import { CHAT_ROUTES } from 'dashboard/components-next/sidebar/chatRoutes';
 import { useCallsStore } from 'dashboard/stores/calls';
 
 export default {
@@ -37,6 +39,7 @@ export default {
     CopilotContainer,
     FloatingCallWidget,
     MobileSidebarLauncher,
+    MobileBottomNav,
   },
   setup() {
     const upgradePageRef = ref(null);
@@ -69,6 +72,10 @@ export default {
     },
     showUpgradePage() {
       return this.upgradePageRef?.shouldShowUpgradePage;
+    },
+    // Phones get the bottom menu everywhere except inside an open chat.
+    showsBottomNav() {
+      return !this.showUpgradePage && !CHAT_ROUTES.includes(this.$route.name);
     },
     bypassUpgradePage() {
       return [
@@ -142,6 +149,7 @@ export default {
 
     <main
       class="flex flex-1 h-full w-full min-h-0 px-0 overflow-hidden bg-n-surface-1"
+      :class="{ 'pb-14 md:pb-0': showsBottomNav }"
     >
       <UpgradePage
         v-show="showUpgradePage"
@@ -157,7 +165,7 @@ export default {
         <router-view />
         <CommandBar />
         <CopilotLauncher />
-        <MobileSidebarLauncher
+        <MobileBottomNav
           :is-mobile-sidebar-open="isMobileSidebarOpen"
           @toggle="toggleMobileSidebar"
         />

@@ -294,6 +294,13 @@
       "NEW_INBOX": "Add Inbox"
     }
   },
+  "MOBILE_NAV": {
+    "HOME": "Home",
+    "CHATS": "Chats",
+    "COPILOT": "Copilot",
+    "CONTACTS": "Contacts",
+    "MENU": "Menu"
+  },
   "SIDEBAR": {
     "NO_ITEMS": "No items",
     "CURRENTLY_VIEWING_ACCOUNT": "Currently viewing:",
