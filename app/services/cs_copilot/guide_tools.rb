@@ -28,8 +28,8 @@ class CsCopilot::GuideTools
                    'and submit it; Meta approves in minutes to 24 hours. Needed for messages outside the 24-hour window. ' \
                    'Copilot can list templates and write and submit a new one.',
     'smart_features' => 'Settings > Smart features: switches for AI extras (typing, returning customers, payment screenshots, photo search, ' \
-                        'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), ads (ad report, Meta sales), you (daily report, email alerts, ' \
-                        'Google Sheet) and safety. Each has a ? with how to use it. Copilot can switch them with update_smart_features.',
+                        'follow-up), customers (reviews, repeat reminders, broadcast tools, WhatsApp forms), ads (ad report, ' \
+                        'Meta sales), you (daily report, email alerts, Google Sheet) and safety. Each has a ? with how to use it. Copilot can switch them with update_smart_features.',
     'online_store' => 'Settings > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
                       'WhatsApp number and an approved template, then copy the store link. Shopify: Settings > Notifications > Webhooks > ' \
                       'Create webhook (Order creation, Order fulfillment, Checkout creation and update), format JSON, paste the link. ' \
