@@ -199,6 +199,7 @@ onMounted(fetchSetting);
 
         <BillingCard
           :title="$t('APPOINTMENTS.TEMPLATES.TITLE')"
+          :help="$t('APPOINTMENTS.TEMPLATES.HELP')"
           :description="$t('APPOINTMENTS.TEMPLATES.DESCRIPTION')"
         >
           <div class="px-5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
@@ -216,6 +217,7 @@ onMounted(fetchSetting);
 
         <BillingCard
           :title="$t('APPOINTMENTS.STATUS.TITLE')"
+          :help="$t('APPOINTMENTS.STATUS.HELP')"
           :description="$t('APPOINTMENTS.STATUS.DESCRIPTION')"
         >
           <template #action>
@@ -334,6 +336,7 @@ onMounted(fetchSetting);
 
         <BillingCard
           :title="$t('APPOINTMENTS.HOURS.TITLE')"
+          :help="$t('APPOINTMENTS.HOURS.HELP')"
           :description="$t('APPOINTMENTS.HOURS.DESCRIPTION')"
         >
           <template #action>
@@ -421,6 +424,7 @@ onMounted(fetchSetting);
 
         <BillingCard
           :title="$t('APPOINTMENTS.RULES.TITLE')"
+          :help="$t('APPOINTMENTS.RULES.HELP')"
           :description="$t('APPOINTMENTS.RULES.DESCRIPTION')"
         >
           <template #action>
@@ -484,6 +488,7 @@ onMounted(fetchSetting);
 
         <BillingCard
           :title="$t('APPOINTMENTS.SERVICES.TITLE')"
+          :help="$t('APPOINTMENTS.SERVICES.HELP')"
           :description="$t('APPOINTMENTS.SERVICES.DESCRIPTION')"
         >
           <template #action>

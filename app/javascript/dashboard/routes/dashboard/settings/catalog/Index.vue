@@ -217,6 +217,7 @@ onMounted(fetchAll);
 
         <BillingCard
           :title="$t('CATALOG.STATUS.TITLE')"
+          :help="$t('CATALOG.STATUS.HELP')"
           :description="$t('CATALOG.STATUS.DESCRIPTION')"
         >
           <template #action>
@@ -296,6 +297,7 @@ onMounted(fetchAll);
 
         <BillingCard
           :title="$t('CATALOG.PRODUCTS.TITLE')"
+          :help="$t('CATALOG.PRODUCTS.HELP')"
           :description="$t('CATALOG.PRODUCTS.DESCRIPTION')"
         >
           <div class="px-5 grid grid-cols-1 gap-4 text-sm">
@@ -420,6 +422,7 @@ onMounted(fetchAll);
 
         <BillingCard
           :title="$t('CATALOG.ORDERS.TITLE')"
+          :help="$t('CATALOG.ORDERS.HELP')"
           :description="$t('CATALOG.ORDERS.DESCRIPTION')"
         >
           <template #action>

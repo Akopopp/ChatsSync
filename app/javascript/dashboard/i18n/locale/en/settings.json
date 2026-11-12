@@ -694,6 +694,16 @@
       "BEHAVIOUR": "Behaviour",
       "FAQS": "FAQs",
       "MEDIA": "Media"
+    },
+    "HELP": {
+      "SCOPE": "Ad chats only: the AI answers people who message you from a Facebook or Instagram ad. All WhatsApp chats: it answers everyone. Your team can always take over a chat.",
+      "INBOXES": "Pick the numbers and pages where the AI replies. Leave all on to use it everywhere.",
+      "FLOWS": "Turn on to let the AI and your chatbot flow work together. When a flow box answers the question, the AI sends that box with its buttons. Taps continue the flow; anything typed gets an AI reply. Needs a published flow in the inbox.",
+      "LIMIT": "Example: 5 means after 5 AI replies in a row the AI stops and the chat goes to your team. Your team's reply or \"Turn AI on\" starts the count again. 0 means no limit.",
+      "SKILLS": "Extra jobs the AI can do in chat: book appointments, take catalog orders and collect lead details. Each one has its own switch.",
+      "INSTRUCTIONS": "Rules in your own words, like \"Always ask for the city\" or \"Never give discounts\". The AI follows them in every reply.",
+      "EXAMPLES": "Write a few customer questions with the exact answers you like. The AI copies the style and details.",
+      "HANDOFF": "The message the customer gets when the AI passes the chat to your team, for example after a complaint or when it does not know the answer."
     }
   },
   "PLAN_USAGE": {
@@ -734,7 +744,8 @@
       "FULL": "You have used all of your {item} this month.",
       "LOCKED": "Monthly contact limit reached: {count} new chat(s) are locked until you upgrade.",
       "ACTION": "View plan"
-    }
+    },
+    "USAGE_HELP": "How much of your plan you used. AI replies reset every day and every month. Message ChatsSync on WhatsApp to add AI replies, numbers or team members."
   },
   "BILLING_SETTINGS": {
     "TITLE": "Billing",
@@ -1247,7 +1258,8 @@
       "COPIED": "Link copied",
       "OPEN_CALENDAR": "Open the appointments calendar",
       "GOOGLE": "Google Calendar",
-      "GOOGLE_NOTE": "Copy this private link. In Google Calendar open Other calendars → + → From URL and paste it. Your bookings will show on your phone too. Do not share this link."
+      "GOOGLE_NOTE": "Copy this private link. In Google Calendar open Other calendars → + → From URL and paste it. Your bookings will show on your phone too. Do not share this link.",
+      "HELP": "Turn appointments on so the AI can offer free times and book them. Customers can also book from your booking page link."
     },
     "HOURS": {
       "TITLE": "Working hours",
@@ -1256,7 +1268,8 @@
       "BREAK": "Break",
       "DAYS_OFF": "Days off",
       "DAYS_OFF_NOTE": "Holidays or days you are closed. No bookings are taken on these dates.",
-      "ADD_DAY_OFF": "Add day off"
+      "ADD_DAY_OFF": "Add day off",
+      "HELP": "The days and hours you take appointments. The AI only offers free times inside these hours."
     },
     "DAYS": {
       "D0": "Sunday",
@@ -1274,7 +1287,8 @@
       "CAPACITY": "Customers per slot",
       "DAYS_AHEAD": "Days ahead customers can book",
       "NOTICE": "Minimum notice (minutes)",
-      "TIMEZONE": "Time zone"
+      "TIMEZONE": "Time zone",
+      "HELP": "How long each slot is, how far ahead customers can book and when they get a reminder."
     },
     "SERVICES": {
       "TITLE": "Services",
@@ -1282,7 +1296,8 @@
       "NAME": "Service name",
       "MINUTES": "Minutes",
       "PRICE": "Price",
-      "ADD": "Add service"
+      "ADD": "Add service",
+      "HELP": "The services customers can book, each with its own length and price if you want."
     },
     "LIST": {
       "EMPTY": "No appointments in this view.",
@@ -1302,7 +1317,8 @@
       "SALON": "Salon / Spa",
       "CONSULTANT": "Consultant / Office",
       "PROPERTY": "Property visit",
-      "RESTAURANT": "Restaurant table"
+      "RESTAURANT": "Restaurant table",
+      "HELP": "Ready settings for common businesses. Pick one to fill in hours, services and slot length, then change anything you like."
     },
     "FORM": {
       "NEW_TITLE": "New appointment",
@@ -1375,7 +1391,8 @@
       "PAGE": "Menu page",
       "PAGE_NOTE": "A page with all your products and pictures, with an order on WhatsApp button. Share it anywhere.",
       "COPY": "Copy link",
-      "COPIED": "Link copied"
+      "COPIED": "Link copied",
+      "HELP": "Turn the catalog on so the AI can show products and prices. Turn on \"AI takes orders\" to let it take orders in chat, and set the delivery fee and minimum order."
     },
     "PRODUCTS": {
       "TITLE": "Products",
@@ -1391,7 +1408,8 @@
       "SOLD_OUT": "Mark sold out",
       "AVAILABLE": "Mark available",
       "NO_CATEGORY": "Other",
-      "EMPTY": "No products yet."
+      "EMPTY": "No products yet.",
+      "HELP": "Add each product with a name, price and picture. On WhatsApp the AI shows them as cards with an Order now button. Mark a product sold out to hide it."
     },
     "ORDERS": {
       "TITLE": "Orders",
@@ -1408,7 +1426,8 @@
         "CANCELLED": "Cancelled"
       },
       "DOWNLOAD": "Download CSV",
-      "FROM_STORE": "From {ref}"
+      "FROM_STORE": "From {ref}",
+      "HELP": "Orders taken by the AI, your team or your online store. Change the status as you pack, ship and deliver; the AI tells customers the status when they ask."
     }
   },
   "SMART_FEATURES": {

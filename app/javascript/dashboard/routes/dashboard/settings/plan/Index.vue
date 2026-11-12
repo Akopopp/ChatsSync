@@ -111,6 +111,7 @@ const rows = computed(() =>
 
         <BillingCard
           :title="$t('PLAN_USAGE.USAGE_TITLE')"
+          :help="$t('PLAN_USAGE.USAGE_HELP')"
           :description="$t('PLAN_USAGE.USAGE_DESCRIPTION')"
         >
           <div

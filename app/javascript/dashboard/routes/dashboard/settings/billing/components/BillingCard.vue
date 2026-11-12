@@ -10,6 +10,10 @@ defineProps({
     type: String,
     required: true,
   },
+  help: {
+    type: String,
+    default: '',
+  },
 });
 </script>
 
@@ -17,7 +21,7 @@ defineProps({
   <div
     class="rounded-xl shadow-sm border border-n-weak bg-n-solid-2 py-5 space-y-5"
   >
-    <BillingHeader :title :description class="px-5">
+    <BillingHeader :title :description :help class="px-5">
       <slot name="action" />
     </BillingHeader>
     <slot />

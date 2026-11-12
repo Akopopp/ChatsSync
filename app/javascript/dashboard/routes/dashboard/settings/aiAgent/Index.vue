@@ -10,6 +10,7 @@ import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import ButtonV4 from 'next/button/Button.vue';
 import Switch from 'next/switch/Switch.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 import Checkbox from 'next/checkbox/Checkbox.vue';
 import RadioCard from 'next/radioCard/RadioCard.vue';
 import TabBar from 'next/tabbar/TabBar.vue';
@@ -400,8 +401,11 @@ onMounted(fetchAll);
             <!-- Setup -->
             <div v-if="currentTab === 'setup'" class="grid gap-5">
               <div class="grid gap-3">
-                <h3 class="text-sm font-medium text-n-slate-12">
+                <h3
+                  class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                >
                   {{ $t('AI_AGENT.SCOPE.TITLE') }}
+                  <HelpTip :text="$t('AI_AGENT.HELP.SCOPE')" />
                 </h3>
                 <div class="grid sm:grid-cols-2 gap-3">
                   <RadioCard
@@ -426,8 +430,11 @@ onMounted(fetchAll);
 
               <div class="grid gap-3">
                 <div class="grid gap-0.5">
-                  <h3 class="text-sm font-medium text-n-slate-12">
+                  <h3
+                    class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                  >
                     {{ $t('AI_AGENT.INBOXES.TITLE') }}
+                    <HelpTip :text="$t('AI_AGENT.HELP.INBOXES')" />
                   </h3>
                   <p class="text-xs text-n-slate-11">
                     {{ $t('AI_AGENT.INBOXES.NOTE') }}
@@ -459,8 +466,11 @@ onMounted(fetchAll);
               </div>
 
               <div class="grid gap-3">
-                <h3 class="text-sm font-medium text-n-slate-12">
+                <h3
+                  class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                >
                   {{ $t('AI_AGENT.FLOWS.TITLE') }}
+                  <HelpTip :text="$t('AI_AGENT.HELP.FLOWS')" />
                 </h3>
                 <div
                   class="grid gap-4 p-4 rounded-xl outline outline-1 outline-n-weak"
@@ -516,8 +526,11 @@ onMounted(fetchAll);
                     class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-n-weak"
                   >
                     <span class="grid gap-0.5 min-w-0 flex-1">
-                      <span class="text-sm text-n-slate-12">
+                      <span
+                        class="flex items-center gap-1.5 text-sm text-n-slate-12"
+                      >
                         {{ $t('AI_AGENT.FLOWS.LIMIT') }}
+                        <HelpTip :text="$t('AI_AGENT.HELP.LIMIT')" />
                       </span>
                       <span class="text-xs text-n-slate-11">
                         {{ $t('AI_AGENT.FLOWS.LIMIT_NOTE') }}
@@ -536,8 +549,11 @@ onMounted(fetchAll);
 
               <div class="grid gap-3">
                 <div class="grid gap-0.5">
-                  <h3 class="text-sm font-medium text-n-slate-12">
+                  <h3
+                    class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                  >
                     {{ $t('AI_AGENT.SKILLS.TITLE') }}
+                    <HelpTip :text="$t('AI_AGENT.HELP.SKILLS')" />
                   </h3>
                   <p class="text-xs text-n-slate-11">
                     {{ $t('AI_AGENT.SKILLS.DESCRIPTION') }}
@@ -681,7 +697,10 @@ onMounted(fetchAll);
                 />
               </label>
               <label class="grid gap-1 text-sm text-n-slate-12">
-                {{ $t('AI_AGENT.BUSINESS.INSTRUCTIONS') }}
+                <span class="flex items-center gap-1.5">
+                  {{ $t('AI_AGENT.BUSINESS.INSTRUCTIONS') }}
+                  <HelpTip :text="$t('AI_AGENT.HELP.INSTRUCTIONS')" />
+                </span>
                 <textarea
                   v-model="agent.instructions"
                   rows="3"
@@ -693,7 +712,10 @@ onMounted(fetchAll);
                 />
               </label>
               <label class="grid gap-1 text-sm text-n-slate-12">
-                {{ $t('AI_AGENT.BUSINESS.EXAMPLES') }}
+                <span class="flex items-center gap-1.5">
+                  {{ $t('AI_AGENT.BUSINESS.EXAMPLES') }}
+                  <HelpTip :text="$t('AI_AGENT.HELP.EXAMPLES')" />
+                </span>
                 <textarea
                   v-model="agent.reply_examples"
                   rows="4"
@@ -703,7 +725,10 @@ onMounted(fetchAll);
                 />
               </label>
               <label class="grid gap-1 text-sm text-n-slate-12">
-                {{ $t('AI_AGENT.BUSINESS.HANDOFF') }}
+                <span class="flex items-center gap-1.5">
+                  {{ $t('AI_AGENT.BUSINESS.HANDOFF') }}
+                  <HelpTip :text="$t('AI_AGENT.HELP.HANDOFF')" />
+                </span>
                 <input
                   v-model="agent.handoff_message"
                   type="text"
