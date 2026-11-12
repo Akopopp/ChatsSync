@@ -26,10 +26,12 @@ class Ai::PromptBuilder
                     'warranty' => 'Warranty', 'timings' => 'Opening hours', 'location' => 'Address and location' }.freeze
 
   LANGUAGES = {
-    'roman_urdu' => 'Always reply in Roman Urdu (Urdu in English letters), whatever language the customer uses.',
+    'roman_urdu' => 'Always reply in Roman Urdu (Urdu in English letters) the way people write on WhatsApp, whatever language the customer ' \
+                    'uses. Keep everyday English words like plan, price, order and delivery in English.',
     'english' => 'Always reply in English, whatever language the customer uses, with no Urdu words such as aap or ji.',
     'urdu' => 'Always reply in Urdu script, whatever language the customer uses.'
   }.freeze
+  URDU_SCRIPT_RULE = 'The customer writes in Urdu script: reply in Urdu script.'.freeze
 
   # first_reply: true when the AI has not replied in this chat yet, so it greets only once.
   # extra: more sections, like free appointment times or the product catalog.
@@ -108,11 +110,14 @@ class Ai::PromptBuilder
   end
 
   # The model follows a direct "reply in X" better than a general rule.
+  # With Roman Urdu chosen, a customer who writes in Urdu script still gets Urdu script.
   def language_rule(question, earlier)
+    detected = chat_language(question, earlier)
+    return URDU_SCRIPT_RULE if detected == :urdu_script && agent.reply_language == 'roman_urdu'
     return LANGUAGES[agent.reply_language] if LANGUAGES.key?(agent.reply_language)
 
-    case chat_language(question, earlier)
-    when :urdu_script then 'The customer writes in Urdu script: reply in Urdu script.'
+    case detected
+    when :urdu_script then URDU_SCRIPT_RULE
     when :roman_urdu then 'The customer writes in Roman Urdu (Urdu in English letters): reply only in Roman Urdu, not in English.'
     when :english then 'The customer writes in English: reply only in English, with no Urdu words such as aap, ji or bhai.'
     else 'Reply in the same language the customer used.'

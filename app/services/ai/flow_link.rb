@@ -68,11 +68,23 @@ class Ai::FlowLink
   private
 
   def boxes
-    @boxes ||= if conversation && self.class.on?(conversation)
-                 Array(request(:get, "/api/ai/boxes?inbox_id=#{conversation.inbox_id}")['boxes']).first(MAX_BOXES)
-               else
-                 []
-               end
+    return @boxes if @boxes
+    return @boxes = [] unless conversation && self.class.on?(conversation)
+
+    all = Array(request(:get, "/api/ai/boxes?inbox_id=#{conversation.inbox_id}")['boxes'])
+    @boxes = all.reject { |box| already_sent?(box) }.first(MAX_BOXES)
+  end
+
+  # A box the customer already got in this chat (like the flow's welcome message) is not offered again,
+  # so a question is answered instead of repeating that box. Text after a {{variable}} differs per customer.
+  def already_sent?(box)
+    start = box['text'].to_s.split('{{').first.to_s.squish.first(60)
+    start.length >= 15 && sent_texts.any? { |text| text.include?(start) }
+  end
+
+  def sent_texts
+    @sent_texts ||= conversation.messages.where(message_type: :outgoing, private: false).where.not(content: [nil, ''])
+                                .reorder(id: :desc).limit(100).pluck(:content).map(&:squish)
   end
 
   # The flow reached a "Talk to a human" box: the team takes over and the AI stops in this chat.
