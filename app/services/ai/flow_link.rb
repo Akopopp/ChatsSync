@@ -46,10 +46,12 @@ class Ai::FlowLink
     TEXT
   end
 
+  # The flow's welcome box already greets the customer, so with it the AI's own text is not sent (one welcome, not two).
   def apply(reply, roman_urdu:) # rubocop:disable Lint/UnusedMethodArgument
     id = reply[BOX_TAG, 1]
-    @box_id = id if boxes.any? { |box| box['id'] == id }
-    reply.gsub(BOX_TAG, '').strip
+    box = boxes.find { |item| item['id'] == id }
+    @box_id = box['id'] if box
+    box&.dig('welcome') ? '' : reply.gsub(BOX_TAG, '').strip
   end
 
   def extra_messages?
