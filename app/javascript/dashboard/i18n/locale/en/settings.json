@@ -1760,5 +1760,23 @@
         "HOW": "Open Canned responses and save answers you send often. In a chat, type / to pick one."
       }
     }
+  },
+  "HELP_TIPS": {
+    "inboxes": "An inbox is one channel, like a WhatsApp number. Click Add Inbox, pick WhatsApp and connect your number with Meta. All its chats then come into Chats.",
+    "agents": "Agents are your team members. Add their email and they get an invite. Administrators can change settings; agents can only reply to chats.",
+    "team_management": "Put agents into teams like Sales or Support. You can then send a chat to a whole team instead of one person.",
+    "labels": "Labels are tags for chats and contacts, like price or order. Add them in a chat, then filter Chats by label. Automation and the AI can add them too.",
+    "canned_responses": "Save answers you send often. In any chat, type / and pick one to send it in a second.",
+    "automation": "Rules that run by themselves: When something happens, If it matches, Do an action. Example: when a customer writes \"price\", add the label price and email me. You can also ask Copilot to make a rule.",
+    "agent_bots": "Bots that answer chats before your team. The ChatsSync bot runs your chatbot flows.",
+    "macros": "A macro runs a few actions with one click, like add a label, send a message and resolve the chat.",
+    "custom_attributes": "Extra fields you keep for contacts or chats, like City or Order number.",
+    "integrations": "Connect other apps, like webhooks or Shopify, to ChatsSync.",
+    "sla": "Set how fast your team should reply. ChatsSync marks the chats that are late.",
+    "webhook": "Send chat events to your own system with a link.",
+    "whatsapp_forms": "A form opens inside WhatsApp so the customer fills name, address or other details in one go. Make a form here, then send it from a chat, a chatbot flow or the AI.",
+    "copilot": "Ask Copilot in your own words. It can answer questions about your chats and numbers, explain how to use any feature, build a chatbot flow, add products, change smart features and make automation rules. It always asks before it changes anything.",
+    "calendar": "All bookings in one place. Customers book from WhatsApp or the AI; you can also add one here. Click a booking to change or cancel it.",
+    "whatsapp_campaigns": "Send an approved WhatsApp template to many contacts at once. Pick the number, the template and the contacts by label, then schedule it."
   }
 }

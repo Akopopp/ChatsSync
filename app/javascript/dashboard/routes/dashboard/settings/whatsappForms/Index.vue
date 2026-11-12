@@ -161,6 +161,7 @@ onMounted(load);
       <BaseSettingsHeader
         :title="$t('WHATSAPP_FORMS.TITLE')"
         :description="$t('WHATSAPP_FORMS.DESCRIPTION')"
+        :help="$t('HELP_TIPS.whatsapp_forms')"
       >
         <template #actions>
           <ButtonV4 v-if="!editing" icon="i-lucide-plus" @click="startNew">

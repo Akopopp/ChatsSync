@@ -39,6 +39,7 @@ const handleDelete = campaign => {
 <template>
   <CampaignLayout
     :header-title="t('CAMPAIGN.WHATSAPP.HEADER_TITLE')"
+    :help="t('HELP_TIPS.whatsapp_campaigns')"
     :button-label="t('CAMPAIGN.WHATSAPP.NEW_CAMPAIGN')"
     @click="toggleWhatsAppCampaignDialog()"
     @close="toggleWhatsAppCampaignDialog(false)"

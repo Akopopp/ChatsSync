@@ -1,5 +1,7 @@
 <script setup>
-import { useSlots } from 'vue';
+import { useSlots, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 import CustomBrandPolicyWrapper from 'dashboard/components/CustomBrandPolicyWrapper.vue';
 import { getHelpUrlForFeature } from '../../../../helper/featureHelper';
 import BackButton from '../../../../components/widgets/BackButton.vue';
@@ -31,6 +33,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  help: {
+    type: String,
+    default: '',
+  },
 });
 
 const slots = useSlots();
@@ -38,6 +44,13 @@ const slots = useSlots();
 const searchQuery = defineModel('searchQuery', { type: String, default: '' });
 
 const helpURL = getHelpUrlForFeature(props.featureName);
+
+const { t, te } = useI18n();
+const helpText = computed(() => {
+  if (props.help) return props.help;
+  const key = `HELP_TIPS.${props.featureName}`;
+  return props.featureName && te(key) ? t(key) : '';
+});
 </script>
 
 <template>
@@ -52,8 +65,9 @@ const helpURL = getHelpUrlForFeature(props.featureName);
       v-if="title"
       class="flex items-center justify-between w-full gap-4 min-h-8 mb-2"
     >
-      <h1 class="text-heading-1 text-n-slate-12">
+      <h1 class="flex items-center gap-1.5 text-heading-1 text-n-slate-12">
         {{ title }}
+        <HelpTip v-if="helpText" :text="helpText" />
       </h1>
     </div>
     <div

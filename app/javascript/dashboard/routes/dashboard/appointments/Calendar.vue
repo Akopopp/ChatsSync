@@ -7,6 +7,7 @@ import { downloadCsvFile } from 'dashboard/helper/downloadHelper';
 import AppointmentsAPI from 'dashboard/api/appointments';
 import ExportsAPI from 'dashboard/api/exports';
 import ButtonV4 from 'next/button/Button.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 import AppointmentModal from './AppointmentModal.vue';
 
 const { isAdmin } = useAdmin();
@@ -198,8 +199,11 @@ onMounted(fetchAppointments);
       class="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-n-weak"
     >
       <div class="grid">
-        <h1 class="text-lg font-semibold text-n-slate-12">
+        <h1
+          class="flex items-center gap-1 text-lg font-semibold text-n-slate-12"
+        >
           {{ $t('APPOINTMENTS.CALENDAR.TITLE') }}
+          <HelpTip :text="$t('HELP_TIPS.calendar')" />
         </h1>
         <span class="text-xs text-n-slate-11">
           {{ $t('APPOINTMENTS.CALENDAR.COUNT', { count: bookedCount }) }}

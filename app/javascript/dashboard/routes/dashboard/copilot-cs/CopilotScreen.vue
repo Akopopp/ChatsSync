@@ -14,6 +14,7 @@ import { useMapGetter } from 'dashboard/composables/store';
 import CopilotAPI from 'dashboard/api/copilot';
 import { useMessageFormatter } from 'shared/composables/useMessageFormatter';
 import ButtonV4 from 'next/button/Button.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -343,8 +344,11 @@ onBeforeUnmount(() => clearInterval(thinkingTimer));
           <span class="i-lucide-sparkles size-5" />
         </div>
         <div class="min-w-0">
-          <h1 class="text-base font-semibold text-n-slate-12 leading-tight">
+          <h1
+            class="flex items-center gap-1 text-base font-semibold text-n-slate-12 leading-tight"
+          >
             {{ $t('COPILOT.TITLE') }}
+            <HelpTip :text="$t('HELP_TIPS.copilot')" />
           </h1>
           <p class="flex items-center gap-1.5 text-xs text-n-slate-11 truncate">
             <span class="size-1.5 rounded-full bg-n-teal-9 shrink-0" />

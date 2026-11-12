@@ -1,6 +1,7 @@
 <script setup>
 import { vOnClickOutside } from '@vueuse/components';
 import Button from 'dashboard/components-next/button/Button.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 defineProps({
   headerTitle: {
@@ -8,6 +9,10 @@ defineProps({
     default: '',
   },
   buttonLabel: {
+    type: String,
+    default: '',
+  },
+  help: {
     type: String,
     default: '',
   },
@@ -25,8 +30,11 @@ const handleButtonClick = () => {
     <header class="sticky top-0 z-10 px-6">
       <div class="w-full max-w-5xl mx-auto">
         <div class="flex items-center justify-between w-full h-20 gap-2">
-          <span class="text-heading-1 text-n-slate-12">
+          <span
+            class="flex items-center gap-1.5 text-heading-1 text-n-slate-12"
+          >
             {{ headerTitle }}
+            <HelpTip v-if="help" :text="help" />
           </span>
           <div
             v-on-click-outside="[
