@@ -26,12 +26,13 @@ class Ai::Actions
     handlers.flat_map { |handler| handler.respond_to?(:media) ? handler.media : [] }
   end
 
-  # The reply sends a chatbot flow box (Ai::FlowLink), so it counts as an answer even without text.
-  def box?
-    handlers.any? { |handler| handler.respond_to?(:box?) && handler.box? }
+  # A handler sends its own messages after the reply (product cards, a chatbot flow box),
+  # so the reply counts as an answer even without text.
+  def extra_messages?
+    handlers.any? { |handler| handler.respond_to?(:extra_messages?) && handler.extra_messages? }
   end
 
-  # Runs after the reply is sent, like sending the chosen flow box with its buttons.
+  # Runs after the reply is sent, like sending product cards or the chosen flow box with its buttons.
   def after_send
     handlers.each { |handler| handler.after_send if handler.respond_to?(:after_send) }
   end

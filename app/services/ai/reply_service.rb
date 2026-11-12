@@ -138,7 +138,7 @@ class Ai::ReplyService
   def message_text(item, images)
     return if [I18n.t('appointments.form.submitted'), I18n.t('whatsapp_forms.submitted')].include?(item.content) # already confirmed
 
-    parts = [item.content.presence]
+    parts = [item.content.presence, replied_to(item)]
     item.attachments.each do |attachment|
       next unless account.plan_feature?(:ai_voice_images)
 
@@ -151,6 +151,15 @@ class Ai::ReplyService
       end
     end
     parts.compact.join("\n").presence
+  end
+
+  # A tap on a product card's "Order now" button (or any reply to one of our messages) says what it is about.
+  def replied_to(item)
+    id = item.content_attributes&.dig('in_reply_to')
+    original = id && conversation.messages.find_by(id: id, message_type: :outgoing)
+    return if original&.content.blank?
+
+    "(replying to your message: \"#{mask(original.content.truncate(200))}\")"
   end
 
   def first_reply?
@@ -214,7 +223,7 @@ class Ai::ReplyService
       text = reply.gsub(Ai::PromptBuilder::IMAGE_TAG, '').strip
       items = prompt_builder.image_items(ids) + actions.media
       interactive = actions.interactive
-      return if text.blank? && items.empty? && interactive.nil? && !actions.box?
+      return if text.blank? && items.empty? && interactive.nil? && !actions.extra_messages?
 
       send_reply(text, items, answered_up_to, interactive)
       actions.after_send
@@ -228,6 +237,10 @@ class Ai::ReplyService
       # A form message carries only text, so pictures go first in their own message.
       create_message('', items, answered_up_to) if items.any?
       create_message(text, [], answered_up_to, interactive)
+    elsif items.size > 1 && conversation.inbox.channel_type == 'Channel::Whatsapp'
+      # WhatsApp shows one picture per message, so each picture goes on its own after the text.
+      create_message(text, [], answered_up_to) if text.present?
+      items.each { |item| create_message('', [item], answered_up_to) }
     elsif text.present? || items.any?
       create_message(text, items, answered_up_to)
     end

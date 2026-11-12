@@ -51,13 +51,13 @@ class Ai::FlowLink
     reply.gsub(BOX_TAG, '').strip
   end
 
-  def box?
+  def extra_messages?
     @box_id.present?
   end
 
   # Sends the chosen box after the AI's own text, so the box and its buttons come last.
   def after_send
-    return unless box?
+    return unless extra_messages?
 
     result = request(:post, '/api/ai/send-box', conversation_id: conversation.id, inbox_id: conversation.inbox_id, box_id: @box_id, sender: sender)
     stop_ai if result['handover']

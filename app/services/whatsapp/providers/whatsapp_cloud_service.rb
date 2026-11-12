@@ -2,7 +2,9 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
   def send_message(phone_number, message)
     @message = message
 
-    if message.attachments.present?
+    if product_card?(message)
+      send_interactive_text_message(phone_number, message)
+    elsif message.attachments.present?
       send_attachment_message(phone_number, message)
     elsif message.content_attributes['whatsapp_flow'].present?
       send_flow_message(phone_number, message)
@@ -246,8 +248,15 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
     action == 'navigate' ? parameters.merge(flow_action_payload: { screen: flow['screen'] }) : parameters
   end
 
+  # An AI product card (Catalog::AiOrdering): picture on top, details and an "Order now" button.
+  def product_card?(message)
+    message.content_type == 'input_select' && message.content_attributes['product_id'].present?
+  end
+
   def send_interactive_text_message(phone_number, message)
     payload = create_payload_based_on_items(message)
+    picture = message.attachments.first if product_card?(message)
+    payload[:header] = { type: 'image', image: { link: picture.download_url } } if picture
 
     response = HTTParty.post(
       "#{phone_id_path}/messages",

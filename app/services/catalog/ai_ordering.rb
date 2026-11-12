@@ -1,6 +1,8 @@
 # What the AI agent knows and does with the product catalog in one chat: it gets the products
-# and prices in its instructions, sends product pictures with [PRODUCT:id], and its [ORDER:...]
+# and prices in its instructions, shows products with [PRODUCT:id], and its [ORDER:...]
 # tag becomes a real order here, priced from the catalog (never from the chat).
+# On WhatsApp each product shown is its own card, like a WhatsApp Business catalog item:
+# picture, name, price and details, with an "Order now" button when the business takes orders.
 class Catalog::AiOrdering
   PRODUCT_TAG = /\[PRODUCT:\s*(\d+)\s*\]/i
   TOTAL_TAG = /\[TOTAL:\s*([^\]]+)\]/i
@@ -8,6 +10,7 @@ class Catalog::AiOrdering
   QUANTITY = /[x×*]\s*(\d+)/i
   MAX_PRODUCTS = 60
   MAX_PICTURES = 4
+  ORDER_BUTTON = '🛒 Order now'.freeze
   PICTURE_RULE = 'These products have no pictures yet; if asked for pictures, say they are not available in chat right now.'.freeze
   NO_ORDERS = "- Do not take orders in chat; tell the customer how to order using the business information.\n".freeze
 
@@ -26,6 +29,19 @@ class Catalog::AiOrdering
   # Product pictures the reply should send.
   def media
     @media ||= []
+  end
+
+  # WhatsApp product cards, sent after the reply text.
+  def cards
+    @cards ||= []
+  end
+
+  def extra_messages?
+    cards.any?
+  end
+
+  def after_send
+    cards.each { |product| send_card(product) }
   end
 
   def prompt_text(question)
@@ -84,9 +100,16 @@ class Catalog::AiOrdering
   end
 
   def show_products(reply, roman_urdu:)
-    shown = account.products.available.with_attached_image.where(id: reply.scan(PRODUCT_TAG).flatten.map(&:to_i)).index_by(&:id)
-    media.concat(shown.values.select { |product| product.image.attached? }.first(MAX_PICTURES))
-    text = reply.gsub(PRODUCT_TAG) { "\n#{product_card(shown[Regexp.last_match(1).to_i])}\n" }.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
+    ids = reply.scan(PRODUCT_TAG).flatten.map(&:to_i).uniq
+    shown = account.products.available.with_attached_image.where(id: ids).index_by(&:id)
+    if whatsapp_cards?
+      cards.concat(ids.filter_map { |id| shown[id] }.first(MAX_PICTURES))
+      text = reply.gsub(PRODUCT_TAG, '')
+    else
+      media.concat(shown.values.select { |product| product.image.attached? }.first(MAX_PICTURES))
+      text = reply.gsub(PRODUCT_TAG) { "\n#{product_card(shown[Regexp.last_match(1).to_i])}\n" }
+    end
+    text = text.gsub(/^#\d+\s+/, '').gsub(/\n{3,}/, "\n\n")
     url = Catalog::PublicLink.url(setting)
     return text if shown.empty? || url.nil?
 
@@ -97,6 +120,25 @@ class Catalog::AiOrdering
     return '' if product.nil?
 
     ["*#{product.name}* – #{setting.money(product.price)}", product.description.to_s.squish.truncate(160).presence].compact.join("\n")
+  end
+
+  def whatsapp_cards?
+    channel = conversation&.inbox&.channel
+    channel.is_a?(Channel::Whatsapp) && channel.provider == 'whatsapp_cloud'
+  end
+
+  # The card's button tap comes back as a reply to this message, so the AI knows which product it is.
+  def send_card(product)
+    card = conversation.messages.new(
+      account_id: account.id, inbox_id: conversation.inbox_id, message_type: :outgoing, sender: account.ai_agent.bot,
+      content: product_card(product), content_attributes: { 'ai_generated' => true, 'product_id' => product.id }
+    )
+    if setting.take_orders
+      card.content_type = :input_select
+      card.content_attributes['items'] = [{ 'title' => ORDER_BUTTON, 'value' => "order_product_#{product.id}" }]
+    end
+    card.attachments.new(account_id: account.id, file_type: :image, file: product.image.blob) if product.image.attached?
+    card.save!
   end
 
   # Small catalogs go in whole; big ones send the products whose words match the question first.
