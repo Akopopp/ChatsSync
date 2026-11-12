@@ -6,9 +6,12 @@
    ===================================================================== */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useMapGetter } from 'dashboard/composables/store.js';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 const router = useRouter();
+const { t } = useI18n();
 const accountId = useMapGetter('getCurrentAccountId');
 const currentUser = useMapGetter('getCurrentUser');
 const currentAccount = useMapGetter('getCurrentAccount');
@@ -110,6 +113,10 @@ const bots = ref([]);
 const cannedCount = ref(0);
 const contactCount = ref(0);
 const recent = ref([]);
+const aiOn = ref(false);
+const flowOn = ref(false);
+const productCount = ref(0);
+const setupHidden = ref(false);
 
 const openRail = () => {
   window.dispatchEvent(new CustomEvent('chatssync:toggle-rail'));
@@ -158,8 +165,8 @@ const CH_COLOR = {
   wa: '#25D366', fb: '#0866FF', ig: '#E1306C', sms: '#7C4DFF',
   tg: '#26A5E4', em: '#F59E0B', web: '#0EA5E9', api: '#94A3B8', other: '#8696A0',
 };
-const chKind = t => {
-  const s = String(t || '');
+const chKind = type => {
+  const s = String(type || '');
   if (/Whatsapp/i.test(s)) return 'wa';
   if (/FacebookPage/i.test(s)) return 'fb';
   if (/Instagram/i.test(s)) return 'ig';
@@ -347,13 +354,42 @@ const setupCards = computed(() => [
   { n: 'Canned', v: cannedCount.value, i: 'i-lucide-message-square-quote', c: '#F97316', to: 'canned_list' },
 ]);
 
+/* get started checklist — chhupa dein to is account ke liye chhupa rehta hai */
+const steps = computed(() => [
+  { k: 'WHATSAPP', i: 'i-lucide-message-circle', to: 'settings_inbox_new', done: inboxes.value.some(ib => chKind(ib.channel_type) === 'wa') },
+  { k: 'AI', i: 'i-lucide-sparkles', to: 'ai_agent_settings', done: aiOn.value },
+  { k: 'FLOW', i: 'i-lucide-workflow', to: 'chatbot_builder', done: flowOn.value },
+  { k: 'PRODUCTS', i: 'i-lucide-shopping-bag', to: 'catalog_settings', done: productCount.value > 0 },
+  { k: 'TEAM', i: 'i-lucide-users', to: 'agent_list', done: agents.value.length > 1 },
+  { k: 'REPLIES', i: 'i-lucide-message-square-quote', to: 'canned_list', done: cannedCount.value > 0 },
+]);
+const stepsDone = computed(() => steps.value.filter(s => s.done).length);
+const showSetup = computed(() => !loading.value && !setupHidden.value && stepsDone.value < steps.value.length);
+const setupKey = () => `cs-setup-hidden-${accountId.value}`;
+const readSetupHidden = () => {
+  try {
+    setupHidden.value = localStorage.getItem(setupKey()) === '1';
+  } catch {
+    setupHidden.value = false;
+  }
+};
+const hideSetup = () => {
+  setupHidden.value = true;
+  try {
+    localStorage.setItem(setupKey(), '1');
+  } catch {
+    /* private window — sirf is visit ke liye chhupa */
+  }
+};
+
 /* ---------------- load ---------------- */
 const loadStatic = () =>
   Promise.all([
     soft(v1('/agents'), []), soft(v1('/inboxes'), null), soft(v1('/teams'), []),
     soft(v1('/labels'), null), soft(v1('/agent_bots'), []),
     soft(v1('/canned_responses'), []), soft(v1('/contacts?page=1'), null),
-  ]).then(([ag, ib, tm, lb, bt, cn, ct]) => {
+    soft(v1('/ai_agent'), null), soft(v1('/products'), []),
+  ]).then(([ag, ib, tm, lb, bt, cn, ct, ai, pr]) => {
     agents.value = Array.isArray(ag) ? ag : ag?.payload || [];
     inboxes.value = ib?.payload || (Array.isArray(ib) ? ib : []);
     teams.value = Array.isArray(tm) ? tm : tm?.payload || [];
@@ -361,6 +397,12 @@ const loadStatic = () =>
     bots.value = Array.isArray(bt) ? bt : bt?.payload || [];
     cannedCount.value = (Array.isArray(cn) ? cn : cn?.payload || []).length;
     contactCount.value = num(ct?.meta?.count) || (ct?.payload || []).length;
+    aiOn.value = !!ai?.enabled;
+    productCount.value = Array.isArray(pr) ? pr.length : 0;
+    const whatsapp = inboxes.value.filter(ib2 => chKind(ib2.channel_type) === 'wa').slice(0, 5);
+    return Promise.all(whatsapp.map(ib2 => soft(v1(`/inboxes/${ib2.id}/agent_bot`), null))).then(res => {
+      flowOn.value = res.some(r => r?.agent_bot?.id);
+    });
   });
 
 const loadLive = () =>
@@ -532,6 +574,7 @@ onMounted(() => {
   themeObs.observe(document.documentElement, { attributes: true });
   themeObs.observe(document.body, { attributes: true });
   window.addEventListener('resize', onResize);
+  readSetupHidden();
   refresh(true);
   timer = setInterval(() => {
     if (!document.hidden) refresh(false);
@@ -579,6 +622,52 @@ watch(accountId, () => refresh(true));
           <span class="i-lucide-rotate-cw" />
         </button>
       </header>
+
+      <!-- get started -->
+      <div v-if="showSetup" class="cs-card">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <h3 class="m-0 text-[15px] font-semibold">{{ t('GET_STARTED.TITLE') }}</h3>
+            <span class="text-xs text-[var(--tx3)]">
+              {{ t('GET_STARTED.PROGRESS', { done: stepsDone, total: steps.length }) }}
+            </span>
+          </div>
+          <button class="text-xs text-[var(--tx3)] hover:text-[var(--tx)]" @click="hideSetup">
+            {{ t('GET_STARTED.HIDE') }}
+          </button>
+        </div>
+        <div class="h-1.5 mb-3 overflow-hidden rounded-full bg-[var(--hov)]">
+          <div
+            class="h-full rounded-full bg-[var(--g)] transition-all"
+            :style="{ width: `${Math.round((stepsDone / steps.length) * 100)}%` }"
+          />
+        </div>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="s in steps"
+            :key="s.k"
+            class="flex items-center gap-3 p-3 border cursor-pointer rounded-xl border-[var(--ln)] hover:bg-[var(--hov)]"
+            @click="go(s.to)"
+          >
+            <span
+              class="flex items-center justify-center flex-shrink-0 rounded-lg size-9"
+              :class="s.done ? 'bg-[var(--g)] text-white' : 'bg-[var(--hov)] text-[var(--g)]'"
+            >
+              <span class="size-4" :class="s.done ? 'i-lucide-check' : s.i" />
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1 text-sm font-semibold" :class="{ 'line-through opacity-60': s.done }">
+                {{ t(`GET_STARTED.STEPS.${s.k}.TITLE`) }}
+                <HelpTip :text="t(`GET_STARTED.STEPS.${s.k}.HOW`)" />
+              </div>
+              <div class="text-xs truncate text-[var(--tx3)]">
+                {{ s.done ? t('GET_STARTED.DONE') : t(`GET_STARTED.STEPS.${s.k}.SHORT`) }}
+              </div>
+            </div>
+            <span v-if="!s.done" class="i-lucide-chevron-right size-4 text-[var(--tx3)]" />
+          </div>
+        </div>
+      </div>
 
       <!-- KPI -->
       <div class="cs-kpis">

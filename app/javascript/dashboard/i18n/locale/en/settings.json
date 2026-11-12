@@ -1722,5 +1722,43 @@
       "CHOICE": "Choose from a list",
       "DATE": "Date"
     }
+  },
+  "GET_STARTED": {
+    "TITLE": "Get started",
+    "PROGRESS": "{done} of {total} done. Finish these to let ChatsSync work for you.",
+    "HIDE": "Hide",
+    "DONE": "Done",
+    "STEPS": {
+      "WHATSAPP": {
+        "TITLE": "Connect WhatsApp",
+        "SHORT": "Add your WhatsApp number",
+        "HOW": "Go to Inboxes > Add Inbox > WhatsApp and connect your number with Meta. Customer messages then come into Chats."
+      },
+      "AI": {
+        "TITLE": "Turn on the AI agent",
+        "SHORT": "Let AI answer customers",
+        "HOW": "Open AI agent, add your business details and prices, pick the WhatsApp number and turn it on. Use Try it to test a question first."
+      },
+      "FLOW": {
+        "TITLE": "Build a chatbot flow",
+        "SHORT": "Menus and buttons for customers",
+        "HOW": "Open Chatbot, add boxes (text, buttons, list, form), join them and publish on your WhatsApp number. You can also ask Copilot to build one for you."
+      },
+      "PRODUCTS": {
+        "TITLE": "Add your products",
+        "SHORT": "Picture, price and stock",
+        "HOW": "Open Catalog and add each product with a picture and price. The AI then shows them as cards with an Order now button."
+      },
+      "TEAM": {
+        "TITLE": "Invite your team",
+        "SHORT": "Let agents reply to chats",
+        "HOW": "Open Agents > Add agent and enter their email. They get an invite and can reply from the same number."
+      },
+      "REPLIES": {
+        "TITLE": "Save quick replies",
+        "SHORT": "Answer common questions fast",
+        "HOW": "Open Canned responses and save answers you send often. In a chat, type / to pick one."
+      }
+    }
   }
 }
