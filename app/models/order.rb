@@ -20,6 +20,7 @@ class Order < ApplicationRecord
 
   # Smart features > "Google Sheet" (does nothing unless switched on).
   after_create_commit -> { SmartFeatures::GoogleSheet.order(self) }
+  after_create_commit -> { AutomationRules::CustomTrigger.later('order_created', conversation) }
 
   def summary(setting)
     lines = items.map { |item| "- #{item['name']} x#{item['quantity']} – #{setting.money(item['price'].to_d * item['quantity'])}" }

@@ -31,6 +31,7 @@ const alertRules = ref('');
 const codTexts = ref({ cod_confirmed_text: '', cod_cancelled_text: '' });
 const sheetUrl = ref('');
 const sheetScript = ref('');
+const appLink = ref('');
 
 // Each group is a card; every item has its own on/off switch.
 const GROUPS = [
@@ -75,7 +76,26 @@ const GROUPS = [
     icon: 'i-lucide-shield-check',
     items: ['health_guard', 'stop_opt_out'],
   },
+  {
+    key: 'APPS',
+    icon: 'i-lucide-plug',
+    items: ['app_webhook'],
+  },
 ];
+// Example other apps send to the link (shown on the card).
+const APP_EXAMPLE = JSON.stringify(
+  {
+    phone: '923001234567',
+    name: 'Ali',
+    template: 'order_update',
+    values: ['Ali', '#1024'],
+    label: 'from-website',
+  },
+  null,
+  2
+);
+// Features that have their own page: the card shows a button to it.
+const PAGES = { broadcast_tools: 'campaigns_whatsapp_index' };
 const FOLLOW_UP_HOURS = [1, 2, 3, 4, 6, 8, 12, 20];
 const META_SALES_WHEN = ['new', 'confirmed', 'delivered'];
 const REMINDER_DAYS = [7, 14, 21, 30, 45, 60, 90, 180];
@@ -129,6 +149,7 @@ const ICONS = {
   google_sheet: 'i-lucide-sheet',
   health_guard: 'i-lucide-shield-check',
   stop_opt_out: 'i-lucide-ban',
+  app_webhook: 'i-lucide-webhook',
 };
 // Features with settings: when on, their card takes the whole row so the settings have room.
 const WITH_OPTIONS = [
@@ -143,6 +164,7 @@ const WITH_OPTIONS = [
   'cart_recovery',
   'ad_report',
   'health_guard',
+  'app_webhook',
 ];
 const wide = key => features.value[key] && WITH_OPTIONS.includes(key);
 const page = computed(() => (props.store ? 'STORE_PAGE' : 'PAGE'));
@@ -170,6 +192,7 @@ const apply = data => {
   };
   sheetUrl.value = data.features.sheet_url || '';
   sheetScript.value = data.sheet_script || '';
+  appLink.value = data.app_link || '';
 };
 
 const load = async () => {
@@ -416,13 +439,22 @@ onMounted(load);
                       : $t('SMART_FEATURES.STATUS_OFF')
                   }}
                 </span>
-                <Switch
-                  :model-value="!!features[key]"
-                  :aria-label="
-                    $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.TITLE`)
-                  "
-                  @change="toggle(key)"
-                />
+                <span class="flex items-center gap-3">
+                  <router-link
+                    v-if="PAGES[key] && features[key]"
+                    :to="{ name: PAGES[key] }"
+                    class="text-sm font-medium text-n-brand"
+                  >
+                    {{ $t('SMART_FEATURES.OPEN_PAGE') }}
+                  </router-link>
+                  <Switch
+                    :model-value="!!features[key]"
+                    :aria-label="
+                      $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.TITLE`)
+                    "
+                    @change="toggle(key)"
+                  />
+                </span>
               </div>
 
               <!-- Options shown only when the feature is on -->
@@ -888,6 +920,70 @@ onMounted(load);
                     </div>
                   </div>
                 </template>
+              </div>
+
+              <div
+                v-if="key === 'app_webhook' && features.app_webhook"
+                class="grid gap-3 text-sm"
+              >
+                <label class="grid gap-1">
+                  <span class="font-medium text-n-slate-12">
+                    {{ $t('SMART_FEATURES.APP_WEBHOOK.NUMBER') }}
+                  </span>
+                  <select
+                    :value="features.app_webhook_inbox_id"
+                    class="!mb-0 text-sm"
+                    @change="
+                      save({
+                        app_webhook_inbox_id: Number($event.target.value),
+                      })
+                    "
+                  >
+                    <option :value="0">
+                      {{ $t('SMART_FEATURES.APP_WEBHOOK.PICK') }}
+                    </option>
+                    <option
+                      v-for="number in numbers"
+                      :key="number.inbox_id"
+                      :value="number.inbox_id"
+                    >
+                      {{ number.phone || number.inbox_name }}
+                    </option>
+                  </select>
+                </label>
+                <div v-if="appLink" class="grid gap-1">
+                  <span class="font-medium text-n-slate-12">
+                    {{ $t('SMART_FEATURES.APP_WEBHOOK.LINK') }}
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <code
+                      class="flex-1 min-w-0 px-3 py-2 overflow-x-auto text-xs rounded-lg bg-n-alpha-1 whitespace-nowrap"
+                    >
+                      {{ appLink }}
+                    </code>
+                    <button
+                      class="px-3 py-1.5 rounded-lg text-sm outline outline-1 outline-n-weak text-n-slate-12 hover:outline-n-strong"
+                      @click="copyStoreLink(appLink)"
+                    >
+                      {{ $t('SMART_FEATURES.COD.COPY') }}
+                    </button>
+                  </div>
+                  <span class="text-xs text-n-slate-11">
+                    {{ $t('SMART_FEATURES.APP_WEBHOOK.PRIVATE') }}
+                  </span>
+                </div>
+                <div class="grid gap-1">
+                  <span class="font-medium text-n-slate-12">
+                    {{ $t('SMART_FEATURES.APP_WEBHOOK.EXAMPLE') }}
+                  </span>
+                  <pre
+                    class="px-3 py-2 m-0 overflow-x-auto text-xs rounded-lg bg-n-alpha-1"
+                    >{{ APP_EXAMPLE }}</pre
+                  >
+                  <span class="text-xs text-n-slate-11">
+                    {{ $t('SMART_FEATURES.APP_WEBHOOK.EXAMPLE_NOTE') }}
+                  </span>
+                </div>
               </div>
 
               <div

@@ -136,7 +136,10 @@
       "CONVERSATION_UPDATED": "Conversation Updated",
       "MESSAGE_CREATED": "Message Created",
       "CONVERSATION_RESOLVED": "Conversation Resolved",
-      "CONVERSATION_OPENED": "Conversation Opened"
+      "CONVERSATION_OPENED": "Conversation Opened",
+      "ORDER_CREATED": "New order",
+      "APPOINTMENT_BOOKED": "Appointment booked",
+      "FORM_SUBMITTED": "WhatsApp form filled"
     },
     "ACTIONS": {
       "ASSIGN_AGENT": "Assign to Agent",
@@ -161,7 +164,8 @@
       "CHANGE_PRIORITY": "Change Priority",
       "ADD_SLA": "Add SLA",
       "OPEN_CONVERSATION": "Open conversation",
-      "PENDING_CONVERSATION": "Mark conversation as pending"
+      "PENDING_CONVERSATION": "Mark conversation as pending",
+      "SEND_TEMPLATE": "Send a WhatsApp template (template name | value 1 | value 2, {name} = customer's name)"
     },
     "MESSAGE_TYPES": {
       "INCOMING": "Incoming Message",

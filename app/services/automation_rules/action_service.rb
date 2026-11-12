@@ -72,6 +72,20 @@ class AutomationRules::ActionService < ActionService
     SmartFeatures::GoogleSheet.chat(@conversation)
   end
 
+  # An approved WhatsApp template, written as: template name | value 1 | value 2 ({name} and {phone} are the customer's).
+  def send_template(params)
+    name, *values = params[0].to_s.split('|').map(&:strip)
+    channel = @conversation.inbox.channel
+    return unless channel.is_a?(Channel::Whatsapp)
+
+    template = SmartFeatures::TemplateMessage.templates(channel).find { |item| item['name'] == name }
+    return if template.nil?
+
+    contact = @conversation.contact
+    values = values.map { |value| value.gsub('{name}', contact&.name.to_s).gsub('{phone}', contact&.phone_number.to_s) }
+    SmartFeatures::TemplateMessage.new(inbox: @conversation.inbox, template: template).deliver(@conversation, values)
+  end
+
   def send_email_to_team(params)
     teams = Team.where(id: params[0][:team_ids])
 

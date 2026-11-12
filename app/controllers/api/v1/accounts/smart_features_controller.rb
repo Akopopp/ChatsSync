@@ -25,6 +25,10 @@ class Api::V1::Accounts::SmartFeaturesController < Api::V1::Accounts::BaseContro
 
   private
 
+  def app_link(account)
+    "#{ENV.fetch('FRONTEND_URL', '').chomp('/')}/webhooks/app/#{account.smart_feature(:app_token)}"
+  end
+
   def features_json
     account = Current.account
     {
@@ -36,6 +40,7 @@ class Api::V1::Accounts::SmartFeaturesController < Api::V1::Accounts::BaseContro
       ship: account.smart_feature_on?(:ship_updates) ? SmartFeatures::StoreUpdates.settings_for(account, 'ship') : nil,
       cart: account.smart_feature_on?(:cart_recovery) ? SmartFeatures::StoreUpdates.settings_for(account, 'cart') : nil,
       sheet_script: account.smart_feature_on?(:google_sheet) ? SmartFeatures::GoogleSheet::SCRIPT : nil,
+      app_link: account.smart_feature_on?(:app_webhook) ? app_link(account) : nil,
       currency: account.catalog_setting&.currency || 'Rs'
     }
   end

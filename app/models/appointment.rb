@@ -19,6 +19,7 @@ class Appointment < ApplicationRecord
   after_create_commit :tell_admins, unless: -> { source == 'team' }
   # Smart features > "Google Sheet" (does nothing unless switched on).
   after_create_commit -> { SmartFeatures::GoogleSheet.appointment(self) }
+  after_create_commit -> { AutomationRules::CustomTrigger.later('appointment_booked', conversation) }
   # Smart features > "Ask for a review" (does nothing unless switched on).
   after_update_commit -> { SmartFeatures::ReviewRequest.ask(self) }, if: -> { saved_change_to_status? && status == 'done' }
 

@@ -15,6 +15,7 @@ module WhatsappForms::Response
                            answers: answers)
     tell_team(message.conversation, form, answers)
     fill_email(message.sender, form, data)
+    AutomationRules::CustomTrigger.later('form_submitted', message.conversation)
   rescue JSON::ParserError
     nil
   end

@@ -13,7 +13,7 @@ class CsCopilot::SmartFeatureTools
   SWITCHES = %w[typing_indicator returning_customers payment_check photo_search follow_up review_request broadcast_tools
                 whatsapp_forms repeat_reminder cod_confirm cod_reminder ship_updates cart_recovery ad_report meta_sales daily_report
                 email_alerts alert_order alert_handoff google_sheet sheet_leads sheet_orders sheet_bookings sheet_ai health_guard
-                stop_opt_out].freeze
+                stop_opt_out app_webhook].freeze
   VALUES = %w[follow_up_hours review_link cart_delay_hours cod_reminder_hours cod_confirmed_text cod_cancelled_text alert_rules
               sheet_url].freeze
   NAMES = { type: 'array', items: { type: 'string' } }.freeze

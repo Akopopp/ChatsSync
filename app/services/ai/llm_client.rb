@@ -17,14 +17,16 @@ class Ai::LlmClient
 
   GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/%<model>s:generateContent'.freeze
   GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'.freeze
+  # OpenAI-style providers. Mistral is a free backup (its free tier gives monthly credits); it only runs when MISTRAL_API_KEY is set.
+  OPENAI_STYLE_URLS = { 'groq' => GROQ_URL, 'mistral' => 'https://api.mistral.ai/v1/chat/completions' }.freeze
   # Quick Flash Lite models answer first while their small free daily limit lasts; Gemma (large free limit, slower) takes over after.
   DEFAULT_TEXT_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,gemini:gemma-4-26b-a4b-it,gemini:gemma-4-31b-it,' \
-                        'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b'.freeze
+                        'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,mistral:mistral-small-latest'.freeze
   DEFAULT_VISION_MODELS = 'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
   # Quickest models first, for things a person waits for on screen (like writing FAQs).
   DEFAULT_FAST_MODELS = 'groq:openai/gpt-oss-120b,gemini:gemini-3.5-flash-lite,groq:openai/gpt-oss-20b,gemini:gemini-3.1-flash-lite,' \
                         'gemini:gemma-4-26b-a4b-it'.freeze
-  KEYS = { 'gemini' => 'GEMINI_API_KEY', 'groq' => 'GROQ_API_KEY' }.freeze
+  KEYS = { 'gemini' => 'GEMINI_API_KEY', 'groq' => 'GROQ_API_KEY', 'mistral' => 'MISTRAL_API_KEY' }.freeze
   USAGE_KEY = 'chatssync:ai_usage:%<date>s:%<model>s'.freeze
   PAUSE_KEY = 'chatssync:ai_paused:%<model>s'.freeze
   # Google resets free daily limits at midnight Pacific time, so usage is counted per Pacific day.
@@ -137,7 +139,11 @@ class Ai::LlmClient
       next errors << "#{model}: paused" if self.class.paused_for(model).positive?
       break errors << 'out of time' if time_left < 3
 
-      text = provider == 'groq' ? groq_chat(model, system, messages, max_tokens) : gemini_chat(model, system, messages, images, max_tokens)
+      text = if provider == 'gemini'
+               gemini_chat(model, system, messages, images, max_tokens)
+             else
+               openai_style_chat(provider, model, system, messages, max_tokens)
+             end
       next errors << "#{model}: empty reply" if text.blank?
 
       self.class.track(model)
@@ -199,15 +205,15 @@ class Ai::LlmClient
     response.dig('candidates', 0, 'content', 'parts')&.reject { |part| part['thought'] }&.filter_map { |part| part['text'] }&.join
   end
 
-  def groq_chat(model, system, messages, max_tokens)
+  def openai_style_chat(provider, model, system, messages, max_tokens)
     body = {
       model: model,
       messages: [{ role: 'system', content: system }] + turns(messages).map { |m| { role: m[:role], content: m[:text] } },
-      temperature: 0.4,
-      max_completion_tokens: max_tokens + 1000,
-      reasoning_effort: 'low'
+      temperature: 0.4
     }
-    response = post_json(GROQ_URL, body, 'Authorization' => "Bearer #{ENV.fetch('GROQ_API_KEY')}")
+    # Groq's reasoning models think first, so they get room for that; Mistral answers straight away.
+    body.merge!(provider == 'groq' ? { max_completion_tokens: max_tokens + 1000, reasoning_effort: 'low' } : { max_tokens: max_tokens })
+    response = post_json(OPENAI_STYLE_URLS.fetch(provider), body, 'Authorization' => "Bearer #{ENV.fetch(KEYS.fetch(provider))}")
     response.dig('choices', 0, 'message', 'content')
   end
 

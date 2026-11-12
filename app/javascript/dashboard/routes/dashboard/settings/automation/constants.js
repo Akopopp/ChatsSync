@@ -686,6 +686,11 @@ export const AUTOMATIONS = {
   },
 };
 
+// ChatsSync events: a new order, a booked appointment, a filled WhatsApp form. They use the same chat conditions.
+['order_created', 'appointment_booked', 'form_submitted'].forEach(event => {
+  AUTOMATIONS[event] = { ...AUTOMATIONS.conversation_resolved };
+});
+
 export const AUTOMATION_RULE_EVENTS = [
   {
     key: 'conversation_created',
@@ -707,6 +712,9 @@ export const AUTOMATION_RULE_EVENTS = [
     key: 'conversation_opened',
     value: 'CONVERSATION_OPENED',
   },
+  { key: 'order_created', value: 'ORDER_CREATED' },
+  { key: 'appointment_booked', value: 'APPOINTMENT_BOOKED' },
+  { key: 'form_submitted', value: 'FORM_SUBMITTED' },
 ];
 
 export const AUTOMATION_ACTION_TYPES = [
@@ -796,6 +804,11 @@ export const AUTOMATION_ACTION_TYPES = [
     inputType: 'textarea',
   },
   // ChatsSync actions
+  {
+    key: 'send_template',
+    label: 'SEND_TEMPLATE',
+    inputType: 'textarea',
+  },
   {
     key: 'email_admins',
     label: 'EMAIL_ADMINS',

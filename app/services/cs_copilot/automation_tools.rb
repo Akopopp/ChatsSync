@@ -5,8 +5,10 @@ class CsCopilot::AutomationTools
   WRITE_TOOLS = %w[create_automation set_automation_active].freeze
   ADMIN_TOOLS = WRITE_TOOLS
 
-  EVENTS = %w[message_created conversation_created conversation_opened conversation_resolved conversation_updated].freeze
-  ACTION_HELP = 'send_message [text], add_label [names], remove_label [names], add_private_note [text], email_admins [reason], ' \
+  EVENTS = (%w[message_created conversation_created conversation_opened conversation_resolved conversation_updated] +
+            AutomationRules::CustomTrigger::EVENTS).freeze
+  ACTION_HELP = 'send_message [text], send_template ["template name | value 1 | value 2", {name} = customer name], ' \
+                'add_label [names], remove_label [names], add_private_note [text], email_admins [reason], ' \
                 'turn_off_ai, turn_on_ai, add_to_google_sheet, assign_agent [ids], assign_team [ids], change_priority [high|low], ' \
                 'resolve_conversation, open_conversation, send_webhook_event [url]'.freeze
 
@@ -27,9 +29,9 @@ class CsCopilot::AutomationTools
 
   DEFINITIONS = [
     fn('list_automations', 'List the When / If / Do automation rules with their event, conditions, actions and whether they are on.'),
-    fn('create_automation', 'Create a When / If / Do automation rule with at least one condition. All conditions must match (AND). ' \
+    fn('create_automation', 'Create a When / If / Do automation rule. All conditions must match (AND). ' \
                             'For "when a customer writes X" use event message_created with conditions content contains X and ' \
-                            'message_type equal_to incoming.',
+                            'message_type equal_to incoming. order_created, appointment_booked and form_submitted may have no conditions.',
        { name: { type: 'string' }, event: { type: 'string', description: EVENTS.join(', ') },
          conditions: { type: 'array', items: CONDITION }, actions: { type: 'array', items: ACTION } },
        %w[name event conditions actions]),
@@ -64,7 +66,8 @@ class CsCopilot::AutomationTools
 
   def tool_create_automation(args)
     raise CsCopilot::Tools::Error, "Event must be one of: #{EVENTS.join(', ')}" unless EVENTS.include?(args[:event])
-    raise CsCopilot::Tools::Error, 'Add at least one condition' if Array(args[:conditions]).empty?
+    no_conditions = Array(args[:conditions]).empty? && AutomationRules::CustomTrigger::EVENTS.exclude?(args[:event])
+    raise CsCopilot::Tools::Error, 'Add at least one condition' if no_conditions
 
     conditions = Array(args[:conditions]).map do |condition|
       { 'attribute_key' => condition['attribute_key'], 'filter_operator' => condition['filter_operator'],

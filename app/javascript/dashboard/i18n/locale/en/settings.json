@@ -1466,7 +1466,8 @@
       "STORE": "Online store",
       "ADS": "Ads",
       "OWNER": "For you",
-      "SAFETY": "Number safety"
+      "SAFETY": "Number safety",
+      "APPS": "Other apps"
     },
     "ITEMS": {
       "TYPING_INDICATOR": {
@@ -1582,6 +1583,12 @@
         "HINT": "A customer who sends STOP stops getting broadcasts, and START brings them back. This keeps your number's quality high.",
         "SHORT": "Customers can reply STOP to broadcasts",
         "HOW": "Turn it on. STOP stops broadcasts for that customer, START turns them back on."
+      },
+      "APP_WEBHOOK": {
+        "TITLE": "Send from other apps",
+        "SHORT": "Other apps send WhatsApp messages",
+        "HINT": "Gives you a private link. When another app (Zapier, Make, n8n, Google Forms, your website or store) sends a phone number and a message to it, ChatsSync sends that WhatsApp message from your number and it shows in Chats.",
+        "HOW": "Turn it on, pick the WhatsApp number, copy the link and paste it in the other app as a webhook (POST, JSON). Send \"text\" inside 24 hours of the customer's last message, otherwise an approved \"template\" with its \"values\"."
       }
     },
     "FOLLOW_UP_AFTER": "Follow up after",
@@ -1720,7 +1727,17 @@
       "STORE": "Shopify and WooCommerce orders on WhatsApp.",
       "ADS": "See which ads bring sales and help Meta find more buyers.",
       "OWNER": "Your numbers and alerts without opening the app.",
-      "SAFETY": "Avoid blocks and bans from Meta."
+      "SAFETY": "Avoid blocks and bans from Meta.",
+      "APPS": "Let Zapier, Make, n8n, Google Forms or your website send WhatsApp messages."
+    },
+    "OPEN_PAGE": "Open page",
+    "APP_WEBHOOK": {
+      "NUMBER": "Send from",
+      "PICK": "Pick a WhatsApp number",
+      "LINK": "Your private link",
+      "PRIVATE": "Keep this link private. Anyone with it can send messages from your number.",
+      "EXAMPLE": "What the other app sends",
+      "EXAMPLE_NOTE": "Use \"text\" instead of \"template\" and \"values\" when the customer wrote in the last 24 hours. \"name\" and \"label\" are optional."
     }
   },
   "WHATSAPP_FORMS": {

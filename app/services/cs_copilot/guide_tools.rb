@@ -41,8 +41,12 @@ class CsCopilot::GuideTools
     'email_alerts' => 'Smart features > Email alerts: emails all admins when the AI takes an order or passes a chat to the team, plus ' \
                       'your own rule in plain words, like "a customer asks for a bulk order".',
     'automation' => 'Settings > Automation: When (event) / If (conditions) / Do (actions) rules, like "when a customer writes price, add ' \
-                    'the label price and email me". Actions include send message, labels, assign, email the admins, turn AI off or on, ' \
-                    'add to Google Sheet and webhook. Copilot can create them with create_automation.',
+                    'the label price and email me". Events include new message, new chat, chat resolved, new order, appointment ' \
+                    'booked and WhatsApp form filled. Actions include send message, send a WhatsApp template, labels, assign, ' \
+                    'email the admins, turn AI off or on, add to Google Sheet and webhook. Copilot can create them with create_automation.',
+    'other_apps' => 'Smart features > Other apps > Send from other apps: a private link that Zapier, Make, n8n, Google Forms or a ' \
+                    'website posts JSON to (phone, text or template + values, name, label) and ChatsSync sends that WhatsApp ' \
+                    'message from the chosen number. To send ChatsSync events out, use an Automation with the webhook action.',
     'whatsapp_forms' => 'Smart features > WhatsApp forms > Manage forms: build a form that opens inside WhatsApp and send it from a chat. ' \
                         'Answers come back as a private note and can be downloaded.',
     'inboxes' => 'Settings > Inboxes: connect WhatsApp (official API), Facebook, Instagram or a website chat. Extra WhatsApp numbers ' \

@@ -3,9 +3,11 @@
 class CsCopilot::Llm
   ENDPOINTS = {
     'groq' => ['https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY'],
-    'gemini' => ['https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'GEMINI_API_KEY']
+    'gemini' => ['https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'GEMINI_API_KEY'],
+    'mistral' => ['https://api.mistral.ai/v1/chat/completions', 'MISTRAL_API_KEY']
   }.freeze
-  DEFAULT_MODELS = 'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'.freeze
+  DEFAULT_MODELS = 'groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite,' \
+                   'mistral:mistral-small-latest'.freeze
 
   # Returns the assistant message hash: { 'content' => ..., 'tool_calls' => [...] }
   # deadline: Ai::LlmClient.clock time by which the answer is needed
@@ -41,7 +43,8 @@ class CsCopilot::Llm
   def self.request(provider, model, messages, tools, read_timeout)
     url, key_name = ENDPOINTS[provider]
     messages = with_thought_signatures(messages) if provider == 'gemini'
-    body = { model: model, messages: messages, tools: tools, tool_choice: 'auto', temperature: 0.2, max_completion_tokens: 2000 }
+    body = { model: model, messages: messages, tools: tools, tool_choice: 'auto', temperature: 0.2 }
+    body[provider == 'mistral' ? :max_tokens : :max_completion_tokens] = 2000
     body[:reasoning_effort] = 'low' if provider == 'groq'
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{ENV.fetch(key_name)}")
