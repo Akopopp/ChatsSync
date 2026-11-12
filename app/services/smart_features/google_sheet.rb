@@ -1,6 +1,7 @@
 # Smart features > "Google Sheet": new leads, orders and appointments go into the business's own Google Sheet,
-# one tab each, and the AI can read a tab named "AI" (Ai::SheetData). The business adds our small Apps Script to the sheet (Extensions > Apps Script) and pastes its
-# web app link here, so no Google sign-in or API key is needed. New details get their own column on their own.
+# one tab each, and the AI can read a tab named "AI" (Ai::SheetData). The business adds our small Apps Script to the
+# sheet (Extensions > Apps Script) and pastes its web app link here, so no Google sign-in or API key is needed.
+# New details get their own column on their own.
 class SmartFeatures::GoogleSheet
   URL = %r{\Ahttps://script\.google\.com/macros/s/[\w-]+/exec\z}
 
@@ -27,6 +28,19 @@ class SmartFeatures::GoogleSheet
                                   'Phone' => order.customer_phone, 'Items' => items, 'Total' => setting.money(order.total),
                                   'Address' => order.address, 'Status' => order.status, 'Taken by' => order.source,
                                   'Chat' => chat_link(order.conversation) })
+  end
+
+  # Automation rules > "Add the chat to Google Sheet" (needs the Google Sheet feature on and its link).
+  def self.chat(conversation)
+    account = conversation.account
+    return unless account.smart_feature_on?(:google_sheet) && account.smart_feature(:sheet_url).match?(URL)
+
+    contact = conversation.contact
+    row = { 'Date' => Time.current.in_time_zone(zone(account)).strftime('%Y-%m-%d %H:%M'), 'Name' => contact&.name, 'Phone' => contact&.phone_number,
+            'Inbox' => conversation.inbox.name, 'Labels' => conversation.label_list.join(', '),
+            'Last message' => conversation.messages.where(message_type: :incoming).last&.content.to_s.truncate(300),
+            'Chat' => chat_link(conversation) }
+    SmartFeatures::GoogleSheetJob.perform_later(account.id, 'Chats', row)
   end
 
   def self.appointment(appointment)

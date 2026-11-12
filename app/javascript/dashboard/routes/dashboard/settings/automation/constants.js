@@ -795,6 +795,27 @@ export const AUTOMATION_ACTION_TYPES = [
     label: 'ADD_PRIVATE_NOTE',
     inputType: 'textarea',
   },
+  // ChatsSync actions
+  {
+    key: 'email_admins',
+    label: 'EMAIL_ADMINS',
+    inputType: 'textarea',
+  },
+  {
+    key: 'turn_off_ai',
+    label: 'TURN_OFF_AI',
+    inputType: null,
+  },
+  {
+    key: 'turn_on_ai',
+    label: 'TURN_ON_AI',
+    inputType: null,
+  },
+  {
+    key: 'add_to_google_sheet',
+    label: 'ADD_TO_GOOGLE_SHEET',
+    inputType: null,
+  },
   {
     key: 'change_priority',
     label: 'CHANGE_PRIORITY',

@@ -8,6 +8,12 @@ class SmartFeatures::EmailAlert
     return unless account.smart_feature_on?(:email_alerts) && (event == 'rule' || account.smart_feature_on?("alert_#{event}"))
     return unless Redis::Alfred.set("cs:email_alert:#{conversation.id}:#{event}", 1, nx: true, ex: 10.minutes.to_i)
 
+    deliver(conversation, reason)
+  end
+
+  # Also used by Automation rules ("Email the admins").
+  def self.deliver(conversation, reason)
+    account = conversation.account
     contact = conversation.contact
     last = conversation.messages.where(message_type: :incoming).last&.content.to_s.squish.truncate(300)
     meta = { 'reason' => reason.to_s.truncate(150), 'name' => contact&.name.to_s, 'phone' => contact&.phone_number.to_s,

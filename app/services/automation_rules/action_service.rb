@@ -54,6 +54,24 @@ class AutomationRules::ActionService < ActionService
     Messages::MessageBuilder.new(nil, @conversation.reload, params).perform
   end
 
+  # ChatsSync actions
+  def email_admins(message)
+    SmartFeatures::EmailAlert.deliver(@conversation, message[0].presence || @rule.name)
+  end
+
+  def turn_off_ai(_params)
+    @conversation.update!(additional_attributes: (@conversation.additional_attributes || {}).merge('ai_off' => true))
+  end
+
+  def turn_on_ai(_params)
+    attrs = (@conversation.additional_attributes || {}).except('ai_off').merge('ai_resumed_at' => Time.current.to_i)
+    @conversation.update!(additional_attributes: attrs)
+  end
+
+  def add_to_google_sheet(_params)
+    SmartFeatures::GoogleSheet.chat(@conversation)
+  end
+
   def send_email_to_team(params)
     teams = Team.where(id: params[0][:team_ids])
 
