@@ -80,6 +80,11 @@ class Ai::PromptBuilder
     PROMPT
   end
 
+  # Said again after the chat history, so the earlier messages' language does not win over this rule.
+  def reply_language_line(question, earlier = '')
+    "\nLanguage for your reply: #{language_rule(question, earlier)}\n"
+  end
+
   def image_items(ids)
     agent.account.ai_knowledge_items.enabled.images.where(id: ids).select { |item| item.image.attached? }
   end

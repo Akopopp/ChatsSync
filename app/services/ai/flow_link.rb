@@ -72,7 +72,13 @@ class Ai::FlowLink
     return @boxes = [] unless conversation && self.class.on?(conversation)
 
     all = Array(request(:get, "/api/ai/boxes?inbox_id=#{conversation.inbox_id}")['boxes'])
-    @boxes = all.reject { |box| already_sent?(box) }.first(MAX_BOXES)
+    @boxes = all.reject { |box| already_sent?(box) || (box['welcome'] && replied_before?) }.first(MAX_BOXES)
+  end
+
+  # The flow's welcome boxes only open a chat; once something was sent, the AI answers the question instead.
+  def replied_before?
+    @replied_before = conversation.messages.where(message_type: :outgoing, private: false).exists? if @replied_before.nil?
+    @replied_before
   end
 
   # A box the customer already got in this chat (like the flow's welcome message) is not offered again,

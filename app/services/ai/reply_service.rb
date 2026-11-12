@@ -28,7 +28,8 @@ class Ai::ReplyService
     actions = Ai::Actions.new(account: account, conversation: conversation)
     reply = Ai::LlmClient.chat(
       system: prompt_builder.system_prompt(question, first_reply: first_reply?, extra: prompt_extra(actions, question, images),
-                                                     earlier: earlier_customer_text(turn)) + earlier_messages(turn),
+                                                     earlier: earlier_customer_text(turn)) + earlier_messages(turn) +
+              prompt_builder.reply_language_line(question, earlier_customer_text(turn)),
       messages: [{ role: 'user', text: mask(question) }],
       images: images,
       within: 75
