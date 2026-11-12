@@ -364,6 +364,7 @@ onBeforeUnmount(() => clearInterval(thinkingTimer));
         icon="i-lucide-square-pen"
         :label="$t('COPILOT.NEW_CHAT')"
         :disabled="isThinking"
+        class="shrink-0"
         @click="newChat"
       />
     </header>

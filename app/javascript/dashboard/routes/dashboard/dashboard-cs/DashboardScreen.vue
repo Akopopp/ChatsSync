@@ -1745,6 +1745,24 @@ watch(accountId, () => refresh(true));
   .cs-kv {
     font-size: 23px;
   }
+  /* phone: numbers two in a row, like an app — less scrolling */
+  .cs-kpis {
+    gap: 10px;
+  }
+  .cs-kpis > .cs-card {
+    flex: 1 1 calc(50% - 5px);
+  }
+  .cs-kpi .cs-kh {
+    margin-bottom: 8px;
+  }
+  .cs-kpi .cs-kn {
+    font-size: 10px;
+    letter-spacing: 0.03em;
+  }
+  .cs-kpi .cs-spark,
+  .cs-kpi .cs-kfp {
+    display: none;
+  }
   .cs-svg {
     height: 210px;
   }

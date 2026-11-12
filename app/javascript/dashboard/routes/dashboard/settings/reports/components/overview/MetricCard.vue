@@ -47,7 +47,7 @@ defineProps({
     </div>
     <div
       v-if="!isLoading"
-      class="card-body max-w-full w-full ml-auto mr-auto justify-between flex"
+      class="card-body max-w-full w-full ml-auto mr-auto justify-between flex max-md:flex-wrap"
     >
       <slot />
     </div>

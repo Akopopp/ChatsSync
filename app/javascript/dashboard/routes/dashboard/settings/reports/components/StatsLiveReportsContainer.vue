@@ -111,7 +111,7 @@ onMounted(() => {
         <div
           v-for="(metric, name, index) in conversationMetrics"
           :key="index"
-          class="flex-1 min-w-0 pb-2"
+          class="flex-1 min-w-0 pb-2 max-md:flex-none max-md:basis-1/2"
         >
           <h3 class="text-base text-n-slate-11">
             {{ name }}
@@ -127,7 +127,7 @@ onMounted(() => {
         <div
           v-for="(metric, name, index) in agentStatusMetrics"
           :key="index"
-          class="flex-1 min-w-0 pb-2"
+          class="flex-1 min-w-0 pb-2 max-md:flex-none max-md:basis-1/2"
         >
           <h3 class="text-base text-n-slate-11">
             {{ name }}
