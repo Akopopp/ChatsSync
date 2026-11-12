@@ -2,6 +2,7 @@
 # The flow runs in the ChatsSync bot service (CHATSSYNC_BOT_URL). Each customer message goes to the flow first:
 # button taps, flow questions and forms stay with the flow. Everything else the AI answers, and it can answer
 # with one box of the flow by writing [BOX:id]; that box's buttons then continue the flow.
+# The bot knows chats by their number in the account (display_id), as in Chatwoot's webhooks and API.
 class Ai::FlowLink
   BOX_TAG = /\[BOX:\s*([\w-]+)\s*\]/i
   MAX_BOXES = 40
@@ -24,7 +25,7 @@ class Ai::FlowLink
   # Gives the customer's message to the flow. full: the AI will not answer this chat, so the flow does everything
   # it does on its own (like starting from its first box). Returns true when the flow used the message.
   def route(message, full:)
-    result = request(:post, '/api/ai/route', conversation_id: conversation.id, inbox_id: conversation.inbox_id,
+    result = request(:post, '/api/ai/route', conversation_id: conversation.display_id, inbox_id: conversation.inbox_id,
                                              text: message.content.to_s, mode: full ? 'full' : 'input', sender: sender)
     stop_ai if result['handover']
     result['handled'] == true
@@ -59,7 +60,7 @@ class Ai::FlowLink
   def after_send
     return unless extra_messages?
 
-    result = request(:post, '/api/ai/send-box', conversation_id: conversation.id, inbox_id: conversation.inbox_id, box_id: @box_id, sender: sender)
+    result = request(:post, '/api/ai/send-box', conversation_id: conversation.display_id, inbox_id: conversation.inbox_id, box_id: @box_id, sender: sender)
     stop_ai if result['handover']
   end
 
