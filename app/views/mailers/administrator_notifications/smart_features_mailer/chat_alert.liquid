@@ -1,0 +1,9 @@
+<p>Hello,</p>
+
+<p>A chat on <strong>{{ meta['inbox'] }}</strong> needs you: <strong>{{ meta['reason'] }}</strong></p>
+
+<p>Customer: {{ meta['name'] }} {{ meta['phone'] }}</p>
+
+{% if meta['message'] != '' %}<p>Last message: "{{ meta['message'] }}"</p>{% endif %}
+
+<p><a href="{{ action_url }}">Open the chat</a></p>

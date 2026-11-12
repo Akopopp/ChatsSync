@@ -77,6 +77,7 @@ class Ai::FlowLink
   def stop_ai
     conversation.update!(additional_attributes: (conversation.additional_attributes || {}).merge('ai_off' => true))
     conversation.add_labels(['needs-human'])
+    SmartFeatures::EmailAlert.send_for(conversation, 'handoff', 'A customer asked for your team in the chatbot flow')
   end
 
   def sender

@@ -21,6 +21,7 @@ const ship = ref(null);
 const cart = ref(null);
 const currency = ref('Rs');
 const reviewLink = ref('');
+const alertRules = ref('');
 
 // Each group is a card; every item has its own on/off switch.
 const GROUPS = [
@@ -55,7 +56,11 @@ const GROUPS = [
     icon: 'i-lucide-megaphone',
     items: ['ad_report', 'meta_sales'],
   },
-  { key: 'OWNER', icon: 'i-lucide-mail', items: ['daily_report'] },
+  {
+    key: 'OWNER',
+    icon: 'i-lucide-mail',
+    items: ['daily_report', 'email_alerts'],
+  },
   {
     key: 'SAFETY',
     icon: 'i-lucide-shield-check',
@@ -96,6 +101,7 @@ const apply = data => {
   cart.value = data.cart;
   currency.value = data.currency || 'Rs';
   reviewLink.value = data.features.review_link || '';
+  alertRules.value = data.features.alert_rules || '';
 };
 
 const load = async () => {
@@ -123,6 +129,12 @@ const save = async changes => {
 };
 
 const toggle = key => save({ [key]: !features.value[key] });
+
+const saveAlertRules = () => {
+  const rules = alertRules.value.trim();
+  if (rules !== (features.value.alert_rules || ''))
+    save({ alert_rules: rules });
+};
 
 const saveReviewLink = () => {
   const link = reviewLink.value.trim();
@@ -255,6 +267,44 @@ onMounted(load);
                   </option>
                 </select>
               </label>
+
+              <div
+                v-if="key === 'email_alerts' && features.email_alerts"
+                class="grid gap-3 text-sm"
+              >
+                <div
+                  v-for="alert in ['alert_order', 'alert_handoff']"
+                  :key="alert"
+                  class="flex items-center justify-between gap-4"
+                >
+                  <span class="text-n-slate-12">
+                    {{ $t(`SMART_FEATURES.ALERTS.${featureKey(alert)}`) }}
+                  </span>
+                  <Switch
+                    :model-value="!!features[alert]"
+                    :aria-label="
+                      $t(`SMART_FEATURES.ALERTS.${featureKey(alert)}`)
+                    "
+                    @change="save({ [alert]: !features[alert] })"
+                  />
+                </div>
+                <label class="grid gap-1">
+                  <span class="text-n-slate-12">
+                    {{ $t('SMART_FEATURES.ALERTS.RULES') }}
+                  </span>
+                  <textarea
+                    v-model="alertRules"
+                    rows="3"
+                    maxlength="500"
+                    class="!mb-0 text-sm"
+                    :placeholder="$t('SMART_FEATURES.ALERTS.RULES_PLACEHOLDER')"
+                    @blur="saveAlertRules"
+                  />
+                  <span class="text-xs text-n-slate-11">
+                    {{ $t('SMART_FEATURES.ALERTS.RULES_HELP') }}
+                  </span>
+                </label>
+              </div>
 
               <div
                 v-if="key === 'review_request' && features.review_request"
@@ -418,7 +468,7 @@ onMounted(load);
                       :key="hours"
                       :value="hours"
                     >
-                      {{ $t('SMART_FEATURES.CART.HOURS', { count: hours }) }}
+                      {{ $t('SMART_FEATURES.HOURS', { count: hours }, hours) }}
                     </option>
                   </select>
                 </label>

@@ -39,8 +39,10 @@ class Ai::Actions
 
   private
 
+  HANDLERS = [Appointments::AiBooking, Catalog::AiOrdering, Ai::OrderStatus, Ai::LeadCapture, Ai::AlertRules, Ai::FlowLink].freeze
+
   def handlers
-    @handlers ||= [Appointments::AiBooking, Catalog::AiOrdering, Ai::OrderStatus, Ai::LeadCapture, Ai::FlowLink].filter_map do |handler|
+    @handlers ||= HANDLERS.filter_map do |handler|
       handler.new(account: account, conversation: conversation) if handler.enabled_for?(account)
     end
   end

@@ -185,5 +185,6 @@ class Catalog::AiOrdering
       account_id: account.id, inbox_id: conversation.inbox_id, message_type: :activity,
       content: "Order ##{placed.number} placed by AI: #{setting.money(placed.total)} – #{placed.customer_name}"
     )
+    SmartFeatures::EmailAlert.send_for(conversation, 'order', "New order ##{placed.number}: #{setting.money(placed.total)}")
   end
 end

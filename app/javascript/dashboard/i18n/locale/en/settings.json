@@ -1464,6 +1464,10 @@
         "TITLE": "Shipping updates on WhatsApp",
         "HINT": "When you ship an order in Shopify or WooCommerce, the customer gets your WhatsApp template with the courier name, tracking number and tracking link. Meta charges for each template message."
       },
+      "EMAIL_ALERTS": {
+        "TITLE": "Email alerts",
+        "HINT": "Get an email when a chat needs you: a new AI order, the AI passing a chat to your team, or anything you describe in your own words."
+      },
       "CART_RECOVERY": {
         "TITLE": "Abandoned cart reminder",
         "HINT": "When a Shopify customer leaves the checkout without ordering, they get your WhatsApp template with their items and a link back to the checkout. Sent once per checkout. Meta charges for each template message."
@@ -1557,8 +1561,14 @@
       "CART_RECOVERY_SHOPIFY": "Shopify: create two webhooks with this link, format JSON: Checkout creation and Checkout update. Keep the Order creation webhook too, so bought carts get no reminder."
     },
     "CART": {
-      "AFTER": "Send reminder after",
-      "HOURS": "{count} hour | {count} hours"
+      "AFTER": "Send reminder after"
+    },
+    "ALERTS": {
+      "ALERT_ORDER": "Email me when the AI takes an order",
+      "ALERT_HANDOFF": "Email me when the AI passes a chat to the team",
+      "RULES": "Also email me when",
+      "RULES_PLACEHOLDER": "a customer asks for a bulk or wholesale order, or a customer is angry or complains",
+      "RULES_HELP": "Write it in your own words. The AI checks every customer message it answers and emails all admins when one matches."
     },
     "TEMPLATE_PICKER": {
       "NUMBER": "WhatsApp number",

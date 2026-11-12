@@ -37,6 +37,10 @@ module AccountSmartFeatures
     'meta_sales' => false,
     'meta_sales_when' => 'confirmed',
     'daily_report' => false,
+    'email_alerts' => false,
+    'alert_order' => true,
+    'alert_handoff' => true,
+    'alert_rules' => '',
     'health_guard' => false,
     'stop_opt_out' => false
   }.freeze
@@ -76,6 +80,7 @@ module AccountSmartFeatures
   private
 
   def cast_smart_feature(key, value)
+    return value.to_s.strip.first(500) if key == 'alert_rules'
     return value.to_s.strip.first(200) if SMART_FEATURE_TEXT_KEYS.include?(key)
     return smart_feature_choice(key, value) if SMART_FEATURE_CHOICES.key?(key)
 
