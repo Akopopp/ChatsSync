@@ -10,33 +10,23 @@ class CsCopilot::SmartFeatureTools
                                      parameters: { type: 'object', properties: properties, required: required } } }
   end
 
-  SWITCH = { type: 'boolean' }.freeze
-  CHANGES = {
-    typing_indicator: SWITCH, returning_customers: SWITCH, payment_check: SWITCH, photo_search: SWITCH,
-    follow_up: { type: 'boolean', description: 'AI follows up when a customer stops replying' },
-    follow_up_hours: { type: 'integer', description: 'Hours before the follow-up (1-20)' },
-    review_request: SWITCH, review_link: { type: 'string', description: 'Review page link (https://...)' },
-    broadcast_tools: SWITCH, whatsapp_forms: SWITCH, repeat_reminder: SWITCH,
-    cod_confirm: { type: 'boolean', description: 'Confirm Shopify / WooCommerce COD orders on WhatsApp' },
-    ship_updates: { type: 'boolean', description: 'Send courier and tracking on WhatsApp when an order ships' },
-    cart_recovery: { type: 'boolean', description: 'Remind Shopify customers who left the checkout' },
-    cart_delay_hours: { type: 'integer', description: 'Hours before the cart reminder: 1, 2, 3, 6, 12 or 24' },
-    ad_report: SWITCH, meta_sales: SWITCH, daily_report: SWITCH,
-    email_alerts: { type: 'boolean', description: 'Email the admins when a chat needs them' },
-    alert_order: { type: 'boolean', description: 'Email when the AI takes an order' },
-    alert_handoff: { type: 'boolean', description: 'Email when the AI passes a chat to the team' },
-    alert_rules: { type: 'string', description: 'Also email when ... (the owner\'s own words; the AI checks it)' },
-    google_sheet: { type: 'boolean', description: 'Add new leads, orders and appointments to a Google Sheet' },
-    sheet_url: { type: 'string', description: 'Apps Script web app link (https://script.google.com/macros/s/.../exec)' },
-    sheet_leads: SWITCH, sheet_orders: SWITCH, sheet_bookings: SWITCH,
-    sheet_ai: { type: 'boolean', description: 'AI reads the sheet tab named AI (prices, stock, delivery areas)' },
-    health_guard: SWITCH, stop_opt_out: SWITCH
-  }.freeze
+  SWITCHES = %w[typing_indicator returning_customers payment_check photo_search follow_up review_request broadcast_tools
+                whatsapp_forms repeat_reminder cod_confirm cod_reminder ship_updates cart_recovery ad_report meta_sales daily_report
+                email_alerts alert_order alert_handoff google_sheet sheet_leads sheet_orders sheet_bookings sheet_ai health_guard
+                stop_opt_out].freeze
+  VALUES = %w[follow_up_hours review_link cart_delay_hours cod_reminder_hours cod_confirmed_text cod_cancelled_text alert_rules
+              sheet_url].freeze
+  NAMES = { type: 'array', items: { type: 'string' } }.freeze
 
   DEFINITIONS = [
     fn('smart_features', 'Show which smart features are on (AI extras, store updates, alerts, Google Sheet, reports) and their settings.'),
-    fn('update_smart_features', 'Turn smart features on or off and change their settings. WhatsApp numbers and templates for ' \
-                                'store messages are picked on the Smart features page.', CHANGES)
+    fn('update_smart_features', "Turn smart features on or off and change their settings. Features: #{SWITCHES.join(', ')}. " \
+                                'cod_confirm = COD confirmation, ship_updates = tracking on WhatsApp, cart_recovery = Shopify cart reminder, ' \
+                                'email_alerts with alert_rules = email when ... (owner\'s words), google_sheet with sheet_url = Apps Script link. ' \
+                                'WhatsApp numbers and templates are picked on the Smart features page.',
+       { turn_on: NAMES, turn_off: NAMES,
+         settings: { type: 'array', description: "Other settings: #{VALUES.join(', ')}",
+                     items: { type: 'object', properties: { key: { type: 'string' }, value: { type: 'string' } } } } })
   ].freeze
 
   pattr_initialize [:account!, :user!]
@@ -50,7 +40,7 @@ class CsCopilot::SmartFeatureTools
   end
 
   def summary(_name, args)
-    "Change smart features: #{args.map { |key, value| "#{key.to_s.humanize} → #{value}" }.join(', ')}"
+    changes(args.with_indifferent_access).map { |key, value| "#{key.humanize} → #{value}" }.join(', ').prepend('Change smart features: ')
   end
 
   private
@@ -60,7 +50,13 @@ class CsCopilot::SmartFeatureTools
   end
 
   def tool_update_smart_features(args)
-    account.update_smart_features!(args.slice(*CHANGES.keys.map(&:to_s)))
+    account.update_smart_features!(changes(args))
     { done: true, page: 'Settings > Smart features' }
+  end
+
+  def changes(args)
+    switches = (Array(args[:turn_on]) & SWITCHES).index_with(true).merge((Array(args[:turn_off]) & SWITCHES).index_with(false))
+    values = Array(args[:settings]).to_h { |item| [item['key'].to_s, item['value']] }.slice(*VALUES)
+    switches.merge(values)
   end
 end

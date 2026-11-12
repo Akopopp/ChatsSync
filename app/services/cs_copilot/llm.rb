@@ -40,11 +40,27 @@ class CsCopilot::Llm
 
   def self.request(provider, model, messages, tools, read_timeout)
     url, key_name = ENDPOINTS[provider]
+    messages = with_thought_signatures(messages) if provider == 'gemini'
     body = { model: model, messages: messages, tools: tools, tool_choice: 'auto', temperature: 0.2, max_completion_tokens: 2000 }
     body[:reasoning_effort] = 'low' if provider == 'groq'
     uri = URI(url)
     request = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{ENV.fetch(key_name)}")
     request.body = body.to_json
     JSON.parse(Ai::LlmClient.post(uri, request, read_timeout: read_timeout).body).dig('choices', 0, 'message')
+  end
+
+  # Gemini 3 wants a thought signature on every earlier tool call. Calls made by another model (Groq) have none,
+  # so they get Gemini's documented placeholder.
+  def self.with_thought_signatures(messages)
+    messages.map do |message|
+      next message if message[:tool_calls].blank?
+
+      signed = message[:tool_calls].map do |call|
+        next call if call.dig('extra_content', 'google', 'thought_signature')
+
+        call.merge('extra_content' => { 'google' => { 'thought_signature' => 'skip_thought_signature_validator' } })
+      end
+      message.merge(tool_calls: signed)
+    end
   end
 end

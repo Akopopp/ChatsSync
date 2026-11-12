@@ -6,10 +6,9 @@ class CsCopilot::AutomationTools
   ADMIN_TOOLS = WRITE_TOOLS
 
   EVENTS = %w[message_created conversation_created conversation_opened conversation_resolved conversation_updated].freeze
-  ACTION_HELP = 'send_message [text], add_label [label names], remove_label [label names], add_private_note [text], ' \
-                'email_admins [reason], turn_off_ai [], turn_on_ai [], add_to_google_sheet [], assign_agent [agent ids], ' \
-                'assign_team [team ids], change_priority [urgent|high|medium|low], resolve_conversation [], ' \
-                'open_conversation [], snooze_conversation [], send_webhook_event [url]'.freeze
+  ACTION_HELP = 'send_message [text], add_label [names], remove_label [names], add_private_note [text], email_admins [reason], ' \
+                'turn_off_ai, turn_on_ai, add_to_google_sheet, assign_agent [ids], assign_team [ids], change_priority [high|low], ' \
+                'resolve_conversation, open_conversation, send_webhook_event [url]'.freeze
 
   def self.fn(name, description, properties = {}, required = [])
     { type: 'function', function: { name: name, description: description,
@@ -17,8 +16,7 @@ class CsCopilot::AutomationTools
   end
 
   CONDITION = { type: 'object', properties: {
-    attribute_key: { type: 'string', description: 'content (message text), message_type, status, inbox_id, labels, phone_number, ' \
-                                                  'email, priority, city or country_code' },
+    attribute_key: { type: 'string', description: 'content, message_type, status, inbox_id, labels, phone_number or priority' },
     filter_operator: { type: 'string', description: 'equal_to, not_equal_to, contains or does_not_contain' },
     values: { type: 'array', items: { type: 'string' } }
   } }.freeze
