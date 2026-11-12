@@ -21,12 +21,12 @@ as defined by the routes in the `admin/` namespace
   }
 %>
 
-<div class="border-slate-100 border-r w-56 flex-shrink-0 justify-between h-full flex flex-col" role="navigation">
+<div class="border-slate-100 border-b md:border-b-0 md:border-r w-full md:w-56 flex-shrink-0 justify-between md:h-full hidden peer-checked:flex md:flex flex-col max-h-[70vh] md:max-h-none overflow-auto" role="navigation">
   <div>
     <div class="flex mx-4 mb-4 border-slate-100 border-b py-6">
       <%= link_to image_tag('/brand-assets/logo_thumbnail.svg', alt: 'Chatwoot Admin Dashboard', class: 'h-10'), super_admin_root_url %>
       <div class="flex flex-col ml-3">
-        <div class="text-sm">Chatwoot <%= Chatwoot.config[:version] %></div>
+        <div class="text-sm"><%= GlobalConfig.get('INSTALLATION_NAME')['INSTALLATION_NAME'] %></div>
         <div class="text-xs text-slate-700 mt-0.5">Super Admin Console</div>
       </div>
     </div>
