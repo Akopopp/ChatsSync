@@ -25,7 +25,7 @@ class Api::V1::Accounts::AppointmentSettingsController < Api::V1::Accounts::Base
 
   def setting_params
     params.require(:appointment_setting).permit(
-      :enabled, :timezone, :slot_minutes, :capacity, :days_ahead, :min_notice_minutes, :notes,
+      :enabled, :timezone, :slot_minutes, :capacity, :days_ahead, :min_notice_minutes, :notes, :booking_mode,
       services: %i[name minutes price], closed_dates: []
     ).tap do |permitted|
       permitted[:hours] = params.dig(:appointment_setting, :hours).to_unsafe_h if params.dig(:appointment_setting, :hours).respond_to?(:to_unsafe_h)
@@ -33,7 +33,8 @@ class Api::V1::Accounts::AppointmentSettingsController < Api::V1::Accounts::Base
   end
 
   def setting_json
-    @setting.as_json(only: %i[enabled timezone slot_minutes capacity days_ahead min_notice_minutes hours services notes closed_dates]).merge(
+    @setting.as_json(only: %i[enabled timezone slot_minutes capacity days_ahead min_notice_minutes hours services notes closed_dates
+                              booking_mode]).merge(
       booking_page_url: Appointments::PublicLink.url(@setting),
       calendar_feed_url: "#{ENV.fetch('FRONTEND_URL', '').chomp('/')}/calendars/#{@setting.ics_token!}.ics",
       feature_available: Current.account.plan_feature?(:appointments),

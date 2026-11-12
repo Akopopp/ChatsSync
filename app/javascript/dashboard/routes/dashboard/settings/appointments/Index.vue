@@ -11,6 +11,7 @@ import BillingCard from '../billing/components/BillingCard.vue';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import ButtonV4 from 'next/button/Button.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 const { t } = useI18n();
 const store = useStore();
@@ -92,7 +93,8 @@ const save = async () => {
   isSaving.value = true;
   try {
     const { enabled, timezone, slot_minutes, capacity } = setting.value;
-    const { days_ahead, min_notice_minutes, notes, services } = setting.value;
+    const { days_ahead, min_notice_minutes, notes, services, booking_mode } =
+      setting.value;
     const response = await AppointmentsAPI.updateSetting({
       enabled,
       timezone,
@@ -101,6 +103,7 @@ const save = async () => {
       days_ahead,
       min_notice_minutes,
       notes,
+      booking_mode,
       services: services.filter(service => service.name),
       closed_dates: setting.value.closed_dates,
       hours: hoursFromDays(),
@@ -230,6 +233,39 @@ onMounted(fetchSetting);
               <input v-model="setting.enabled" type="checkbox" />
               {{ $t('APPOINTMENTS.STATUS.ENABLED') }}
             </label>
+            <div class="grid gap-2">
+              <span class="flex items-center gap-1.5 font-medium">
+                {{ $t('APPOINTMENTS.MODE.TITLE') }}
+                <HelpTip :text="$t('APPOINTMENTS.MODE.HELP')" />
+              </span>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label
+                  v-for="mode in ['calendar', 'chat']"
+                  :key="mode"
+                  class="flex items-start gap-3 p-3 rounded-xl border cursor-pointer"
+                  :class="
+                    setting.booking_mode === mode
+                      ? 'border-n-brand bg-n-brand/5'
+                      : 'border-n-weak'
+                  "
+                >
+                  <input
+                    v-model="setting.booking_mode"
+                    type="radio"
+                    :value="mode"
+                    class="mt-1"
+                  />
+                  <span class="grid gap-0.5">
+                    <span class="font-medium">
+                      {{ $t(`APPOINTMENTS.MODE.${mode.toUpperCase()}.TITLE`) }}
+                    </span>
+                    <span class="text-xs text-n-slate-11">
+                      {{ $t(`APPOINTMENTS.MODE.${mode.toUpperCase()}.TEXT`) }}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
             <div v-if="setting.whatsapp_forms?.length" class="grid gap-1">
               <span class="font-medium">
                 {{ $t('APPOINTMENTS.WHATSAPP.TITLE') }}

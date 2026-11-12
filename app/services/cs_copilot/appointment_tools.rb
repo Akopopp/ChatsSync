@@ -26,9 +26,11 @@ class CsCopilot::AppointmentTools
        { ids: { type: 'array', items: { type: 'integer' } }, status: { type: 'string', enum: %w[cancelled done no_show] } },
        %w[ids status]),
     fn('update_appointment_settings', 'Turn appointment booking on or off, or change slot length, customers per slot, ' \
-                                      'days customers can book ahead, minimum notice or notes for customers.',
+                                      'days customers can book ahead, minimum notice, notes for the AI, or booking_mode: ' \
+                                      'calendar (calendar form inside WhatsApp) or chat (the AI asks day and time and books).',
        { enabled: { type: 'boolean' }, slot_minutes: { type: 'integer' }, capacity: { type: 'integer' },
-         days_ahead: { type: 'integer' }, min_notice_minutes: { type: 'integer' }, notes: { type: 'string' } })
+         days_ahead: { type: 'integer' }, min_notice_minutes: { type: 'integer' }, notes: { type: 'string' },
+         booking_mode: { type: 'string' } })
   ].freeze
 
   pattr_initialize [:account!, :user!]
@@ -101,7 +103,7 @@ class CsCopilot::AppointmentTools
   end
 
   def tool_update_appointment_settings(args)
-    setting.update!(args.slice(:enabled, :slot_minutes, :capacity, :days_ahead, :min_notice_minutes, :notes))
+    setting.update!(args.slice(:enabled, :slot_minutes, :capacity, :days_ahead, :min_notice_minutes, :notes, :booking_mode))
     { done: true }
   rescue ActiveRecord::RecordInvalid => e
     raise CsCopilot::Tools::Error, e.record.errors.full_messages.to_sentence

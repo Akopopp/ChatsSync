@@ -1378,6 +1378,18 @@
         "FAILED": "Failed",
         "NOT_SET_UP": "Not set up yet"
       }
+    },
+    "MODE": {
+      "TITLE": "How customers book on WhatsApp",
+      "HELP": "Your choice. Calendar: the AI sends a calendar inside WhatsApp and the customer taps a day and time. AI books in chat: the AI asks the day and time in the chat, checks they are free and books it. Your notes for the AI below are followed either way.",
+      "CALENDAR": {
+        "TITLE": "Calendar inside WhatsApp",
+        "TEXT": "The AI sends a calendar form. If the form is not ready on a number yet, the AI books in the chat instead."
+      },
+      "CHAT": {
+        "TITLE": "AI books in chat",
+        "TEXT": "The AI asks the day and time, offers free times and books it, all in the chat."
+      }
     }
   },
   "CATALOG": {

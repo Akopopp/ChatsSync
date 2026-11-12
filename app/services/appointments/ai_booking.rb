@@ -20,8 +20,10 @@ class Appointments::AiBooking
     @setting ||= account.appointment_setting
   end
 
-  # On WhatsApp the customer books in a calendar form inside WhatsApp, so the AI only sends the form.
+  # On WhatsApp the customer books in a calendar form inside WhatsApp, so the AI only sends the form —
+  # unless the owner chose that the AI books by chatting.
   def whatsapp_form?
+    return false if setting.booking_mode == 'chat'
     return true if conversation.nil? # the AI preview shows what WhatsApp customers get
 
     inbox = conversation.inbox

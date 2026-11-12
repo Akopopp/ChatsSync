@@ -16,6 +16,7 @@ class AppointmentSetting < ApplicationRecord
   validates :days_ahead, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: 90 }
   validates :min_notice_minutes, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :notes, length: { maximum: 1000 }
+  validates :booking_mode, inclusion: { in: %w[calendar chat] }
   validate :validate_timezone_and_hours
 
   before_validation :normalize
