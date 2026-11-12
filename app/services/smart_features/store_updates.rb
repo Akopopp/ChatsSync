@@ -27,7 +27,7 @@ class SmartFeatures::StoreUpdates
     phone = SmartFeatures::StoreOrder.phone(data['phone'])
     return if phone.blank? || !first_time?("ship:#{data['ref']}:#{data['tracking_number']}")
 
-    account.orders.find_by(external_ref: data['ref'].to_s.truncate(80), status: %w[new confirmed])&.update!(status: 'shipped')
+    mark_shipped(data)
     sender.deliver(sender.conversation_for(phone, data['name']),
                    [data['name'] || 'Customer', data['ref'].to_s.split.last, data['courier'], data['tracking_number'], data['tracking_url']])
   end
@@ -64,6 +64,13 @@ class SmartFeatures::StoreUpdates
   end
 
   private
+
+  # The ChatsSync order shows as shipped, with the tracking in its notes (the AI reads it when asked).
+  def mark_shipped(data)
+    order = account.orders.find_by(external_ref: data['ref'].to_s.truncate(80), status: %w[new confirmed])
+    tracking = ['Shipped:', data['courier'], data['tracking_number'], data['tracking_url']].compact_blank.join(' ')
+    order&.update!(status: 'shipped', notes: [order.notes, tracking].compact_blank.join("\n").truncate(1000))
+  end
 
   def sender_for(prefix)
     inbox = Whatsapp::NumberHealth.cloud_inboxes(account).find { |item| item.id == account.smart_feature("#{prefix}_inbox_id") }
