@@ -1710,6 +1710,17 @@
       "STEP_1": "Turn on what you need: COD confirmation, tracking updates or cart reminders.",
       "STEP_2": "Copy the link shown under it and add it as a webhook in Shopify or WooCommerce.",
       "STEP_3": "Pick the WhatsApp number and the approved template, and you are done."
+    },
+    "ALL": "All",
+    "STATUS_ON": "On",
+    "STATUS_OFF": "Off",
+    "GROUP_TEXT": {
+      "AI": "Extra skills for your AI agent. Each one is a single switch.",
+      "CUSTOMERS": "Bring buyers back and get more reviews.",
+      "STORE": "Shopify and WooCommerce orders on WhatsApp.",
+      "ADS": "See which ads bring sales and help Meta find more buyers.",
+      "OWNER": "Your numbers and alerts without opening the app.",
+      "SAFETY": "Avoid blocks and bans from Meta."
     }
   },
   "WHATSAPP_FORMS": {

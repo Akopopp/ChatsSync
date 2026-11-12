@@ -102,6 +102,49 @@ const helpText = key =>
 const visibleGroups = computed(() =>
   GROUPS.filter(group => (group.key === 'STORE') === props.store)
 );
+// Filter chips on top of the cards: All, or one group.
+const activeGroup = ref('ALL');
+const shownGroups = computed(() =>
+  visibleGroups.value.filter(
+    group => activeGroup.value === 'ALL' || group.key === activeGroup.value
+  )
+);
+const ICONS = {
+  typing_indicator: 'i-lucide-message-circle-more',
+  returning_customers: 'i-lucide-user-check',
+  payment_check: 'i-lucide-receipt',
+  photo_search: 'i-lucide-scan-search',
+  follow_up: 'i-lucide-bell-ring',
+  review_request: 'i-lucide-star',
+  repeat_reminder: 'i-lucide-repeat',
+  broadcast_tools: 'i-lucide-megaphone',
+  whatsapp_forms: 'i-lucide-clipboard-list',
+  cod_confirm: 'i-lucide-badge-check',
+  ship_updates: 'i-lucide-truck',
+  cart_recovery: 'i-lucide-shopping-cart',
+  ad_report: 'i-lucide-chart-column',
+  meta_sales: 'i-lucide-target',
+  daily_report: 'i-lucide-mail',
+  email_alerts: 'i-lucide-bell',
+  google_sheet: 'i-lucide-sheet',
+  health_guard: 'i-lucide-shield-check',
+  stop_opt_out: 'i-lucide-ban',
+};
+// Features with settings: when on, their card takes the whole row so the settings have room.
+const WITH_OPTIONS = [
+  'follow_up',
+  'email_alerts',
+  'google_sheet',
+  'review_request',
+  'whatsapp_forms',
+  'meta_sales',
+  'cod_confirm',
+  'ship_updates',
+  'cart_recovery',
+  'ad_report',
+  'health_guard',
+];
+const wide = key => features.value[key] && WITH_OPTIONS.includes(key);
 const page = computed(() => (props.store ? 'STORE_PAGE' : 'PAGE'));
 const onCount = computed(
   () =>
@@ -257,10 +300,7 @@ onMounted(load);
           {{ $t('SMART_FEATURES.ALL_OPTIONAL', { count: onCount }) }}
         </div>
 
-        <ol
-          v-if="store"
-          class="grid gap-3 p-0 m-0 list-none sm:grid-cols-3"
-        >
+        <ol v-if="store" class="grid gap-3 p-0 m-0 list-none sm:grid-cols-3">
           <li
             v-for="step in 3"
             :key="step"
@@ -294,27 +334,64 @@ onMounted(load);
         </router-link>
 
         <div
-          v-for="group in visibleGroups"
-          :key="group.key"
-          class="rounded-2xl outline outline-1 outline-n-weak bg-n-solid-1"
+          v-if="visibleGroups.length > 1"
+          class="flex gap-2 pb-1 -mx-1 px-1 overflow-x-auto"
+          role="tablist"
         >
-          <div class="flex items-center gap-2 px-5 pt-4 pb-2">
-            <span :class="group.icon" class="size-4 text-n-slate-11" />
-            <h3 class="text-sm font-semibold text-n-slate-12">
+          <button
+            v-for="chip in ['ALL', ...visibleGroups.map(group => group.key)]"
+            :key="chip"
+            type="button"
+            role="tab"
+            :aria-selected="activeGroup === chip"
+            class="px-4 py-2 text-sm font-medium border rounded-full shrink-0 whitespace-nowrap"
+            :class="
+              activeGroup === chip
+                ? 'bg-n-slate-12 border-n-slate-12 text-n-solid-1'
+                : 'bg-n-solid-1 border-n-weak text-n-slate-12 hover:bg-n-alpha-1'
+            "
+            @click="activeGroup = chip"
+          >
+            {{
+              chip === 'ALL'
+                ? $t('SMART_FEATURES.ALL')
+                : $t(`SMART_FEATURES.GROUPS.${chip}`)
+            }}
+          </button>
+        </div>
+
+        <div v-for="group in shownGroups" :key="group.key" class="grid gap-3">
+          <div class="grid gap-0.5">
+            <h3
+              class="flex items-center gap-2 m-0 text-base font-semibold text-n-slate-12"
+            >
+              <span :class="group.icon" class="size-4 text-n-slate-11" />
               {{ $t(`SMART_FEATURES.GROUPS.${group.key}`) }}
             </h3>
+            <p class="m-0 text-sm text-n-slate-11">
+              {{ $t(`SMART_FEATURES.GROUP_TEXT.${group.key}`) }}
+            </p>
           </div>
 
-          <div class="divide-y divide-n-weak">
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <div
               v-for="key in group.items"
               :key="key"
-              class="grid gap-3 px-5 py-4"
+              class="flex flex-col gap-3 p-4 rounded-2xl outline outline-1 bg-n-solid-1"
+              :class="[
+                features[key] ? 'outline-n-teal-6' : 'outline-n-weak',
+                wide(key) ? 'sm:col-span-2 xl:col-span-3' : '',
+              ]"
             >
-              <div class="flex items-start justify-between gap-4">
-                <div class="grid gap-1 min-w-0">
+              <div class="flex items-start gap-3">
+                <span
+                  class="flex items-center justify-center rounded-xl size-10 shrink-0 bg-n-brand/10 text-n-brand"
+                >
+                  <span :class="ICONS[key]" class="size-5" />
+                </span>
+                <div class="grid flex-1 min-w-0 gap-1">
                   <span
-                    class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                    class="flex items-center gap-1.5 text-sm font-semibold text-n-slate-12"
                   >
                     {{ $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.TITLE`) }}
                     <HelpTip :text="helpText(key)" />
@@ -323,12 +400,27 @@ onMounted(load);
                     {{ $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.SHORT`) }}
                   </span>
                 </div>
+              </div>
+              <div class="flex items-center justify-between gap-3 mt-auto">
+                <span
+                  class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                  :class="
+                    features[key]
+                      ? 'bg-n-teal-3 text-n-teal-11'
+                      : 'bg-n-alpha-2 text-n-slate-11'
+                  "
+                >
+                  {{
+                    features[key]
+                      ? $t('SMART_FEATURES.STATUS_ON')
+                      : $t('SMART_FEATURES.STATUS_OFF')
+                  }}
+                </span>
                 <Switch
                   :model-value="!!features[key]"
                   :aria-label="
                     $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.TITLE`)
                   "
-                  class="mt-1"
                   @change="toggle(key)"
                 />
               </div>

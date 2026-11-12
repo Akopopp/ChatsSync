@@ -75,6 +75,12 @@ watch(
   on => document.body.classList.toggle('cs-bottom-nav', on),
   { immediate: true }
 );
+/* Settings pages: on phones their tables show each row as a card. */
+watch(
+  () => route.path.includes('/settings/'),
+  on => document.body.classList.toggle('cs-settings', on),
+  { immediate: true }
+);
 
 /* ---- mobile drawer ---- */
 const mobileOpen = ref(false);
@@ -1227,6 +1233,37 @@ body:not(.cs-own-header) main a[class*='bg-n-brand']:hover {
   /* Chats, Contacts, Home aur My Inbox ke header wala hamburger bhi nahi —
      neeche Menu hai, ek hi rasta kaafi hai */
   body.cs-bottom-nav .cs-ham {
+    display: none !important;
+  }
+  /* Settings ki tables phone par: har row ek card */
+  body.cs-settings main table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  body.cs-settings main table thead {
+    display: none !important;
+  }
+  body.cs-settings main table,
+  body.cs-settings main table tbody,
+  body.cs-settings main table tr,
+  body.cs-settings main table td {
+    display: block !important;
+    width: 100% !important;
+  }
+  body.cs-settings main table tbody tr {
+    margin-bottom: 10px;
+    padding: 10px 12px !important;
+    border: 1px solid rgb(var(--border-weak)) !important;
+    border-radius: 14px;
+    background: rgb(var(--solid-1));
+  }
+  body.cs-settings main table tbody td {
+    padding: 3px 0 !important;
+    border: 0 !important;
+    max-width: none !important;
+    white-space: normal !important;
+  }
+  body.cs-settings main table tbody td:empty {
     display: none !important;
   }
   body:not(.cs-own-header) main table {
