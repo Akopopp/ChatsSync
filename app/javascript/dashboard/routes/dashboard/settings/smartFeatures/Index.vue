@@ -22,6 +22,7 @@ const cart = ref(null);
 const currency = ref('Rs');
 const reviewLink = ref('');
 const alertRules = ref('');
+const codTexts = ref({ cod_confirmed_text: '', cod_cancelled_text: '' });
 const sheetUrl = ref('');
 const sheetScript = ref('');
 
@@ -73,6 +74,8 @@ const FOLLOW_UP_HOURS = [1, 2, 3, 4, 6, 8, 12, 20];
 const META_SALES_WHEN = ['new', 'confirmed', 'delivered'];
 const REMINDER_DAYS = [7, 14, 21, 30, 45, 60, 90, 180];
 const CART_DELAY_HOURS = [1, 2, 3, 6, 12, 24];
+const COD_REMINDER_HOURS = [2, 6, 12, 24];
+const COD_TEXTS = ['cod_confirmed_text', 'cod_cancelled_text'];
 // Online store features: the settings key prefix and the store events each one needs.
 const STORE_ITEMS = {
   cod_confirm: { prefix: 'cod', data: cod },
@@ -104,6 +107,10 @@ const apply = data => {
   currency.value = data.currency || 'Rs';
   reviewLink.value = data.features.review_link || '';
   alertRules.value = data.features.alert_rules || '';
+  codTexts.value = {
+    cod_confirmed_text: data.features.cod_confirmed_text || '',
+    cod_cancelled_text: data.features.cod_cancelled_text || '',
+  };
   sheetUrl.value = data.features.sheet_url || '';
   sheetScript.value = data.sheet_script || '';
 };
@@ -150,6 +157,11 @@ const saveSheetUrl = () => {
 const copySheetScript = async () => {
   await copyTextToClipboard(sheetScript.value);
   useAlert(t('SMART_FEATURES.SHEET.COPIED'));
+};
+
+const saveCodText = key => {
+  const text = codTexts.value[key].trim();
+  if (text !== (features.value[key] || '')) save({ [key]: text });
 };
 
 const saveAlertRules = () => {
@@ -539,6 +551,69 @@ onMounted(load);
                     @change="save({ cod_only: !features.cod_only })"
                   />
                 </div>
+                <template v-if="key === 'cod_confirm'">
+                  <div class="flex items-center justify-between gap-4">
+                    <span class="text-n-slate-12">
+                      {{ $t('SMART_FEATURES.COD.REMINDER') }}
+                    </span>
+                    <Switch
+                      :model-value="!!features.cod_reminder"
+                      :aria-label="$t('SMART_FEATURES.COD.REMINDER')"
+                      @change="save({ cod_reminder: !features.cod_reminder })"
+                    />
+                  </div>
+                  <label
+                    v-if="features.cod_reminder"
+                    class="flex items-center justify-between gap-4"
+                  >
+                    <span class="text-n-slate-11">
+                      {{ $t('SMART_FEATURES.COD.REMINDER_AFTER') }}
+                    </span>
+                    <select
+                      :value="features.cod_reminder_hours"
+                      class="!mb-0 !w-auto text-sm"
+                      @change="
+                        save({
+                          cod_reminder_hours: Number($event.target.value),
+                        })
+                      "
+                    >
+                      <option
+                        v-for="hours in COD_REMINDER_HOURS"
+                        :key="hours"
+                        :value="hours"
+                      >
+                        {{
+                          $t('SMART_FEATURES.HOURS', { count: hours }, hours)
+                        }}
+                      </option>
+                    </select>
+                  </label>
+                  <label
+                    v-for="textKey in COD_TEXTS"
+                    :key="textKey"
+                    class="grid gap-1"
+                  >
+                    <span class="text-n-slate-12">
+                      {{ $t(`SMART_FEATURES.COD.${featureKey(textKey)}`) }}
+                    </span>
+                    <textarea
+                      v-model="codTexts[textKey]"
+                      rows="2"
+                      maxlength="500"
+                      class="!mb-0 text-sm"
+                      :placeholder="
+                        $t(
+                          `SMART_FEATURES.COD.${featureKey(textKey)}_PLACEHOLDER`
+                        )
+                      "
+                      @blur="saveCodText(textKey)"
+                    />
+                  </label>
+                  <span class="text-xs text-n-slate-11">
+                    {{ $t('SMART_FEATURES.COD.TEXT_HELP') }}
+                  </span>
+                </template>
                 <label
                   v-if="key === 'cart_recovery'"
                   class="flex items-center justify-between gap-4"

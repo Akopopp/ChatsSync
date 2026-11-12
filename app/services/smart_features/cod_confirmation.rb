@@ -36,11 +36,22 @@ class SmartFeatures::CodConfirmation
     finish(order, answer == :confirm)
   end
 
+  # The reply after the tap is the business's own text (Smart features > COD, {number} = order number) or ours.
   def self.finish(order, confirmed)
     order.update!(status: confirmed ? 'confirmed' : 'cancelled')
     order.conversation.add_labels([confirmed ? CONFIRMED_LABEL : CANCELLED_LABEL])
-    text = I18n.t("smart_features.cod.#{confirmed ? 'confirmed' : 'cancelled'}", number: order.external_ref.to_s.split.last || order.number)
+    number = order.external_ref.to_s.split.last || order.number.to_s
+    own = order.account.smart_feature(confirmed ? :cod_confirmed_text : :cod_cancelled_text)
+    text = own.present? ? own.gsub('{number}', number) : I18n.t("smart_features.cod.#{confirmed ? 'confirmed' : 'cancelled'}", number: number)
     SmartFeatures::ReviewRequest.send_text(order.conversation, text)
+  end
+
+  # Smart features > COD > "Ask again if no answer": the same template once more, while the order still waits.
+  def self.remind(order)
+    return unless order&.status == 'new' && order.account.smart_feature_on?(:cod_reminder)
+    return unless order.conversation&.additional_attributes&.dig(ORDER_KEY) == order.id
+
+    new(account: order.account, data: {}).ask_again(order)
   end
 
   def self.choice(text, buttons)
@@ -59,6 +70,10 @@ class SmartFeatures::CodConfirmation
 
     conversation = sender.conversation_for(phone, data['name'])
     ask(conversation, create_order(conversation, phone))
+  end
+
+  def ask_again(order)
+    sender.deliver(order.conversation, param_values(order)) if inbox && template
   end
 
   private
@@ -106,6 +121,9 @@ class SmartFeatures::CodConfirmation
     conversation.update!(additional_attributes: (conversation.additional_attributes || {})
                            .merge(ORDER_KEY => order.id, BUTTONS_KEY => SmartFeatures::TemplateMessage.buttons(template)))
     sender.deliver(conversation, param_values(order))
+    return unless account.smart_feature_on?(:cod_reminder)
+
+    SmartFeatures::CodReminderJob.set(wait: account.smart_feature(:cod_reminder_hours).to_i.hours).perform_later(order.id)
   end
 
   def param_values(order)

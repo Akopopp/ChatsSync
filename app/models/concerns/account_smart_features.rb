@@ -24,6 +24,10 @@ module AccountSmartFeatures
     'cod_template' => '',
     'cod_template_language' => '',
     'cod_token' => '',
+    'cod_confirmed_text' => '',
+    'cod_cancelled_text' => '',
+    'cod_reminder' => false,
+    'cod_reminder_hours' => 6,
     'ship_updates' => false,
     'ship_inbox_id' => 0,
     'ship_template' => '',
@@ -54,7 +58,7 @@ module AccountSmartFeatures
   SMART_FEATURE_TEXT_KEYS = %w[cod_template cod_template_language cod_token repeat_reminder_template repeat_reminder_template_language
                                ship_template ship_template_language cart_template cart_template_language].freeze
   SMART_FEATURE_CHOICES = { 'meta_sales_when' => %w[confirmed new delivered], 'repeat_reminder_days' => %w[30 7 14 21 45 60 90 180],
-                            'cart_delay_hours' => %w[1 2 3 6 12 24] }.freeze
+                            'cart_delay_hours' => %w[1 2 3 6 12 24], 'cod_reminder_hours' => %w[6 2 12 24] }.freeze
   STORE_FEATURES = %w[cod_confirm ship_updates cart_recovery].freeze
   FOLLOW_UP_HOURS = (1..20)
 
@@ -85,7 +89,7 @@ module AccountSmartFeatures
   private
 
   def cast_smart_feature(key, value)
-    return value.to_s.strip.first(500) if key == 'alert_rules'
+    return value.to_s.strip.first(500) if %w[alert_rules cod_confirmed_text cod_cancelled_text].include?(key)
     return value.to_s.strip.first(200) if SMART_FEATURE_TEXT_KEYS.include?(key)
     return smart_feature_choice(key, value) if SMART_FEATURE_CHOICES.key?(key)
 
