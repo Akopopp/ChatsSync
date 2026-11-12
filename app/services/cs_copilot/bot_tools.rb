@@ -3,7 +3,7 @@
 # matched against this account's own list before it is read or changed.
 class CsCopilot::BotTools
   READ_TOOLS = %w[list_flows get_flow list_gallery].freeze
-  WRITE_TOOLS = %w[create_flow edit_flow_text publish_flow unpublish_flow assign_flow_inbox delete_flow
+  WRITE_TOOLS = %w[build_flow create_flow edit_flow_text publish_flow unpublish_flow assign_flow_inbox delete_flow
                    add_to_gallery remove_from_gallery].freeze
   ADMIN_TOOLS = (READ_TOOLS + WRITE_TOOLS).freeze
   MAX_STEPS = 40
@@ -15,12 +15,31 @@ class CsCopilot::BotTools
   end
 
   FLOW = { type: 'integer', description: 'Flow id from list_flows' }.freeze
+  STEP_TYPES = %w[text buttons list question media tag appointment handover].freeze
+  NEXT = { type: 'string', description: 'id of the step that comes next' }.freeze
+  STEP = { type: 'object', properties: {
+    id: { type: 'string', description: 'Short id like welcome or prices' },
+    type: { type: 'string', description: STEP_TYPES.join(', ') },
+    text: { type: 'string', description: 'Message text (list: the list message)' },
+    choices: { type: 'array', description: 'buttons (max 3) or list rows (max 10)',
+               items: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' }, next: NEXT } } },
+    next: NEXT,
+    save_as: { type: 'string', description: 'question: name to save the answer as, like name or city' },
+    labels: { type: 'string', description: 'tag: labels to add, comma separated' },
+    media_id: { type: 'integer', description: 'media: gallery file id from list_gallery' }
+  } }.freeze
 
   DEFINITIONS = [
     fn('list_flows', 'List the chatbot flows with their status (published or draft) and inbox.'),
     fn('get_flow', 'Show the steps of one chatbot flow: each step id, type, text, buttons and where it goes next.',
        { flow_id: FLOW }, ['flow_id']),
     fn('list_gallery', 'List the files in the media gallery used by chatbot flows and templates.'),
+    fn('build_flow', 'Build a whole chatbot flow from the user\'s description: steps with text, buttons, lists, questions, ' \
+                     'gallery media, labels, appointment booking and hand over to a person. The first step starts the flow. ' \
+                     'With flow_id it replaces that flow\'s steps. It is saved as a draft unless publish is true.',
+       { name: { type: 'string' }, flow_id: FLOW, inbox_id: { type: 'integer' },
+         keywords: { type: 'string', description: 'Start only on these words, comma separated (empty: any first message)' },
+         steps: { type: 'array', items: STEP }, publish: { type: 'boolean' } }, %w[name steps]),
     fn('create_flow', 'Create a new empty chatbot flow (steps are then built in the Chatbot Builder).',
        { name: { type: 'string' }, inbox_id: { type: 'integer' } }, ['name']),
     fn('edit_flow_text', 'Change the message text of one step in a chatbot flow (get step ids from get_flow).',
@@ -51,6 +70,9 @@ class CsCopilot::BotTools
   def summary(name, args)
     args = args.with_indifferent_access
     case name
+    when 'build_flow'
+      "#{args[:flow_id].present? ? "Replace the steps of #{flow_label(args[:flow_id])}" : "Build chatbot flow \"#{args[:name]}\""} " \
+        "with #{Array(args[:steps]).size} steps#{' and publish it' if args[:publish]}"
     when 'create_flow' then "Create chatbot flow \"#{args[:name]}\""
     when 'edit_flow_text' then "Change step \"#{args[:step_id]}\" of #{flow_label(args[:flow_id])} to: \"#{args[:text].to_s.truncate(150)}\""
     when 'publish_flow' then "Publish #{flow_label(args[:flow_id])}"
@@ -78,6 +100,18 @@ class CsCopilot::BotTools
 
   def tool_list_gallery(_args)
     { files: gallery.first(60).map { |file| { id: file['id'], name: file['original_name'], type: file['type'] } } }
+  end
+
+  def tool_build_flow(args)
+    definition = CsCopilot::FlowBuilder.new(steps: args[:steps], keywords: args[:keywords], gallery: gallery).definition
+    inbox_id = args[:inbox_id].presence && account.inboxes.find(args[:inbox_id]).id
+    flow_id = args[:flow_id].presence && own_flow(args[:flow_id])['id']
+    flow_id ||= request(:post, '/api/flows', json: { account_id: account.id, name: args[:name].to_s.truncate(80), inbox_id: inbox_id })
+                .dig('flow', 'id')
+    request(:put, "/api/flows/#{flow_id}", json: { name: args[:name].to_s.truncate(80), definition: definition })
+    request(:post, "/api/flows/#{flow_id}/assign-inbox", json: { inbox_id: inbox_id }) if inbox_id && args[:flow_id].present?
+    request(:post, "/api/flows/#{flow_id}/publish") if args[:publish]
+    { done: true, flow_id: flow_id, steps: definition[:nodes].size, open_in: 'Chatbot Builder' }
   end
 
   def tool_create_flow(args)

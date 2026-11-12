@@ -1429,79 +1429,117 @@
     "ITEMS": {
       "TYPING_INDICATOR": {
         "TITLE": "Show \"typing...\" while the AI writes",
-        "HINT": "On WhatsApp the customer sees \"typing...\" and their message as read while the AI prepares the reply."
+        "HINT": "On WhatsApp the customer sees \"typing...\" and their message as read while the AI prepares the reply.",
+        "SHORT": "Customer sees \"typing...\" while the AI replies",
+        "HOW": "Turn it on. Works by itself on WhatsApp whenever the AI is replying."
       },
       "RETURNING_CUSTOMERS": {
         "TITLE": "Remember returning customers",
-        "HINT": "The AI knows a customer's earlier chats, orders and appointments, and welcomes them back."
+        "HINT": "The AI knows a customer's earlier chats, orders and appointments, and welcomes them back.",
+        "SHORT": "AI remembers old customers",
+        "HOW": "Turn it on. The AI reads the customer's past chats, orders and bookings before it replies."
       },
       "PAYMENT_CHECK": {
         "TITLE": "Check payment screenshots",
-        "HINT": "When a customer sends a JazzCash, Easypaisa or bank screenshot, the AI reads the amount and transaction ID and leaves a private note for your team. The customer sees nothing."
+        "HINT": "When a customer sends a JazzCash, Easypaisa or bank screenshot, the AI reads the amount and transaction ID and leaves a private note for your team. The customer sees nothing.",
+        "SHORT": "AI reads payment screenshots",
+        "HOW": "Turn it on. When a customer sends a payment screenshot, open the chat and read the private note before you confirm."
       },
       "PHOTO_SEARCH": {
         "TITLE": "Find products from photos",
-        "HINT": "When a customer sends a photo of something they want, the AI finds the closest products in your catalog and shows them with price and picture. Needs the catalog turned on."
+        "HINT": "When a customer sends a photo of something they want, the AI finds the closest products in your catalog and shows them with price and picture. Needs the catalog turned on.",
+        "SHORT": "Customer sends a photo, AI finds the product",
+        "HOW": "Add products with pictures in Settings > Catalog, then turn this on."
       },
       "FOLLOW_UP": {
         "TITLE": "Follow up with quiet customers",
-        "HINT": "If a customer goes quiet after the AI answered (for example after asking a price), the AI sends one short follow-up. Only inside the 24-hour reply window, and never more than once."
+        "HINT": "If a customer goes quiet after the AI answered (for example after asking a price), the AI sends one short follow-up. Only inside the 24-hour reply window, and never more than once.",
+        "SHORT": "AI follows up when a customer goes quiet",
+        "HOW": "Turn it on and choose after how many hours. One follow-up per chat, only within 24 hours."
       },
       "REVIEW_REQUEST": {
         "TITLE": "Ask for a rating",
-        "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team."
+        "HINT": "When an order is marked delivered or an appointment done, the customer is asked to rate it from 1 to 5. Happy customers get your Google review link; unhappy ones are flagged for your team.",
+        "SHORT": "Ask happy customers for a Google review",
+        "HOW": "Turn it on and paste your Google review link. Mark orders Delivered or appointments Done to send it."
       },
       "REPEAT_REMINDER": {
         "TITLE": "Bring customers back",
-        "HINT": "Some days after an appointment is done or an order is delivered, the customer gets your WhatsApp template, like a reminder for the next visit, a follow-up or a refill. One reminder per visit or order. Meta charges for each template message."
+        "HINT": "Some days after an appointment is done or an order is delivered, the customer gets your WhatsApp template, like a reminder for the next visit, a follow-up or a refill. One reminder per visit or order. Meta charges for each template message.",
+        "SHORT": "Bring customers back after some days",
+        "HOW": "Turn it on, choose the WhatsApp number, an approved template and after how many days."
       },
       "BROADCAST_TOOLS": {
         "TITLE": "Broadcast tools",
-        "HINT": "In Campaigns > WhatsApp: send to everyone who messaged you, customers from ads or customers who bought, see about how much Meta charges before sending, and see who got, read and replied to each broadcast and what they ordered."
+        "HINT": "In Campaigns > WhatsApp: send to everyone who messaged you, customers from ads or customers who bought, see about how much Meta charges before sending, and see who got, read and replied to each broadcast and what they ordered.",
+        "SHORT": "Smarter WhatsApp campaigns",
+        "HOW": "Turn it on, then go to Campaigns > WhatsApp to pick who gets the message and see the cost first."
       },
       "WHATSAPP_FORMS": {
         "TITLE": "WhatsApp forms",
-        "HINT": "Make forms that open inside WhatsApp (lead details, admissions, clinic intake, quote requests) and send them from a WhatsApp chat. Answers come back to the chat as a private note and can be downloaded as CSV."
+        "HINT": "Make forms that open inside WhatsApp (lead details, admissions, clinic intake, quote requests) and send them from a WhatsApp chat. Answers come back to the chat as a private note and can be downloaded as CSV.",
+        "SHORT": "Forms that open inside WhatsApp",
+        "HOW": "Turn it on, make a form in Manage forms, then send it from any WhatsApp chat."
       },
       "COD_CONFIRM": {
         "TITLE": "Confirm COD orders on WhatsApp",
-        "HINT": "New Shopify or WooCommerce orders come into ChatsSync, and the customer gets your WhatsApp template with Confirm and Cancel buttons. The order updates on its own when they tap. Meta charges for each template message."
+        "HINT": "New Shopify or WooCommerce orders come into ChatsSync, and the customer gets your WhatsApp template with Confirm and Cancel buttons. The order updates on its own when they tap. Meta charges for each template message.",
+        "SHORT": "Customers confirm COD orders on WhatsApp",
+        "HOW": "Turn it on, pick the number and a template with Confirm and Cancel buttons, then add the store link in Shopify or WooCommerce."
       },
       "SHIP_UPDATES": {
         "TITLE": "Shipping updates on WhatsApp",
-        "HINT": "When you ship an order in Shopify or WooCommerce, the customer gets your WhatsApp template with the courier name, tracking number and tracking link. Meta charges for each template message."
+        "HINT": "When you ship an order in Shopify or WooCommerce, the customer gets your WhatsApp template with the courier name, tracking number and tracking link. Meta charges for each template message.",
+        "SHORT": "Tracking sent on WhatsApp when you ship",
+        "HOW": "Turn it on, pick the number and template, then add the store link in Shopify (Order fulfillment)."
       },
       "GOOGLE_SHEET": {
         "TITLE": "Google Sheet",
-        "HINT": "New leads the AI collects, new orders and new appointments go into your own Google Sheet, one tab each. No Google sign-in needed."
+        "HINT": "New leads the AI collects, new orders and new appointments go into your own Google Sheet, one tab each. No Google sign-in needed.",
+        "SHORT": "Leads, orders and bookings in your Google Sheet",
+        "HOW": "Turn it on and follow the 4 steps: paste our script in your sheet and paste its link here."
       },
       "EMAIL_ALERTS": {
         "TITLE": "Email alerts",
-        "HINT": "Get an email when a chat needs you: a new AI order, the AI passing a chat to your team, or anything you describe in your own words."
+        "HINT": "Get an email when a chat needs you: a new AI order, the AI passing a chat to your team, or anything you describe in your own words.",
+        "SHORT": "Email when a chat needs you",
+        "HOW": "Turn it on, choose the alerts, and write your own rule like \"a customer asks for a bulk order\"."
       },
       "CART_RECOVERY": {
         "TITLE": "Abandoned cart reminder",
-        "HINT": "When a Shopify customer leaves the checkout without ordering, they get your WhatsApp template with their items and a link back to the checkout. Sent once per checkout. Meta charges for each template message."
+        "HINT": "When a Shopify customer leaves the checkout without ordering, they get your WhatsApp template with their items and a link back to the checkout. Sent once per checkout. Meta charges for each template message.",
+        "SHORT": "Remind customers who left the checkout",
+        "HOW": "Turn it on, pick the number, template and hours, then add the store link in Shopify (Checkout creation and update)."
       },
       "AD_REPORT": {
         "TITLE": "Ad report",
-        "HINT": "See which Facebook and Instagram ads brought chats, orders, bookings and sales in the last 30 days. Counts chats that start from a Click-to-WhatsApp ad."
+        "HINT": "See which Facebook and Instagram ads brought chats, orders, bookings and sales in the last 30 days. Counts chats that start from a Click-to-WhatsApp ad.",
+        "SHORT": "Which ads bring chats and sales",
+        "HOW": "Turn it on. The report shows here after customers message you from Click-to-WhatsApp ads."
       },
       "META_SALES": {
         "TITLE": "Send sales to Meta",
-        "HINT": "When an order from an ad chat reaches the status you choose, ChatsSync tells Meta about the sale, so your ads find more people who buy. Only the amount and Meta's ad click code are sent."
+        "HINT": "When an order from an ad chat reaches the status you choose, ChatsSync tells Meta about the sale, so your ads find more people who buy. Only the amount and Meta's ad click code are sent.",
+        "SHORT": "Tell Meta about sales from ads",
+        "HOW": "Turn it on and choose when an order counts as a sale. Meta then shows your ads to more buyers."
       },
       "DAILY_REPORT": {
         "TITLE": "Daily report by email",
-        "HINT": "Every morning at 9 you get yesterday's chats, AI replies, orders, appointments and the chats still waiting for a reply."
+        "HINT": "Every morning at 9 you get yesterday's chats, AI replies, orders, appointments and the chats still waiting for a reply.",
+        "SHORT": "Morning email with yesterday's numbers",
+        "HOW": "Turn it on. All admins get the email every morning at 9."
       },
       "HEALTH_GUARD": {
         "TITLE": "WhatsApp number health",
-        "HINT": "See each number's quality rating and daily message limit from Meta, and get an email when quality drops."
+        "HINT": "See each number's quality rating and daily message limit from Meta, and get an email when quality drops.",
+        "SHORT": "Watch your WhatsApp number's quality",
+        "HOW": "Turn it on. You get an email if Meta lowers your number's quality."
       },
       "STOP_OPT_OUT": {
         "TITLE": "STOP to unsubscribe",
-        "HINT": "A customer who sends STOP stops getting broadcasts, and START brings them back. This keeps your number's quality high."
+        "HINT": "A customer who sends STOP stops getting broadcasts, and START brings them back. This keeps your number's quality high.",
+        "SHORT": "Customers can reply STOP to broadcasts",
+        "HOW": "Turn it on. STOP stops broadcasts for that customer, START turns them back on."
       }
     },
     "FOLLOW_UP_AFTER": "Follow up after",
@@ -1615,7 +1653,8 @@
       "NO_TEMPLATES": "No approved template on this number yet. Create one in WhatsApp Manager, then refresh this page.",
       "TEMPLATE_HELP": "Template variables are filled in this order: customer name, the service or items, your business name."
     },
-    "MANAGE_FORMS": "Make and edit forms"
+    "MANAGE_FORMS": "Make and edit forms",
+    "HOW_TO": "How to use: {how}"
   },
   "WHATSAPP_FORMS": {
     "TITLE": "WhatsApp forms",

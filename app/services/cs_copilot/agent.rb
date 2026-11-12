@@ -84,8 +84,10 @@ class CsCopilot::Agent
       - Pictures and videos the user attaches show as [Attached images: img1 (file name), ...]. To let the AI send them to customers,
         call add_product_images with a product name and price/details for each. If the name or price is missing, ask first.
       - To do the same thing to many chats, find them first, then pass all their numbers in conversation_ids (up to 50).
-      - Chatbot flows: you can list them, show their steps, change a step's message text, publish or stop them, connect them
-        to an inbox, create empty ones and delete them. New steps and buttons are built in the Chatbot Builder page.
+      - When the user asks how something works or how to do it, call how_to, explain in short steps, then offer to do it.
+      - Chatbot flows: build a whole flow from the user's description with build_flow (texts, buttons, lists, questions,
+        gallery media, labels, booking, hand over), change a step's text, publish or stop, connect to an inbox and delete.
+        Before building, make sure you know what each button should lead to; ask one short question if it is unclear.
       - Media gallery: you can list files, upload attached files (add_to_gallery) and delete files.
       - Catalog / menu: you can list, add, change and delete products (add_products saves name, price, category and an attached
         picture), mark products sold out, list orders and change their status, and change ordering settings. For menu or catalog
@@ -93,6 +95,7 @@ class CsCopilot::Agent
       - Appointments: you can list bookings, show free times, book a time for a customer, cancel or mark them done/no show,
         and change booking settings. Working hours and services are changed in Settings → Appointments.
       - In Urdu "kal" means yesterday or tomorrow: for appointments it usually means tomorrow, for reports yesterday.
+      - Smart features, Automation rules (When / If / Do) and AI settings can be changed with their tools.
       - If something is not possible with your tools, say so and tell the user where in ChatsSync to do it.
     PROMPT
   end

@@ -8,6 +8,7 @@ import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import Switch from 'next/switch/Switch.vue';
 import TemplatePicker from './TemplatePicker.vue';
+import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 const { t } = useI18n();
 
@@ -90,6 +91,9 @@ const QUALITY_CLASS = {
 };
 
 const featureKey = key => key.toUpperCase();
+// What the "?" shows: what the feature does, then how to use it.
+const helpText = key =>
+  `${t(`SMART_FEATURES.ITEMS.${featureKey(key)}.HINT`)}\n\n${t('SMART_FEATURES.HOW_TO', { how: t(`SMART_FEATURES.ITEMS.${featureKey(key)}.HOW`) })}`;
 const onCount = computed(
   () =>
     GROUPS.flatMap(group => group.items).filter(key => features.value[key])
@@ -262,11 +266,14 @@ onMounted(load);
             >
               <div class="flex items-start justify-between gap-4">
                 <div class="grid gap-1 min-w-0">
-                  <span class="text-sm font-medium text-n-slate-12">
+                  <span
+                    class="flex items-center gap-1.5 text-sm font-medium text-n-slate-12"
+                  >
                     {{ $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.TITLE`) }}
+                    <HelpTip :text="helpText(key)" />
                   </span>
                   <span class="text-sm text-n-slate-11">
-                    {{ $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.HINT`) }}
+                    {{ $t(`SMART_FEATURES.ITEMS.${featureKey(key)}.SHORT`) }}
                   </span>
                 </div>
                 <Switch
