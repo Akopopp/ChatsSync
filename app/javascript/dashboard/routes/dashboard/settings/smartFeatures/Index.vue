@@ -393,6 +393,7 @@ onMounted(load);
                     'sheet_leads',
                     'sheet_orders',
                     'sheet_bookings',
+                    'sheet_ai',
                   ]"
                   :key="kind"
                   class="flex items-center justify-between gap-4"

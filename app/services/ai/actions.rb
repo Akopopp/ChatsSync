@@ -39,7 +39,8 @@ class Ai::Actions
 
   private
 
-  HANDLERS = [Appointments::AiBooking, Catalog::AiOrdering, Ai::OrderStatus, Ai::LeadCapture, Ai::AlertRules, Ai::FlowLink].freeze
+  HANDLERS = [Appointments::AiBooking, Catalog::AiOrdering, Ai::OrderStatus, Ai::SheetData, Ai::LeadCapture, Ai::AlertRules,
+              Ai::FlowLink].freeze
 
   def handlers
     @handlers ||= HANDLERS.filter_map do |handler|

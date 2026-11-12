@@ -1586,7 +1586,8 @@
       "URL_INVALID": "Paste the Web app URL from Apps Script. It starts with https://script.google.com/macros/s/ and ends with /exec.",
       "SHEET_LEADS": "Add new leads (tab: Leads)",
       "SHEET_ORDERS": "Add new orders (tab: Orders)",
-      "SHEET_BOOKINGS": "Add new appointments (tab: Bookings)"
+      "SHEET_BOOKINGS": "Add new appointments (tab: Bookings)",
+      "SHEET_AI": "AI reads the tab named AI (prices, stock, delivery areas). First row = column names. Updates every 10 minutes."
     },
     "ALERTS": {
       "ALERT_ORDER": "Email me when the AI takes an order",

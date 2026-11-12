@@ -29,6 +29,7 @@ class CsCopilot::SmartFeatureTools
     google_sheet: { type: 'boolean', description: 'Add new leads, orders and appointments to a Google Sheet' },
     sheet_url: { type: 'string', description: 'Apps Script web app link (https://script.google.com/macros/s/.../exec)' },
     sheet_leads: SWITCH, sheet_orders: SWITCH, sheet_bookings: SWITCH,
+    sheet_ai: { type: 'boolean', description: 'AI reads the sheet tab named AI (prices, stock, delivery areas)' },
     health_guard: SWITCH, stop_opt_out: SWITCH
   }.freeze
 

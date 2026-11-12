@@ -50,6 +50,7 @@ module AccountSmartFeatures
     'sheet_leads' => true,
     'sheet_orders' => true,
     'sheet_bookings' => true,
+    'sheet_ai' => false,
     'health_guard' => false,
     'stop_opt_out' => false
   }.freeze

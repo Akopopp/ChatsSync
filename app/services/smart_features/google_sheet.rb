@@ -1,5 +1,5 @@
 # Smart features > "Google Sheet": new leads, orders and appointments go into the business's own Google Sheet,
-# one tab each. The business adds our small Apps Script to the sheet (Extensions > Apps Script) and pastes its
+# one tab each, and the AI can read a tab named "AI" (Ai::SheetData). The business adds our small Apps Script to the sheet (Extensions > Apps Script) and pastes its
 # web app link here, so no Google sign-in or API key is needed. New details get their own column on their own.
 class SmartFeatures::GoogleSheet
   URL = %r{\Ahttps://script\.google\.com/macros/s/[\w-]+/exec\z}
@@ -47,6 +47,12 @@ class SmartFeatures::GoogleSheet
       });
       sheet.appendRow(headers.map(function (key) { return data.row[key] == null ? '' : data.row[key]; }));
       return ContentService.createTextOutput('ok');
+    }
+
+    function doGet() {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AI');
+      var rows = sheet ? sheet.getDataRange().getDisplayValues() : [];
+      return ContentService.createTextOutput(JSON.stringify(rows)).setMimeType(ContentService.MimeType.JSON);
     }
   JS
 end
