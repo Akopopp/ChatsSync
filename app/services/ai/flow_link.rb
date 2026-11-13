@@ -47,11 +47,14 @@ class Ai::FlowLink
   end
 
   # The flow's welcome box already greets the customer, so with it the AI's own text is not sent (one welcome, not two).
+  # A box id the AI wrote without its [BOX:] tag still sends that box, and a box id is never shown to the customer.
   def apply(reply, roman_urdu:) # rubocop:disable Lint/UnusedMethodArgument
-    id = reply[BOX_TAG, 1]
+    id = reply[BOX_TAG, 1] || box_ids.find { |item| reply.match?(id_pattern(item)) }
     box = boxes.find { |item| item['id'] == id }
     @box_id = box['id'] if box
-    box&.dig('welcome') ? '' : reply.gsub(BOX_TAG, '').strip
+    return '' if box&.dig('welcome')
+
+    box_ids.reduce(reply.gsub(BOX_TAG, '')) { |text, item| text.gsub(id_pattern(item), '') }.squeeze(' ').strip
   end
 
   def extra_messages?
@@ -74,7 +77,18 @@ class Ai::FlowLink
     return @boxes = [] unless conversation && self.class.on?(conversation)
 
     all = Array(request(:get, "/api/ai/boxes?inbox_id=#{conversation.inbox_id}")['boxes'])
+    @box_ids = all.pluck('id').select { |id| id.to_s.length >= 6 && id.to_s.match?(/\d|[A-Z]/) }
     @boxes = all.reject { |box| already_sent?(box) || (box['welcome'] && replied_before?) }.first(MAX_BOXES)
+  end
+
+  # Ids of every box in the flow (offered or not); only ids that cannot be ordinary words.
+  def box_ids
+    boxes
+    @box_ids || []
+  end
+
+  def id_pattern(id)
+    /(?<![\w-])#{Regexp.escape(id)}(?![\w-])/
   end
 
   # The flow's welcome boxes only open a chat; once something was sent, the AI answers the question instead.
