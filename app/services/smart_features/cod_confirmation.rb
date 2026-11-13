@@ -108,7 +108,8 @@ class SmartFeatures::CodConfirmation
       account.orders.create!(
         number: account.orders.maximum(:number).to_i + 1, items: items, subtotal: subtotal, delivery_fee: [total - subtotal, 0].max,
         total: total, source: 'store', conversation: conversation, contact: conversation.contact, customer_phone: phone,
-        customer_name: data['name'].to_s.truncate(120).presence, address: data['address'].to_s.truncate(1000).presence, external_ref: ref
+        customer_name: data['name'].to_s.truncate(120).presence, address: data['address'].to_s.truncate(1000).presence, external_ref: ref,
+        store_order_id: data['store_id'].presence
       )
     rescue ActiveRecord::RecordNotUnique
       retry if (attempts += 1) < 3

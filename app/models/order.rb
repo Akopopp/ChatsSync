@@ -21,6 +21,9 @@ class Order < ApplicationRecord
   # Smart features > "Google Sheet" (does nothing unless switched on).
   after_create_commit -> { SmartFeatures::GoogleSheet.order(self) }
   after_create_commit -> { AutomationRules::CustomTrigger.later('order_created', conversation) }
+  # Settings > Online store: with the store's API key saved, the new status is marked on the order in the store too.
+  after_update_commit -> { SmartFeatures::StoreSyncJob.perform_later('order', account_id, id) },
+                      if: -> { saved_change_to_status? && store_order_id.present? }
 
   def summary(setting)
     lines = items.map { |item| "- #{item['name']} x#{item['quantity']} – #{setting.money(item['price'].to_d * item['quantity'])}" }

@@ -28,6 +28,7 @@ module SmartFeatures::StoreOrder
     customer = data['customer'] || {}
     {
       'ref' => "Shopify #{data['name'] || data['order_number']}",
+      'store_id' => data['id'].to_s.presence,
       'name' => address['name'].presence || [customer['first_name'], customer['last_name']].compact_blank.join(' '),
       'phone' => [address['phone'], data['phone'], customer['phone'], data.dig('billing_address', 'phone')].find(&:present?),
       'address' => [address['address1'], address['address2'], address['city']].compact_blank.join(', '),
@@ -42,6 +43,7 @@ module SmartFeatures::StoreOrder
     billing = data['billing'] || {}
     {
       'ref' => "WooCommerce ##{data['number'] || data['id']}",
+      'store_id' => data['id'].to_s.presence,
       'name' => [billing['first_name'], billing['last_name']].compact_blank.join(' '),
       'phone' => shipping['phone'].presence || billing['phone'],
       'address' => [shipping['address_1'].presence || billing['address_1'], shipping['city'].presence || billing['city']].compact_blank.join(', '),

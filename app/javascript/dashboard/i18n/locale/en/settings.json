@@ -1738,6 +1738,28 @@
       "PRIVATE": "Keep this link private. Anyone with it can send messages from your number.",
       "EXAMPLE": "What the other app sends",
       "EXAMPLE_NOTE": "Use \"text\" instead of \"template\" and \"values\" when the customer wrote in the last 24 hours. \"name\" and \"label\" are optional."
+    },
+    "STORE_CONNECT": {
+      "TITLE": "Your store",
+      "TEXT": "Import your products into the catalog so the AI can answer about them, and let ChatsSync mark orders in your store.",
+      "HELP": "Import products: copies the names, prices, pictures and stock of your store's products into Catalog. Run it again any time; products with the same name are updated, not repeated.\n\nAPI key (optional): when a customer confirms or cancels a COD order on WhatsApp, or your team changes an order's status in Orders, the order in your store gets a tag (Shopify) or a note (WooCommerce), like \"WhatsApp confirmed\". A cancelled WooCommerce order is also set to Cancelled.",
+      "SHOPIFY": "Shopify",
+      "WOOCOMMERCE": "WooCommerce",
+      "URL_SHOPIFY": "Your Shopify address (ends with .myshopify.com)",
+      "URL_WOO": "Your store website",
+      "KEY_TITLE": "Mark orders in my store (optional)",
+      "KEY_HELP_SHOPIFY": "In Shopify: Settings > Apps and sales channels > Develop apps > Create an app. Give it the \"write_orders\" access, install it and copy the Admin API access token here.",
+      "KEY_HELP_WOO": "In WordPress: WooCommerce > Settings > Advanced > REST API > Add key, with Read/Write permission. Copy the Consumer key and Consumer secret here.",
+      "SHOPIFY_TOKEN": "Admin API access token",
+      "WOO_KEY": "Consumer key",
+      "WOO_SECRET": "Consumer secret",
+      "KEY_SAVED": "API key saved. Orders are marked in your store.",
+      "REMOVE_KEY": "Remove key",
+      "SAVE": "Save store",
+      "IMPORT": "Import products",
+      "IMPORT_STARTED": "Import started. Your products appear in Catalog in a minute or two.",
+      "IMPORTED": "{count} products imported on {time}",
+      "NO_URL": "Save your store website first."
     }
   },
   "WHATSAPP_FORMS": {

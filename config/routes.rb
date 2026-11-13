@@ -77,6 +77,9 @@ Rails.application.routes.draw do
           resource :smart_features, only: [:show, :update] do
             get :broadcast_estimate
           end
+          resource :online_store, only: [:show, :update], controller: 'online_store' do
+            post :import_products
+          end
           resources :products, only: [:index, :create, :update, :destroy]
           resources :orders, only: [:index, :update]
           resources :exports, only: [:show]

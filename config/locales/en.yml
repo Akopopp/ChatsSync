@@ -40,6 +40,8 @@ en:
       handed_off: 'AI passed this chat to your team and stopped replying here.'
       turned_on: 'AI turned on in this chat by %{name}'
       turned_off: 'AI turned off in this chat by %{name}'
+  online_store:
+    no_url: 'Save your store website first.'
   smart_features:
     stop_opt_out:
       stopped: 'Done. You will not get offers or updates from us anymore. Reply START if you want them again.'

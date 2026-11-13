@@ -34,7 +34,9 @@ class CsCopilot::GuideTools
     'online_store' => 'Settings > Online store. Turn on COD confirmation, Shipping updates or Abandoned cart reminder, pick the ' \
                       'WhatsApp number and an approved template, then copy the store link. Shopify: Settings > Notifications > Webhooks > ' \
                       'Create webhook (Order creation, Order fulfillment, Checkout creation and update), format JSON, paste the link. ' \
-                      'WooCommerce: Settings > Advanced > Webhooks (Order created / Order updated).',
+                      'WooCommerce: Settings > Advanced > Webhooks (Order created / Order updated). "Your store" card: save the ' \
+                      'store address and press Import products to copy products, prices and pictures into Catalog; add the ' \
+                      'store API key (optional) so confirmed or cancelled orders are tagged or noted in the store.',
     'google_sheet' => 'Smart features > Google Sheet: open your sheet > Extensions > Apps Script, paste our script, Deploy > New ' \
                       'deployment > Web app (Execute as Me, Anyone), copy the Web app URL and paste it. Leads, orders and bookings get ' \
                       'their own tabs; a tab named AI is read by the AI (prices, stock).',

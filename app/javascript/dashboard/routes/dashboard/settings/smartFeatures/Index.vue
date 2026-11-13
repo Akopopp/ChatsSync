@@ -8,6 +8,7 @@ import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import Switch from 'next/switch/Switch.vue';
 import TemplatePicker from './TemplatePicker.vue';
+import StoreConnect from './StoreConnect.vue';
 import HelpTip from 'dashboard/components-next/helpTip/HelpTip.vue';
 
 // The Online store page shows only the store group; Smart features shows the rest.
@@ -339,6 +340,7 @@ onMounted(load);
             </span>
           </li>
         </ol>
+        <StoreConnect v-if="store" />
         <router-link
           v-else
           :to="{ name: 'online_store_settings' }"
