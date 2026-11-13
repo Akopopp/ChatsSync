@@ -139,7 +139,9 @@
       "CONVERSATION_OPENED": "Conversation Opened",
       "ORDER_CREATED": "New order",
       "APPOINTMENT_BOOKED": "Appointment booked",
-      "FORM_SUBMITTED": "WhatsApp form filled"
+      "FORM_SUBMITTED": "WhatsApp form filled",
+      "CUSTOMER_SILENT": "Customer has not replied for some hours",
+      "DAILY_TIME": "Every day at a set time"
     },
     "ACTIONS": {
       "ASSIGN_AGENT": "Assign to Agent",
@@ -226,8 +228,23 @@
         "BOOKING_LABEL": {
           "TITLE": "Label booked chats",
           "TEXT": "When an appointment is booked, the chat gets the label \"booked\"."
+        },
+        "FOLLOW_UP": {
+          "TITLE": "Mark chats for follow-up",
+          "TEXT": "When a customer has not replied for 24 hours, add the label follow-up so your team can message them."
         }
       }
+    },
+    "TIMED": {
+      "CUSTOMER_SILENT": {
+        "LABEL": "Hours without a reply from the customer",
+        "HELP": "Runs once when we replied last and the customer stays quiet this long. It runs again only after the customer writes again. After 24 hours WhatsApp allows only templates, so use \"Send WhatsApp template\"."
+      },
+      "DAILY_TIME": {
+        "LABEL": "Time of day (Pakistan time)",
+        "HELP": "Runs every day at this time on open chats from the last 30 days that match the conditions below."
+      },
+      "ERROR": "Enter hours from 1 to 720, or a time like 10:00"
     }
   }
 }

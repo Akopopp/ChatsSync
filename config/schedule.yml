@@ -14,6 +14,12 @@ trigger_scheduled_items_job:
   class: 'TriggerScheduledItemsJob'
   queue: scheduled_jobs
 
+# ChatsSync: automation rules for quiet customers and daily times, every 10 minutes
+automation_scheduled_triggers_job:
+  cron: '*/10 * * * *'
+  class: 'AutomationRules::ScheduledTriggersJob'
+  queue: scheduled_jobs
+
 # executed hourly for scheduled jobs that do not need minute-level cadence
 trigger_hourly_scheduled_items_job:
   cron: '0 * * * *'

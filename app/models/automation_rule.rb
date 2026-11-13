@@ -29,6 +29,7 @@ class AutomationRule < ApplicationRecord
   validate :query_operator_presence
   validate :query_operator_value
   validates :account_id, presence: true
+  validate :trigger_value_format
 
   after_update_commit :reauthorized!, if: -> { saved_change_to_conditions? }
 
@@ -61,6 +62,18 @@ class AutomationRule < ApplicationRecord
   end
 
   private
+
+  # Timed events need their hours (1 to 720) or their daily time (HH:MM); a daily rule also needs a condition,
+  # so it never runs on every chat.
+  def trigger_value_format
+    case event_name
+    when 'customer_silent'
+      errors.add(:trigger_value, 'Hours must be between 1 and 720') unless trigger_value.to_s.match?(/\A\d+\z/) && trigger_value.to_i.between?(1, 720)
+    when 'daily_time'
+      errors.add(:trigger_value, 'Time must be like 10:00') unless trigger_value.to_s.match?(/\A([01]?\d|2[0-3]):[0-5]\d\z/)
+      errors.add(:conditions, 'Add at least one condition for a daily automation') if conditions.blank?
+    end
+  end
 
   def json_conditions_format
     return if conditions.blank?

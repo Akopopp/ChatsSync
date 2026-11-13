@@ -194,6 +194,14 @@ const READY = [
     conditions: [],
     actions: [{ action_name: 'add_label', action_params: ['booked'] }],
   },
+  {
+    key: 'FOLLOW_UP',
+    icon: 'i-lucide-clock-alert',
+    event_name: 'customer_silent',
+    trigger_value: '24',
+    conditions: [],
+    actions: [{ action_name: 'add_label', action_params: ['follow-up'] }],
+  },
 ];
 const readyAdded = key =>
   records.value.some(
@@ -205,6 +213,7 @@ const addReady = async item => {
       name: t(`AUTOMATION.READY.ITEMS.${item.key}.TITLE`),
       description: t(`AUTOMATION.READY.ITEMS.${item.key}.TEXT`),
       event_name: item.event_name,
+      trigger_value: item.trigger_value,
       conditions: item.conditions,
       actions: item.actions,
     });

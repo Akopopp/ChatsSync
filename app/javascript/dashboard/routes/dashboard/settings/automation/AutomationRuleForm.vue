@@ -14,7 +14,11 @@ import {
   showActionInput,
 } from 'dashboard/helper/automationHelper';
 import { validateAutomation } from 'dashboard/helper/validations';
-import { AUTOMATION_RULE_EVENTS, AUTOMATION_ACTION_TYPES } from './constants';
+import {
+  AUTOMATION_RULE_EVENTS,
+  AUTOMATION_ACTION_TYPES,
+  TIMED_EVENTS,
+} from './constants';
 
 const props = defineProps({
   mode: {
@@ -110,6 +114,22 @@ const getTranslatedAttributes = (type, event) => {
 };
 
 const eventName = computed(() => automation.value?.event_name);
+
+// "Customer has not replied" needs hours and "Every day" needs a time; other events need nothing.
+const timedEvent = computed(() => TIMED_EVENTS[eventName.value]);
+const timedKey = computed(() => eventName.value?.toUpperCase());
+
+const changeEvent = () => {
+  props.onEventChange();
+  automation.value.trigger_value = timedEvent.value?.default || null;
+};
+
+const isTriggerValueValid = () => {
+  const value = String(automation.value.trigger_value || '');
+  if (!timedEvent.value) return true;
+  if (timedEvent.value.type === 'time') return /^\d{2}:\d{2}$/.test(value);
+  return /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 720;
+};
 
 const filterTypes = computed(() => {
   const event = eventName.value;
@@ -230,6 +250,7 @@ const emitSaveAutomation = () => {
   syncCustomAttributeTypes();
   const conditionsValid = isConditionsValid();
   errors.value = validateAutomation(automation.value);
+  if (!isTriggerValueValid()) errors.value.trigger_value = true;
   if (Object.keys(errors.value).length === 0 && conditionsValid) {
     const payload = generateAutomationPayload(automation.value);
     emit('save', payload, props.mode);
@@ -272,7 +293,7 @@ defineExpose({ open, close });
           <select
             v-model="automation.event_name"
             class="m-0"
-            @change="onEventChange()"
+            @change="changeEvent"
           >
             <option
               v-for="event in automationRuleEvents"
@@ -291,6 +312,24 @@ defineExpose({ open, close });
           class="text-xs text-right text-n-teal-10 pt-1"
         >
           {{ $t('AUTOMATION.FORM.RESET_MESSAGE') }}
+        </p>
+      </div>
+      <div v-if="timedEvent" class="mb-6">
+        <label :class="{ error: errors.trigger_value }">
+          {{ $t(`AUTOMATION.TIMED.${timedKey}.LABEL`) }}
+          <input
+            v-model="automation.trigger_value"
+            :type="timedEvent.type"
+            :min="timedEvent.min"
+            :max="timedEvent.max"
+            class="m-0 max-w-[12rem]"
+          />
+          <span v-if="errors.trigger_value" class="message">
+            {{ $t('AUTOMATION.TIMED.ERROR') }}
+          </span>
+        </label>
+        <p class="m-0 pt-1 text-xs text-n-slate-11">
+          {{ $t(`AUTOMATION.TIMED.${timedKey}.HELP`) }}
         </p>
       </div>
       <!-- Conditions Start -->

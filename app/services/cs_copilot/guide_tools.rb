@@ -42,7 +42,8 @@ class CsCopilot::GuideTools
                       'your own rule in plain words, like "a customer asks for a bulk order".',
     'automation' => 'Settings > Automation: When (event) / If (conditions) / Do (actions) rules, like "when a customer writes price, add ' \
                     'the label price and email me". Events include new message, new chat, chat resolved, new order, appointment ' \
-                    'booked and WhatsApp form filled. Actions include send message, send a WhatsApp template, labels, assign, ' \
+                    'booked, WhatsApp form filled, customer has not replied for some hours (follow-ups) and every day at a set ' \
+                    'time. Actions include send message, send a WhatsApp template, labels, assign, ' \
                     'email the admins, turn AI off or on, add to Google Sheet and webhook. Copilot can create them with create_automation.',
     'other_apps' => 'Smart features > Other apps > Send from other apps: a private link that Zapier, Make, n8n, Google Forms or a ' \
                     'website posts JSON to (phone, text or template + values, name, label) and ChatsSync sends that WhatsApp ' \

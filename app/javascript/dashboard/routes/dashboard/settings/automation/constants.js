@@ -686,8 +686,15 @@ export const AUTOMATIONS = {
   },
 };
 
-// ChatsSync events: a new order, a booked appointment, a filled WhatsApp form. They use the same chat conditions.
-['order_created', 'appointment_booked', 'form_submitted'].forEach(event => {
+// ChatsSync events: a new order, a booked appointment, a filled WhatsApp form, a customer who stopped replying
+// and a daily time. They use the same chat conditions.
+[
+  'order_created',
+  'appointment_booked',
+  'form_submitted',
+  'customer_silent',
+  'daily_time',
+].forEach(event => {
   AUTOMATIONS[event] = { ...AUTOMATIONS.conversation_resolved };
 });
 
@@ -715,7 +722,15 @@ export const AUTOMATION_RULE_EVENTS = [
   { key: 'order_created', value: 'ORDER_CREATED' },
   { key: 'appointment_booked', value: 'APPOINTMENT_BOOKED' },
   { key: 'form_submitted', value: 'FORM_SUBMITTED' },
+  { key: 'customer_silent', value: 'CUSTOMER_SILENT' },
+  { key: 'daily_time', value: 'DAILY_TIME' },
 ];
+
+// Timed events and the input they need: hours of silence, or the time of day.
+export const TIMED_EVENTS = {
+  customer_silent: { type: 'number', min: 1, max: 720, default: '24' },
+  daily_time: { type: 'time', default: '10:00' },
+};
 
 export const AUTOMATION_ACTION_TYPES = [
   {

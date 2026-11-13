@@ -6,7 +6,7 @@ class CsCopilot::AutomationTools
   ADMIN_TOOLS = WRITE_TOOLS
 
   EVENTS = (%w[message_created conversation_created conversation_opened conversation_resolved conversation_updated] +
-            AutomationRules::CustomTrigger::EVENTS).freeze
+            AutomationRules::CustomTrigger::EVENTS + AutomationRules::CustomTrigger::TIMED_EVENTS).freeze
   ACTION_HELP = 'send_message [text], send_template ["template name | value 1 | value 2", {name} = customer name], ' \
                 'add_label [names], remove_label [names], add_private_note [text], email_admins [reason], ' \
                 'turn_off_ai, turn_on_ai, add_to_google_sheet, assign_agent [ids], assign_team [ids], change_priority [high|low], ' \
@@ -31,8 +31,12 @@ class CsCopilot::AutomationTools
     fn('list_automations', 'List the When / If / Do automation rules with their event, conditions, actions and whether they are on.'),
     fn('create_automation', 'Create a When / If / Do automation rule. All conditions must match (AND). ' \
                             'For "when a customer writes X" use event message_created with conditions content contains X and ' \
-                            'message_type equal_to incoming. order_created, appointment_booked and form_submitted may have no conditions.',
+                            'message_type equal_to incoming. order_created, appointment_booked, form_submitted and customer_silent may have no ' \
+                            'conditions. customer_silent: the customer has not replied for trigger_value hours (like "24"); after ' \
+                            '24 hours use send_template, not send_message. daily_time: every day at trigger_value (like "10:00", ' \
+                            'Pakistan time) on open chats that match the conditions (at least one condition).',
        { name: { type: 'string' }, event: { type: 'string', description: EVENTS.join(', ') },
+         trigger_value: { type: 'string', description: 'Hours for customer_silent, HH:MM for daily_time' },
          conditions: { type: 'array', items: CONDITION }, actions: { type: 'array', items: ACTION } },
        %w[name event conditions actions]),
     fn('set_automation_active', 'Turn an automation rule on or off.', { id: { type: 'integer' }, active: { type: 'boolean' } }, %w[id active])
@@ -61,12 +65,12 @@ class CsCopilot::AutomationTools
   private
 
   def tool_list_automations(_args)
-    account.automation_rules.order(:id).map { |rule| rule.slice(:id, :name, :event_name, :conditions, :actions, :active) }
+    account.automation_rules.order(:id).map { |rule| rule.slice(:id, :name, :event_name, :trigger_value, :conditions, :actions, :active) }
   end
 
   def tool_create_automation(args)
     raise CsCopilot::Tools::Error, "Event must be one of: #{EVENTS.join(', ')}" unless EVENTS.include?(args[:event])
-    no_conditions = Array(args[:conditions]).empty? && AutomationRules::CustomTrigger::EVENTS.exclude?(args[:event])
+    no_conditions = Array(args[:conditions]).empty? && (AutomationRules::CustomTrigger::EVENTS + ['customer_silent']).exclude?(args[:event])
     raise CsCopilot::Tools::Error, 'Add at least one condition' if no_conditions
 
     conditions = Array(args[:conditions]).map do |condition|
@@ -76,7 +80,7 @@ class CsCopilot::AutomationTools
     conditions.last['query_operator'] = nil if conditions.any?
     actions = Array(args[:actions]).map { |action| { 'action_name' => action['action_name'], 'action_params' => Array(action['action_params']) } }
     rule = account.automation_rules.create!(name: args[:name].to_s.truncate(120), event_name: args[:event], conditions: conditions,
-                                            actions: actions, active: true)
+                                            actions: actions, active: true, trigger_value: args[:trigger_value].presence)
     { done: true, id: rule.id, page: 'Settings > Automation' }
   rescue ActiveRecord::RecordInvalid => e
     raise CsCopilot::Tools::Error, e.record.errors.full_messages.to_sentence
