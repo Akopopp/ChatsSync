@@ -116,7 +116,7 @@ onMounted(async () => {
         class="px-4 py-2 text-sm font-medium border rounded-full"
         :class="
           store.platform === platform
-            ? 'border-n-brand bg-n-brand/10 text-n-brand'
+            ? 'border-n-teal-8 bg-n-teal-3 text-n-teal-11'
             : 'border-n-weak text-n-slate-11'
         "
         @click="setPlatform(platform)"

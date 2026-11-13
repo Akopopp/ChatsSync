@@ -318,6 +318,7 @@ defineExpose({ open, close });
         <label :class="{ error: errors.trigger_value }">
           {{ $t(`AUTOMATION.TIMED.${timedKey}.LABEL`) }}
           <input
+            :key="eventName"
             v-model="automation.trigger_value"
             :type="timedEvent.type"
             :min="timedEvent.min"
