@@ -1,0 +1,42 @@
+{% extends 'public/layout.html' %}
+{% block title %}Privacy Policy{% endblock %}
+{% block body %}
+<h1>Privacy Policy</h1>
+<p class="muted">Last updated: November 2026</p>
+<p>{{ APP_NAME }} is run by ChatsSync, Faisalabad, Punjab, Pakistan ("we"). This policy explains what we collect when you use {{ APP_NAME }} at clips.chatssync.online and how we use it.</p>
+
+<h2>What we collect</h2>
+<ul>
+  <li><b>Account details:</b> your name, email address and a hashed password.</li>
+  <li><b>Videos you give us:</b> links or files you submit, the transcripts we create from them, and the clips we make. Source videos are deleted as soon as clips are made. Clip files are deleted after they are posted, or after 7 days if they are not.</li>
+  <li><b>Connected accounts:</b> when you connect YouTube, Instagram or Facebook, we store the access tokens those services give us, and the name of your channel, account or Page.</li>
+  <li><b>Usage data:</b> basic server logs such as request times and errors, used to keep the service running.</li>
+</ul>
+
+<h2>How we use Google user data (YouTube)</h2>
+<p>When you connect YouTube, we ask for permission to upload videos to your channel (<code>youtube.upload</code>) and to read your channel name (<code>youtube.readonly</code>). We use this access only to:</p>
+<ul>
+  <li>show which channel is connected, and</li>
+  <li>upload the clips you approved, or set to post automatically, with the title, description and tags shown in {{ APP_NAME }}.</li>
+</ul>
+<p>We do not read, change or delete your other videos, we do not use your data for advertising, and we do not sell or share it with anyone. {{ APP_NAME }}'s use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. YouTube uploads are also covered by the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a> and the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+
+<h2>Instagram and Facebook</h2>
+<p>If you connect Instagram or a Facebook Page, we use that access only to publish the clips you approved, with the caption shown in {{ APP_NAME }}, and to show which account is connected.</p>
+
+<h2>Services we use</h2>
+<p>We host {{ APP_NAME }} on our own server. To pick clips and write post text we send video transcripts (text only) to an AI service (Google Gemini). We do not send them your account details or tokens.</p>
+
+<h2>Your choices</h2>
+<ul>
+  <li>Disconnect any account in Settings at any time. That deletes the stored tokens. You can also remove access for YouTube at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+  <li>Delete any video and its clips from {{ APP_NAME }} at any time.</li>
+  <li>Ask us to delete your whole account and data by emailing <a href="mailto:abdullah@chatssync.online">abdullah@chatssync.online</a>. We do this within 7 days.</li>
+</ul>
+
+<h2>Security</h2>
+<p>Passwords are stored hashed, the site is served only over HTTPS, and tokens are kept on our server and never shown to other users.</p>
+
+<h2>Contact</h2>
+<p>ChatsSync, Faisalabad, Punjab, Pakistan · <a href="mailto:abdullah@chatssync.online">abdullah@chatssync.online</a></p>
+{% endblock %}

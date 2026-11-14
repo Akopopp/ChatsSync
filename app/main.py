@@ -132,7 +132,7 @@ def logout(request: Request):
 def home(request: Request):
     user = current_user(request)
     if not user:
-        return RedirectResponse('/login', status_code=303)
+        return RedirectResponse('/welcome', status_code=303)
     jobs = db.q('''select j.*, (select count(*) from clips c where c.job_id=j.id and c.status not in ('failed','rejected')) as clip_count,
                    (select count(*) from posts p join clips c on c.id=p.clip_id where c.job_id=j.id and p.status='posted') as posted
                    from jobs j where j.user_id=? order by j.id desc limit 60''', (user['id'],))
@@ -469,6 +469,21 @@ def admin_cancel(request: Request, job_id: int):
     if job and job['status'] == 'queued':
         db.update_job(job_id, status='failed', error='Cancelled by admin.', finished_at=time.time())
     return RedirectResponse('/admin#queue', status_code=303)
+
+
+@app.get('/welcome', response_class=HTMLResponse)
+def welcome(request: Request):
+    return templates.TemplateResponse(request, 'public/welcome.html', {'request': request})
+
+
+@app.get('/privacy', response_class=HTMLResponse)
+def privacy(request: Request):
+    return templates.TemplateResponse(request, 'public/privacy.html', {'request': request})
+
+
+@app.get('/terms', response_class=HTMLResponse)
+def terms(request: Request):
+    return templates.TemplateResponse(request, 'public/terms.html', {'request': request})
 
 
 @app.get('/health')

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} | {{ APP_NAME }}</title>
+  <meta name="description" content="{{ APP_NAME }} turns long videos into vertical clips and posts them to YouTube, Instagram and Facebook.">
+  <link rel="stylesheet" href="/static/style.css?v=4">
+</head>
+<body>
+  <header><div class="in">
+    <a class="logo" href="/welcome"><i>&#9986;</i>{{ APP_NAME }}</a>
+    <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/login">Log in</a></nav>
+  </div></header>
+  <main class="doc">{% block body %}{% endblock %}</main>
+  <footer class="foot"><div class="in">&copy; 2026 {{ APP_NAME }} by ChatsSync · Faisalabad, Pakistan · <a href="mailto:abdullah@chatssync.online">abdullah@chatssync.online</a></div></footer>
+</body>
+</html>

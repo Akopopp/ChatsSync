@@ -1,0 +1,20 @@
+{% extends 'public/layout.html' %}
+{% block title %}Shorts and Reels from long videos{% endblock %}
+{% block body %}
+<h1 style="font-size:32px">Turn long videos into Shorts and Reels, automatically.</h1>
+<p class="lead">{{ APP_NAME }} finds the best moments in a long video, cuts them into vertical clips with captions, writes the title, description and hashtags, and posts them to your own YouTube, Instagram and Facebook accounts on a schedule you choose.</p>
+<div class="card">
+  <h2>How it works</h2>
+  <ol>
+    <li>Paste a link to a video you have the rights to use, or upload the file.</li>
+    <li>{{ APP_NAME }} writes a transcript and picks the strongest moments.</li>
+    <li>Each moment becomes a 9:16 clip that follows the speaker, with word-by-word captions.</li>
+    <li>You review the clips, then they are posted to the accounts you connected.</li>
+  </ol>
+</div>
+<div class="card">
+  <h2>Your accounts stay yours</h2>
+  <p>You connect YouTube, Instagram or Facebook yourself with the official sign-in of each service. {{ APP_NAME }} only uploads the clips you approve (or set to post automatically) and never posts anything else. You can disconnect at any time.</p>
+</div>
+<p><a class="btn" href="/login">Log in</a></p>
+{% endblock %}
