@@ -47,19 +47,24 @@ def ai_ready():
 
 
 def _ask_gemini(prompt):
+    """Free Gemini key. Busy (429/5xx) or retired (404) models are retried, then the next model is tried."""
+    import time
     key = os.environ['GEMINI_API_KEY']
     body = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
             'generationConfig': {'temperature': 0.3, 'responseMimeType': 'application/json'}}
-    models = [m for m in (os.environ.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash') if m]
+    models = [m for m in (os.environ.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash',
+                          'gemini-flash-lite-latest') if m]
     last = None
     for model in models:
-        res = requests.post(GEMINI_URL.format(model=model), json=body, timeout=240, headers={'x-goog-api-key': key})
-        if res.status_code == 404:  # model name retired: try the next one
+        for attempt in range(3):
+            res = requests.post(GEMINI_URL.format(model=model), json=body, timeout=240, headers={'x-goog-api-key': key})
             last = res
-            continue
-        res.raise_for_status()
-        parts = res.json()['candidates'][0]['content']['parts']
-        return ''.join(p.get('text', '') for p in parts)
+            if res.status_code == 200:
+                parts = res.json()['candidates'][0]['content']['parts']
+                return ''.join(p.get('text', '') for p in parts)
+            if res.status_code == 404 or res.status_code < 429:
+                break
+            time.sleep(5 * (attempt + 1))
     last.raise_for_status()
 
 
