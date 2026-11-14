@@ -13,7 +13,7 @@ Link or upload → Whisper transcript → AI picks the best moments → 9:16 cro
 | `YT_CLIENT_ID`, `YT_CLIENT_SECRET` | Google OAuth web client (redirect `PUBLIC_URL/oauth/youtube/callback`) |
 | `IG_APP_ID`, `IG_APP_SECRET` | Meta app, Instagram API with Instagram Login (redirect `/oauth/instagram/callback`) |
 | `META_APP_ID`, `META_APP_SECRET` | Meta app, Facebook Login (redirect `/oauth/facebook/callback`) |
-| `MISTRAL_API_KEY` | Optional. Smarter clip picks and post text |
+| `GEMINI_API_KEY` | Optional, free from aistudio.google.com/apikey. Smarter clip picks and post text (`MISTRAL_API_KEY` also works) |
 | `CPU_THREADS` | Cores used for transcript and editing (default 2) |
 | `MIN_FREE_GB` | New videos wait when free disk is below this (default 8) |
 | `YT_DAILY_LIMIT` | YouTube uploads per day across all users (default 95) |

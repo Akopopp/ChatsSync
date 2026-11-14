@@ -39,20 +39,48 @@ def lines_from_words(words, gap=0.8, max_len=160):
     return lines
 
 
-def ask_mistral(transcript, settings, count):
-    key = os.environ.get('MISTRAL_API_KEY')
-    if not key:
-        return None
-    body = {
-        'model': MODEL,
-        'temperature': 0.3,
-        'response_format': {'type': 'json_object'},
-        'messages': [{'role': 'user', 'content': PROMPT.format(
-            min_s=settings['clip_min'], max_s=settings['clip_max'], count=count, transcript=transcript)}],
-    }
-    res = requests.post(MISTRAL_URL, json=body, timeout=180, headers={'Authorization': f'Bearer {key}'})
+GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+
+
+def ai_ready():
+    return bool(os.environ.get('GEMINI_API_KEY') or os.environ.get('MISTRAL_API_KEY'))
+
+
+def _ask_gemini(prompt):
+    key = os.environ['GEMINI_API_KEY']
+    body = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+            'generationConfig': {'temperature': 0.3, 'responseMimeType': 'application/json'}}
+    models = [m for m in (os.environ.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash') if m]
+    last = None
+    for model in models:
+        res = requests.post(GEMINI_URL.format(model=model), json=body, timeout=240, headers={'x-goog-api-key': key})
+        if res.status_code == 404:  # model name retired: try the next one
+            last = res
+            continue
+        res.raise_for_status()
+        parts = res.json()['candidates'][0]['content']['parts']
+        return ''.join(p.get('text', '') for p in parts)
+    last.raise_for_status()
+
+
+def _ask_mistral(prompt):
+    body = {'model': MODEL, 'temperature': 0.3, 'response_format': {'type': 'json_object'},
+            'messages': [{'role': 'user', 'content': prompt}]}
+    res = requests.post(MISTRAL_URL, json=body, timeout=180,
+                        headers={'Authorization': f'Bearer {os.environ["MISTRAL_API_KEY"]}'})
     res.raise_for_status()
-    return json.loads(res.json()['choices'][0]['message']['content']).get('clips', [])
+    return res.json()['choices'][0]['message']['content']
+
+
+def ask_ai(transcript, settings, count):
+    """Clip picks from Gemini (free key) or Mistral, whichever key is set. None when no key."""
+    if not ai_ready():
+        return None
+    prompt = PROMPT.format(min_s=settings['clip_min'], max_s=settings['clip_max'], count=count, transcript=transcript)
+    text = _ask_gemini(prompt) if os.environ.get('GEMINI_API_KEY') else _ask_mistral(prompt)
+    text = text.strip().removeprefix('```json').removeprefix('```').removesuffix('```')
+    data = json.loads(text)
+    return data.get('clips', []) if isinstance(data, dict) else data
 
 
 def heuristic(lines, settings, count):
@@ -113,10 +141,10 @@ def pick_clips(words, settings):
     transcript = '\n'.join(f'[{ln[0]["s"]:.1f}] ' + ' '.join(w['w'] for w in ln) for ln in lines)
     raw, used_ai = None, False
     try:
-        raw = ask_mistral(transcript[:120000], settings, count)
+        raw = ask_ai(transcript[:400000], settings, count)
         used_ai = raw is not None
     except Exception as err:  # fall back to the heuristic when the AI call fails
-        print('mistral failed:', err)
+        print('AI pick failed:', err)
     if not raw:
         raw = heuristic(lines, settings, count)
     chosen = []

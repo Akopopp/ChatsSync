@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import auth, db, media, pipeline, platforms
+from . import ai, auth, db, media, pipeline, platforms
 
 ROOT = Path(__file__).resolve().parent
 PKT = timezone(timedelta(hours=5))
@@ -301,7 +301,7 @@ def settings_page(request: Request):
     accounts = {p: platforms.account(user['id'], p) for p in platforms.NAMES} if user else {}
     return page(request, 'settings.html', msg=request.query_params.get('msg', ''), accounts=accounts,
                 ready={p: platforms.configured(p) for p in platforms.NAMES},
-                has_cookies=(db.DATA / 'cookies.txt').exists(), has_ai=bool(os.environ.get('MISTRAL_API_KEY')))
+                has_cookies=(db.DATA / 'cookies.txt').exists(), has_ai=ai.ai_ready())
 
 
 @app.post('/settings')
