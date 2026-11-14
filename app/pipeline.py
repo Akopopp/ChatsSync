@@ -122,16 +122,19 @@ def prefetch(job_id):
     """Look up title and length of a linked video so the queue timer is accurate."""
     job = db.one('select * from jobs where id=?', (job_id,))
     try:
-        title, duration = media.metadata(job['source'])
+        title, duration = media.metadata(job['source'], f'j{job_id}')
         user = db.one('select max_minutes from users where id=?', (job['user_id'],))
         db.update_job(job_id, title=title[:200] or job['title'], duration=duration)
         if duration and user['max_minutes'] and duration > user['max_minutes'] * 60:
             db.update_job(job_id, status='failed', error=f'Video is longer than your limit of {user["max_minutes"]} minutes.')
     except Exception as err:
-        if 'Sign in to confirm' in str(err) and db.one('select status from jobs where id=?', (job_id,))['status'] == 'queued':
-            db.update_job(job_id, status='failed', finished_at=time.time(), error=(
-                'YouTube blocked the server from downloading this video. Download it on your phone or PC and upload '
-                'the file here instead, or use the Google Drive link from the campaign.'))
+        if str(err) == media.BLOCKED and db.one('select status from jobs where id=?', (job_id,))['status'] == 'queued':
+            db.update_job(job_id, status='failed', finished_at=time.time(), error=media.BLOCKED)
+
+
+def _shift(words, start, end):
+    return [{'s': round(w['s'] - start, 2), 'e': round(w['e'] - start, 2), 'w': w['w']}
+            for w in words if w['s'] >= start - 0.05 and w['e'] <= end + 0.3]
 
 
 def _stage(job_id, stage, step):
@@ -153,20 +156,28 @@ def process(job_id):
                 Path(old['file']).unlink(missing_ok=True)
         db.run('delete from clips where job_id=?', (job_id,))
         limit = user['max_minutes'] or 300
+        session = f'j{job_id}t{int(time.time())}'
         src = next(folder.glob('upload.*'), None) or next(folder.glob('source.mp4'), None)
-        if src is None:
-            _stage(job_id, 'download', 'Downloading the video')
-            t0 = time.time()
-            src, title = media.download(job['source'], job['source_type'], folder, limit)
-            if title:
-                db.update_job(job_id, title=title[:200])
+        parts = src is None and job['source_type'] == 'link'  # download only the sound now, clip parts later
+        t0 = time.time()
+        if parts:
+            _stage(job_id, 'download', 'Getting the sound of the video')
+            listen, title = media.download_audio(job['source'], folder, limit, session)
+            duration = media.media_duration(listen)
         else:
-            t0 = None
-        info = media.probe(src)
+            if src is None:
+                _stage(job_id, 'download', 'Downloading the video')
+                src, title = media.download(job['source'], job['source_type'], folder, limit, session)
+            else:
+                title, t0 = '', None
+            info = media.probe(src)
+            listen, duration = src, info['duration']
+        if title:
+            db.update_job(job_id, title=title[:200])
         if t0:
-            learn('download', time.time() - t0, info['duration'])
-        db.update_job(job_id, duration=info['duration'])
-        if info['duration'] > limit * 60:
+            learn('download', time.time() - t0, duration)
+        db.update_job(job_id, duration=duration)
+        if duration > limit * 60:
             raise media.JobError(f'Video is longer than your limit of {limit} minutes.')
 
         _stage(job_id, 'transcribe', 'Listening to the video and writing captions')
@@ -175,9 +186,9 @@ def process(job_id):
             words = json.loads(words_file.read_text())
         else:
             t0 = time.time()
-            words, _ = media.transcribe(src, settings['language'], duration=info['duration'],
+            words, _ = media.transcribe(listen, settings['language'], duration=duration,
                                         on_progress=lambda p: db.update_job(job_id, progress=round(p, 3)))
-            learn('transcribe', time.time() - t0, info['duration'])
+            learn('transcribe', time.time() - t0, duration)
             words_file.write_text(json.dumps(words))
         if len(words) < 30:
             raise media.JobError('Not enough speech in this video to make clips.')
@@ -204,13 +215,34 @@ def process(job_id):
             clip = db.one('select * from clips where id=?', (clip_id,))
             out = folder / f'clip-{clip_id}.mp4'
             try:
-                thumb = media.render(src, out, clip['start'], clip['end'], words, clip['hook'], info, settings)
+                if parts:
+                    try:
+                        part = media.download_section(job['source'], folder / f'part-{clip_id}', clip['start'], clip['end'], session)
+                    except media.JobError as err:
+                        if str(err) == media.BLOCKED:
+                            raise
+                        # this site can't send parts: fetch the whole video once and cut locally
+                        db.update_job(job_id, step='Downloading the full video')
+                        src, _ = media.download(job['source'], job['source_type'], folder, limit, session)
+                        info, parts = media.probe(src), False
+                if parts:
+                    length = clip['end'] - clip['start']
+                    thumb = media.render(part, out, 0, length, _shift(words, clip['start'], clip['end']), clip['hook'],
+                                         media.probe(part), settings)
+                    part.unlink(missing_ok=True)
+                else:
+                    thumb = media.render(src, out, clip['start'], clip['end'], words, clip['hook'], info, settings)
                 db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready')
                 rendered += clip['end'] - clip['start']
             except Exception as err:
                 db.update_clip(clip_id, status='failed', error=str(err)[:500])
         learn('render', time.time() - t0, rendered)
-        src.unlink(missing_ok=True)
+        for leftover in [src, listen] + list(folder.glob('part-*')):
+            if leftover:
+                Path(leftover).unlink(missing_ok=True)
+        if not any(db.one('select status from clips where id=?', (c,))['status'] == 'ready' for c in clip_ids):
+            failed = db.one('select error from clips where job_id=? and error != "" limit 1', (job_id,))
+            raise media.JobError(failed['error'] if failed else 'Clips could not be edited.')
         note = '' if used_ai else 'Clips were picked without AI.'
         db.update_job(job_id, status='done', stage='', step=note, finished_at=time.time(), clips_done=len(clip_ids))
         if settings['upload_mode'] == 'auto':
@@ -219,8 +251,9 @@ def process(job_id):
                     approve(clip_id)
     except Exception as err:
         db.update_job(job_id, status='failed', stage='', step='', error=str(err)[:600], finished_at=time.time())
-        for leftover in list(folder.glob('source.*')) + list(folder.glob('upload.*')) + list(folder.glob('*.part')):
-            leftover.unlink(missing_ok=True)
+        for pattern in ('source.*', 'upload.*', 'audio-src.*', 'part-*', '*.part'):
+            for leftover in folder.glob(pattern):
+                leftover.unlink(missing_ok=True)
 
 
 # ---------- posting ----------

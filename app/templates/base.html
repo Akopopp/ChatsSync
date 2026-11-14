@@ -18,6 +18,8 @@
   </div></header>
   <main>
     {% if user.role == 'admin' and free_gb < 10 %}<div class="alert bad">Server disk is low ({{ '%.1f' % free_gb }} GB free). New videos pause below 8 GB.</div>{% endif %}
+    {% if user.role == 'admin' and yt_blocked %}<div class="alert bad"><b>YouTube links are blocked right now.</b>
+      Upload a fresh cookies.txt from your spare Google account in <a href="/settings#youtube-access">Settings</a>. Customers can still upload files.</div>{% endif %}
     {% block body %}{% endblock %}
   </main>
   <script src="/static/app.js?v=3"></script>

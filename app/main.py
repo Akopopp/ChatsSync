@@ -79,7 +79,7 @@ def page(request, name, admin=False, **ctx):
     if admin and user['role'] != 'admin':
         return RedirectResponse('/', status_code=303)
     ctx.update(request=request, user=user, settings=db.settings(user['id']), linked=platforms.connected(user['id']),
-               free_gb=media.free_gb(), now=time.time())
+               free_gb=media.free_gb(), now=time.time(), yt_blocked=db.stat('yt_blocked_at', 0))
     return templates.TemplateResponse(request, name, ctx)
 
 

@@ -36,22 +36,70 @@ def source_type(url):
     return 'link'
 
 
-def ytdlp_base():
-    cmd = ['yt-dlp', '--no-playlist', '--no-warnings']
+BLOCKED = ('YouTube asked the server to sign in, so this link could not be downloaded right now. Upload the video file '
+           'instead, or try the link again later.')
+VIDEO_FORMAT = 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b'
+
+
+def ytdlp_base(session=''):
+    """yt-dlp with the proxy (sticky per job when PROXY_URL has {session}) and saved cookies."""
+    cmd = ['yt-dlp', '--no-playlist', '--no-warnings', '--no-progress', '--retries', '5', '--socket-timeout', '30']
+    proxy = os.environ.get('PROXY_URL', '').strip()
+    if proxy:
+        cmd += ['--proxy', proxy.replace('{session}', session or 'clipper')]
     cookies = Path(os.environ.get('DATA_DIR', '/data')) / 'cookies.txt'
     if cookies.exists():
         cmd += ['--cookies', str(cookies)]
     return cmd
 
 
-def metadata(url):
+def _ytdlp(args, timeout):
+    from . import db
+    try:
+        out = sh(args, timeout=timeout)
+    except JobError as err:
+        if 'Sign in to confirm' in str(err) or 'not a bot' in str(err):
+            db.set_stat('yt_blocked_at', __import__('time').time())
+            raise JobError(BLOCKED)
+        raise
+    if db.stat('yt_blocked_at'):
+        db.set_stat('yt_blocked_at', 0)
+    return out
+
+
+def metadata(url, session=''):
     """Title and length of a linked video without downloading it (best effort)."""
-    out = sh(ytdlp_base() + ['--skip-download', '--print', '%(duration)s\t%(title)s', url], timeout=60)
+    out = _ytdlp(ytdlp_base(session) + ['--skip-download', '--print', '%(duration)s\t%(title)s', url], timeout=90)
     duration, _, title = out.strip().splitlines()[-1].partition('\t')
     return title, float(duration) if duration not in ('', 'NA', 'None') else 0
 
 
-def download(url, kind, folder: Path, max_minutes):
+def download_audio(url, folder: Path, max_minutes, session=''):
+    """Only the sound track: enough to write the transcript and pick clips, ~1 MB a minute."""
+    folder.mkdir(parents=True, exist_ok=True)
+    out = _ytdlp(ytdlp_base(session) + [
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best', '--match-filter', f'duration < {int(max_minutes) * 60} | !duration',
+        '-o', str(folder / 'audio-src.%(ext)s'), '--print', 'after_move:%(title)s', url], timeout=3600)
+    files = sorted(folder.glob('audio-src.*'))
+    if not files:
+        raise JobError('Video was not downloaded (too long or not available).')
+    lines = out.strip().splitlines()
+    return files[0], (lines[-1] if lines else '')
+
+
+def download_section(url, out_base: Path, start, end, session=''):
+    """Just one clip's part of the video in up to 1080p, cut exactly at start and end."""
+    _ytdlp(ytdlp_base(session) + [
+        '-f', VIDEO_FORMAT, '--merge-output-format', 'mp4', '--download-sections', f'*{start:.2f}-{end:.2f}',
+        '--force-keyframes-at-cuts', '-o', f'{out_base}.%(ext)s', url], timeout=1800)
+    files = sorted(out_base.parent.glob(out_base.name + '.*'))
+    if not files:
+        raise JobError('Clip part was not downloaded.')
+    return files[0]
+
+
+def download(url, kind, folder: Path, max_minutes, session=''):
+    """The whole video (Google Drive, or links where downloading parts is not possible)."""
     folder.mkdir(parents=True, exist_ok=True)
     if kind == 'drive':
         import gdown
@@ -59,23 +107,19 @@ def download(url, kind, folder: Path, max_minutes):
         if not out:
             raise JobError('Google Drive file could not be downloaded. Make sure sharing is "Anyone with the link".')
         return Path(out), ''
-    cmd = ytdlp_base() + [
-        '--no-progress', '-f', 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b',
-        '--merge-output-format', 'mp4', '--match-filter', f'duration < {int(max_minutes) * 60} | !duration',
-        '-o', str(folder / 'source.%(ext)s'), '--print', 'after_move:%(title)s', url,
-    ]
-    try:
-        title = sh(cmd, timeout=3 * 3600).strip().splitlines()
-    except JobError as err:
-        msg = str(err)
-        if 'Sign in to confirm' in msg or 'bot' in msg.lower():
-            raise JobError('YouTube blocked the server from downloading this video. Download it on your phone or PC and '
-                           'upload the file here instead, or use the Google Drive link from the campaign.')
-        raise
+    out = _ytdlp(ytdlp_base(session) + [
+        '-f', VIDEO_FORMAT, '--merge-output-format', 'mp4', '--match-filter', f'duration < {int(max_minutes) * 60} | !duration',
+        '-o', str(folder / 'source.%(ext)s'), '--print', 'after_move:%(title)s', url], timeout=3 * 3600)
     files = sorted(folder.glob('source.*'))
     if not files:
         raise JobError('Video was not downloaded (too long or not available).')
-    return files[0], (title[-1] if title else '')
+    lines = out.strip().splitlines()
+    return files[0], (lines[-1] if lines else '')
+
+
+def media_duration(path):
+    out = sh(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(path)])
+    return float(out.strip() or 0)
 
 
 def probe(path):

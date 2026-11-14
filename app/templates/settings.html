@@ -103,12 +103,19 @@
 </div>
 
 {% if user.role == 'admin' %}
-<div class="card">
-  <h2>Server download help <span class="chip">Admin</span></h2>
-  <p class="small muted" style="margin-top:0">AI clip picking is {{ 'on' if has_ai else 'off (add MISTRAL_API_KEY in Coolify)' }}.
-    If YouTube blocks server downloads, upload a cookies.txt from a spare YouTube account (never your main one).</p>
-  <input type="file" name="cookies" accept=".txt">
+<div class="card" id="youtube-access">
+  <h2>YouTube link downloads <span class="chip">Admin</span></h2>
+  <p class="small" style="margin-top:0">Status: {% if has_cookies %}<b>cookies saved</b>{% else %}<b>no cookies yet</b>{% endif %}.
+    YouTube blocks servers that are not signed in. Give the server the cookies of a <b>spare</b> Google account (never your main one):</p>
+  <ol class="small muted" style="padding-left:18px;margin:0 0 12px">
+    <li>Open a Chrome <b>Incognito</b> window and sign in to youtube.com with the spare account.</li>
+    <li>In the same window, open <code>youtube.com/robots.txt</code> and export cookies with the "Get cookies.txt LOCALLY" extension (allow it in Incognito).</li>
+    <li>Close the Incognito window right away and don't open that session again, so the cookies keep working longer.</li>
+    <li>Upload the file here and save. If links get blocked again later, repeat these steps.</li>
+  </ol>
+  <input type="file" name="cookies" accept=".txt" aria-label="cookies.txt file">
   {% if has_cookies %}<label class="check"><input type="checkbox" name="remove_cookies"> Remove saved cookies</label>{% endif %}
+  <p class="small muted">AI clip picking is {{ 'on' if has_ai else 'off (add MISTRAL_API_KEY in Coolify for smarter picks)' }}.</p>
 </div>
 {% endif %}
 
