@@ -93,7 +93,8 @@
     <div>
       <label for="crop_mode">Framing</label>
       <select id="crop_mode" name="crop_mode">
-        <option value="face" {{ 'selected' if settings.crop_mode == 'face' }}>Follow the speaker's face</option>
+        <option value="auto" {{ 'selected' if settings.crop_mode == 'auto' }}>Automatic: follow the face on sharp videos, full frame on low-quality ones</option>
+        <option value="face" {{ 'selected' if settings.crop_mode == 'face' }}>Always follow the speaker's face</option>
         <option value="fit" {{ 'selected' if settings.crop_mode == 'fit' }}>Full frame with blurred background</option>
       </select>
     </div>

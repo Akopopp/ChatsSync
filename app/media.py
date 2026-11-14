@@ -39,6 +39,8 @@ def source_type(url):
 BLOCKED = ('YouTube asked the server to sign in, so this link could not be downloaded right now. Upload the video file '
            'instead, or try the link again later.')
 VIDEO_FORMAT = 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b'
+# Clip parts are short, so take the sharpest version (up to 4K): the 9:16 crop keeps only a third of the width.
+PART_FORMAT = 'bv*[height<=2160]+ba/b[height<=2160]/b'
 
 
 def ytdlp_base(session=''):
@@ -90,7 +92,7 @@ def download_audio(url, folder: Path, max_minutes, session=''):
 def download_section(url, out_base: Path, start, end, session=''):
     """Just one clip's part of the video in up to 1080p, cut exactly at start and end."""
     _ytdlp(ytdlp_base(session) + [
-        '-f', VIDEO_FORMAT, '--merge-output-format', 'mp4', '--download-sections', f'*{start:.2f}-{end:.2f}',
+        '-f', PART_FORMAT, '--merge-output-format', 'mkv', '--download-sections', f'*{start:.2f}-{end:.2f}',
         '--force-keyframes-at-cuts', '-o', f'{out_base}.%(ext)s', url], timeout=1800)
     files = sorted(out_base.parent.glob(out_base.name + '.*'))
     if not files:
@@ -192,17 +194,29 @@ def face_center(path: Path, start, end, src):
     return statistics.median(xs)
 
 
+def _sharpen(scale):
+    """Light sharpening when the picture is blown up, so upscaled crops look less soft."""
+    if scale <= 1.15:
+        return ''
+    amount = min(0.4 + (scale - 1) * 0.35, 1.0)
+    return f',unsharp=5:5:{amount:.2f}:5:5:0'
+
+
 def video_filter(path, start, end, src, crop_mode):
     w, h = src['width'], src['height']
     if h >= w * 1.5:  # already vertical
-        return f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1'
-    cx = face_center(path, start, end, src) if crop_mode == 'face' else None
+        return (f'scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}'
+                f'{_sharpen(H / h)},setsar=1')
+    # "auto": follow the face when the video is sharp enough (1080p+), otherwise keep the full frame
+    want_face = crop_mode == 'face' or (crop_mode == 'auto' and h >= 1000)
+    cx = face_center(path, start, end, src) if want_face else None
     if cx is not None:
         cw = int(h * 9 / 16) // 2 * 2
         x = int(min(max(cx - cw / 2, 0), w - cw))
-        return f'crop={cw}:{h}:{x}:0,scale={W}:{H},setsar=1'
+        return f'crop={cw}:{h}:{x}:0,scale={W}:{H}:flags=lanczos{_sharpen(H / h)},setsar=1'
     return (f'split[a][b];[a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},'
-            f'boxblur=8:2,scale={W}:{H}[bg];[b]scale={W}:-2[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1')
+            f'boxblur=8:2,scale={W}:{H}[bg];[b]scale={W}:-2:flags=lanczos{_sharpen(W / w)}[fg];'
+            f'[bg][fg]overlay=0:(H-h)/2,setsar=1')
 
 
 # ---------- captions ----------
@@ -272,7 +286,7 @@ def render(path: Path, out: Path, start, end, words, title, src, settings):
     graph = f'[0:v]{vf}[v0];[v0]{sub}[v]'
     sh(['nice', '-n', '15', 'ffmpeg', '-y', '-v', 'error', '-ss', f'{start:.2f}', '-to', f'{end:.2f}', '-i', str(path),
         '-filter_complex', graph, '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast',
-        '-crf', '21', '-r', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+        '-crf', '18', '-r', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
         '-threads', THREADS, '-movflags', '+faststart', str(out)], timeout=1800)
     ass.unlink(missing_ok=True)
     thumb = out.with_suffix('.jpg')

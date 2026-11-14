@@ -23,7 +23,7 @@ DEFAULT_SETTINGS = {
     'post_instagram': '1',
     'post_facebook': '1',
     'schedule_gap_hours': '3',
-    'crop_mode': 'face',
+    'crop_mode': 'auto',
     'show_title': '1',
     'caption_uppercase': '1',
     'language': '',
