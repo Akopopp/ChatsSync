@@ -1,21 +1,73 @@
 {% extends 'base.html' %}
 {% block title %}Admin{% endblock %}
 {% block body %}
-<h1>Admin</h1>
-{% set notes = {'user_ok': ('ok', 'Customer account created.'), 'user_bad': ('bad', 'Check the email (must be new) and use a password of at least 8 characters.'), 'user_deleted': ('ok', 'Customer deleted.')} %}
+<div class="page-head">
+  <div><h1>Admin panel</h1><p>Customers, sign-ups, plans, every video and the server, all in one place.</p></div>
+  <span class="chip blue">Only you can see this page</span>
+</div>
+{% set notes = {'user_ok': ('ok', 'Customer account created.'), 'user_bad': ('bad', 'Check the email (must be new) and use a password of at least 8 characters.'),
+  'user_deleted': ('ok', 'Customer deleted.'), 'approved': ('ok', 'Approved. They can start making clips now.'), 'rejected': ('ok', 'Sign-up removed.'),
+  'site_ok': ('ok', 'Sign-up rules saved.'), 'server_ok': ('ok', 'Saved.')} %}
 {% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
 
 <div class="stats">
   <div class="stat"><b>{{ stats.active }}</b><span>active customers</span></div>
+  <div class="stat"><b>{{ pending | length }}</b><span>waiting for approval</span></div>
   <div class="stat"><b>{{ stats.month }}</b><span>videos this month</span></div>
   <div class="stat"><b>{{ stats.posts_today }}</b><span>posts in 24 h</span></div>
   <div class="stat"><b>{{ stats.yt_count }}/{{ stats.yt_limit }}</b><span>YouTube uploads today</span></div>
   <div class="stat"><b>{{ '%.0f' % free_gb }} GB</b><span>free disk</span></div>
 </div>
 
+<div class="card" id="signups">
+  <h2>New sign-ups {% if pending %}<span class="chip warn">{{ pending | length }} waiting</span>{% endif %}</h2>
+  {% if not pending %}<p class="muted" style="margin:0">Nobody is waiting. People who sign in with Google show up here.</p>{% endif %}
+  <div class="table">
+  {% for u in pending %}
+    <div class="tr" style="flex-wrap:wrap">
+      <div class="grow" style="min-width:200px">
+        <div class="t">{{ u.name or u.email }}</div>
+        <div class="meta">{{ u.email }} · signed up {{ u.created_at | when }}</div>
+      </div>
+      <form method="post" action="/admin/users/{{ u.id }}" class="row">
+        <input type="hidden" name="action" value="approve"><input type="hidden" name="name" value="{{ u.name }}">
+        <select name="days" aria-label="Plan length" style="width:auto">
+          <option value="3">3-day trial</option><option value="7">7 days</option><option value="30" selected>30 days</option>
+          <option value="90">90 days</option><option value="365">1 year</option><option value="0">No end</option>
+        </select>
+        <input type="number" name="videos_per_month" value="30" min="0" style="width:76px" aria-label="Videos per month" title="Videos per month (0 = unlimited)"><span class="small muted">videos/mo</span>
+        <input type="number" name="max_minutes" value="90" min="1" max="300" style="width:70px" aria-label="Longest video in minutes" title="Longest video (minutes)"><span class="small muted">min max</span>
+        <button class="btn sm">Approve</button>
+      </form>
+      <form method="post" action="/admin/users/{{ u.id }}" onsubmit="return confirm('Remove this sign-up?')">
+        <input type="hidden" name="action" value="reject"><button class="link danger">Remove</button>
+      </form>
+    </div>
+  {% endfor %}
+  </div>
+  <form method="post" action="/admin/site" style="margin-top:16px;border-top:1px solid var(--line);padding-top:6px">
+    <div class="grid2">
+      <div><label for="signup_mode">When someone new signs in with Google</label>
+        <select id="signup_mode" name="signup_mode">
+          <option value="approval" {{ 'selected' if site.signup_mode == 'approval' }}>Wait for my approval</option>
+          <option value="trial" {{ 'selected' if site.signup_mode == 'trial' }}>Give a free trial right away</option>
+          <option value="closed" {{ 'selected' if site.signup_mode == 'closed' }}>Don't allow new sign-ups</option>
+        </select></div>
+      <div><label>Free trial</label>
+        <div class="row">
+          <input type="number" name="trial_days" value="{{ site.trial_days }}" min="1" style="width:80px" aria-label="Trial days"><span class="small muted">days,</span>
+          <input type="number" name="trial_videos" value="{{ site.trial_videos }}" min="1" style="width:80px" aria-label="Trial videos"><span class="small muted">videos,</span>
+          <input type="number" name="trial_minutes" value="{{ site.trial_minutes }}" min="1" style="width:80px" aria-label="Trial max minutes"><span class="small muted">min max</span>
+        </div></div>
+    </div>
+    <button class="btn ghost sm" style="margin-top:14px">Save sign-up rules</button>
+    {% if not google %}<p class="hint">Google sign-in is off until YT_CLIENT_ID and YT_CLIENT_SECRET are set.</p>{% endif %}
+  </form>
+</div>
+
 <div class="card" id="queue">
   <h2>Queue</h2>
-  {% if not live %}<p class="muted">Nothing running.</p>{% endif %}
+  {% if not live %}<p class="muted" style="margin:0">Nothing running.</p>{% endif %}
   <div class="table">
   {% for job in live %}
     {% set t = timers.get(job.id) %}
@@ -31,7 +83,6 @@
     </div>
   {% endfor %}
   </div>
-  <p class="hint">Learned speed: download {{ '%.2f' % rates.download }}×, transcript {{ '%.2f' % rates.transcribe }}×, editing {{ '%.2f' % rates.render }}× of video length. Timers get more accurate after every video.</p>
 </div>
 
 <div class="card" id="users">
@@ -40,7 +91,7 @@
   {% for u in users %}
     <a class="tr" href="/admin/users/{{ u.id }}">
       <div class="grow" style="min-width:0">
-        <div class="t">{{ u.name or u.email }} {% if u.role == 'admin' %}<span class="chip">Admin</span>{% endif %}</div>
+        <div class="t">{{ u.name or u.email }} {% if u.role == 'admin' %}<span class="chip blue">Admin</span>{% endif %}</div>
         <div class="meta">{{ u.email }} · {{ u.used }}{% if u.videos_per_month %}/{{ u.videos_per_month }}{% endif %} videos this month
           · {% for p, on in u.linked.items() if on %}{{ NAMES[p] }} {% else %}no accounts linked{% endfor %}</div>
       </div>
@@ -51,45 +102,62 @@
     </a>
   {% endfor %}
   </div>
+  <details style="margin-top:14px">
+    <summary>Add a customer with email and password</summary>
+    <form method="post" action="/admin/users">
+      <div class="grid2">
+        <div><label for="name">Name</label><input id="name" type="text" name="name" required></div>
+        <div><label for="email">Email (their login)</label><input id="email" type="email" name="email" required></div>
+        <div><label for="password">Password</label><input id="password" type="text" name="password" minlength="8" autocomplete="off" required>
+          <div class="hint">Send it to the customer. They can also just use "Continue with Google" with this email.</div></div>
+        <div><label for="days">Plan length</label>
+          <select id="days" name="days">
+            <option value="7">7 days (trial)</option><option value="30" selected>30 days</option>
+            <option value="90">90 days</option><option value="365">1 year</option><option value="0">No end date</option>
+          </select></div>
+        <div><label for="videos_per_month">Videos per month <span class="hint">(0 = unlimited)</span></label>
+          <input id="videos_per_month" type="number" name="videos_per_month" min="0" value="30"></div>
+        <div><label for="max_minutes">Longest video allowed (minutes)</label>
+          <input id="max_minutes" type="number" name="max_minutes" min="1" max="300" value="90"></div>
+      </div>
+      <label for="notes">Notes <span class="hint">(only you see this, e.g. payment details)</span></label>
+      <input id="notes" type="text" name="notes">
+      <button class="btn" style="margin-top:14px">Create account</button>
+    </form>
+  </details>
 </div>
 
 <div class="card">
-  <h2>Add a customer</h2>
-  <form method="post" action="/admin/users">
-    <div class="grid2">
-      <div><label for="name">Name</label><input id="name" type="text" name="name" required></div>
-      <div><label for="email">Email (their login)</label><input id="email" type="email" name="email" required></div>
-      <div><label for="password">Password</label><input id="password" type="text" name="password" minlength="8" autocomplete="off" required>
-        <div class="hint">Send it to the customer. They can change it in Settings.</div></div>
-      <div><label for="days">Plan length</label>
-        <select id="days" name="days">
-          <option value="7">7 days (trial)</option><option value="30" selected>30 days</option>
-          <option value="90">90 days</option><option value="365">1 year</option><option value="0">No end date</option>
-        </select></div>
-      <div><label for="videos_per_month">Videos per month <span class="hint">(0 = unlimited)</span></label>
-        <input id="videos_per_month" type="number" name="videos_per_month" min="0" value="30"></div>
-      <div><label for="max_minutes">Longest video allowed (minutes)</label>
-        <input id="max_minutes" type="number" name="max_minutes" min="1" max="300" value="90"></div>
-    </div>
-    <label for="notes">Notes <span class="hint">(only you see this, e.g. payment details)</span></label>
-    <input id="notes" type="text" name="notes">
-    <button class="btn" style="margin-top:14px">Create account</button>
-  </form>
-</div>
-
-<div class="card">
-  <h2>Recent videos</h2>
+  <h2>All recent videos</h2>
   <div class="table">
   {% for job in recent %}
     <a class="tr" href="/jobs/{{ job.id }}">
       <div class="grow" style="min-width:0">
         <div class="t">{{ job.title or job.source }}</div>
-        <div class="meta">{{ names.get(job.user_id, '?') }} · {{ job.finished_at | when }}{% if job.started_at and job.finished_at %} · took {{ (job.finished_at - job.started_at) | eta }}{% endif %}
+        <div class="meta">{{ names.get(job.user_id, '?') }} · {{ job.finished_at | when }} · {{ job.clip_count }} clips
+          {% if job.started_at and job.finished_at %} · took {{ (job.finished_at - job.started_at) | eta }}{% endif %}
           {% if job.error %} · {{ job.error[:80] }}{% endif %}</div>
       </div>
       <span class="chip {{ job.status }}">{{ job.status }}</span>
     </a>
-  {% else %}<p class="muted">None yet.</p>{% endfor %}
+  {% else %}<p class="muted" style="margin:0">None yet.</p>{% endfor %}
   </div>
+</div>
+
+<div class="card" id="server">
+  <h2>Server</h2>
+  <div class="row small" style="gap:8px;margin-bottom:12px">
+    <span class="chip {{ 'ok' if has_ai else 'warn' }}">AI picks {{ 'on (Gemini)' if has_ai else 'off, using built-in rules' }}</span>
+    <span class="chip {{ 'ok' if google else 'warn' }}">Google sign-in {{ 'on' if google else 'off' }}</span>
+    <span class="chip {{ 'ok' if has_cookies else 'warn' }}">YouTube downloads {{ 'ready' if has_cookies else 'need cookies' }}</span>
+  </div>
+  <form method="post" action="/admin/server" enctype="multipart/form-data">
+    <label class="tight">YouTube cookies (spare Google account only)</label>
+    <input type="file" name="cookies" accept=".txt" aria-label="cookies.txt file">
+    {% if has_cookies %}<label class="check"><input type="checkbox" name="remove_cookies"> Remove saved cookies</label>{% endif %}
+    <div class="hint">Export youtube.com cookies from a separate Chrome profile signed in to a spare account, then don't open YouTube in that profile again. Replace the file when the "blocked" alert shows.</div>
+    <button class="btn ghost sm" style="margin-top:12px">Save</button>
+  </form>
+  <p class="hint" style="margin-top:14px">Learned speed: download {{ '%.2f' % rates.download }}×, transcript {{ '%.2f' % rates.transcribe }}×, editing {{ '%.2f' % rates.render }}× of video length. Timers get more accurate after every video.</p>
 </div>
 {% endblock %}

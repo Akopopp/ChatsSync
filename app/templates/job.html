@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ job.title or 'Video' }}{% endblock %}
 {% block body %}
-<p class="small"><a href="/">&larr; All videos</a></p>
+<p class="small" style="margin-top:0"><a href="/videos">&larr; My videos</a></p>
 <h1 style="word-break:break-word">{{ job.title or job.source }}</h1>
 <div class="row muted small" style="margin-bottom:14px">
   <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>

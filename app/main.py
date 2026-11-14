@@ -15,7 +15,7 @@ from . import ai, auth, db, media, pipeline, platforms
 
 ROOT = Path(__file__).resolve().parent
 PKT = timezone(timedelta(hours=5))
-APP_NAME = os.environ.get('APP_NAME', 'Clipper')
+APP_NAME = os.environ.get('APP_NAME', 'ChatsSync Clips')
 
 db.init()
 auth.bootstrap_admin()
@@ -106,7 +106,11 @@ def to_login(request, exc):
 
 @app.get('/login', response_class=HTMLResponse)
 def login_form(request: Request):
-    return templates.TemplateResponse(request, 'login.html', {'request': request, 'error': ''})
+    error = 'Google sign-in was cancelled. Please try again.' if request.query_params.get('error') == 'google' else ''
+    if current_user(request):
+        return RedirectResponse('/', status_code=303)
+    return templates.TemplateResponse(request, 'login.html', {'request': request, 'error': error,
+                                                              'google': auth.google_ready()})
 
 
 @app.post('/login')
@@ -114,8 +118,8 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
     user = auth.login(email, password)
     if not user:
         time.sleep(1)
-        return templates.TemplateResponse(request, 'login.html', {'request': request, 'error': 'Wrong email or password.'},
-                                          status_code=401)
+        return templates.TemplateResponse(request, 'login.html', {'request': request, 'error': 'Wrong email or password.',
+                                                                  'google': auth.google_ready()}, status_code=401)
     request.session['uid'] = user['id']
     return RedirectResponse('/', status_code=303)
 
@@ -126,18 +130,58 @@ def logout(request: Request):
     return RedirectResponse('/login', status_code=303)
 
 
+@app.get('/auth/google/start')
+def google_start(request: Request):
+    if not auth.google_ready():
+        return RedirectResponse('/login', status_code=303)
+    import secrets
+    state = secrets.token_urlsafe(16)
+    request.session['google_state'] = state
+    return RedirectResponse(auth.google_url(state), status_code=303)
+
+
+@app.get('/auth/google/callback')
+def google_callback(request: Request, code: str = '', state: str = ''):
+    if not code or state != request.session.pop('google_state', None):
+        return RedirectResponse('/login?error=google', status_code=303)
+    try:
+        user, problem = auth.google_login(auth.google_profile(code))
+    except Exception as err:
+        print('google login failed', err)
+        user, problem = None, 'Google sign-in failed. Please try again.'
+    if not user:
+        return templates.TemplateResponse(request, 'login.html', {'request': request, 'error': problem,
+                                                                  'google': auth.google_ready()}, status_code=403)
+    request.session['uid'] = user['id']
+    return RedirectResponse('/', status_code=303)
+
+
 # ---------- videos ----------
+
+def user_jobs(user_id, limit):
+    return db.q("""select j.*, (select count(*) from clips c where c.job_id=j.id and c.status not in ('failed','rejected')) as clip_count,
+                   (select count(*) from posts p join clips c on c.id=p.clip_id where c.job_id=j.id and p.status='posted') as posted
+                   from jobs j where j.user_id=? order by j.id desc limit ?""", (user_id, limit))
+
 
 @app.get('/', response_class=HTMLResponse)
 def home(request: Request):
     user = current_user(request)
     if not user:
         return RedirectResponse('/welcome', status_code=303)
-    jobs = db.q('''select j.*, (select count(*) from clips c where c.job_id=j.id and c.status not in ('failed','rejected')) as clip_count,
-                   (select count(*) from posts p join clips c on c.id=p.clip_id where c.job_id=j.id and p.status='posted') as posted
-                   from jobs j where j.user_id=? order by j.id desc limit 60''', (user['id'],))
-    return page(request, 'home.html', jobs=jobs, timers=pipeline.timers(), problem=auth.access_problem(user),
-                used=auth.videos_this_month(user['id']), error=request.query_params.get('error', ''))
+    if not user.get('approved', 1):
+        return page(request, 'pending.html')
+    return page(request, 'home.html', jobs=user_jobs(user['id'], 5), timers=pipeline.timers(),
+                problem=auth.access_problem(user), used=auth.videos_this_month(user['id']),
+                error=request.query_params.get('error', ''))
+
+
+@app.get('/videos', response_class=HTMLResponse)
+def videos(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse('/login', status_code=303)
+    return page(request, 'videos.html', jobs=user_jobs(user['id'], 200), timers=pipeline.timers())
 
 
 @app.post('/jobs')
@@ -322,13 +366,20 @@ async def save_settings(request: Request):
             db.set_setting(user['id'], key, db.DEFAULT_SETTINGS[key])
     if form.get('page_id'):
         platforms.choose_page(user['id'], str(form.get('page_id')))
-    if user['role'] == 'admin':
-        cookies = form.get('cookies')
-        if cookies is not None and getattr(cookies, 'filename', ''):
-            (db.DATA / 'cookies.txt').write_bytes(await cookies.read())
-        if form.get('remove_cookies'):
-            (db.DATA / 'cookies.txt').unlink(missing_ok=True)
     return RedirectResponse('/settings?msg=saved', status_code=303)
+
+
+@app.post('/admin/server')
+async def admin_server(request: Request):
+    need_user(request, admin=True)
+    form = await request.form()
+    cookies = form.get('cookies')
+    if cookies is not None and getattr(cookies, 'filename', ''):
+        (db.DATA / 'cookies.txt').write_bytes(await cookies.read())
+        db.set_stat('yt_blocked_at', 0)
+    if form.get('remove_cookies'):
+        (db.DATA / 'cookies.txt').unlink(missing_ok=True)
+    return RedirectResponse('/admin?msg=server_ok#server', status_code=303)
 
 
 @app.post('/password')
@@ -373,13 +424,15 @@ def oauth_disconnect(request: Request, platform: str):
 
 @app.get('/admin', response_class=HTMLResponse)
 def admin_home(request: Request):
-    users = db.q('select * from users order by id desc')
+    users = db.q('select * from users where approved=1 order by id desc')
+    pending = db.q('select * from users where approved=0 order by created_at')
     for u in users:
         u['used'] = auth.videos_this_month(u['id'])
         u['linked'] = platforms.connected(u['id'])
-    names = {u['id']: u['name'] or u['email'] for u in users}
+    names = {u['id']: u['name'] or u['email'] for u in db.q('select id, name, email from users')}
     live = db.q('select * from jobs where status in ("working", "queued", "uploading") order by created_at')
-    recent = db.q('select * from jobs where status in ("done", "failed") order by finished_at desc limit 15')
+    recent = db.q('select j.*, (select count(*) from clips c where c.job_id=j.id) as clip_count from jobs j '
+                  'where status in ("done", "failed") order by finished_at desc limit 40')
     date, yt_count = pipeline.yt_today()
     stats = {
         'users': len(users), 'active': sum(1 for u in users if u['active'] and not (u['expires_at'] and u['expires_at'] < time.time())),
@@ -387,8 +440,23 @@ def admin_home(request: Request):
         'posts_today': db.one('select count(*) as n from posts where status="posted" and posted_at>=?', (time.time() - 86400,))['n'],
         'yt_count': yt_count, 'yt_limit': pipeline.YT_DAILY_LIMIT,
     }
-    return page(request, 'admin.html', admin=True, users=users, names=names, live=live, recent=recent, stats=stats,
-                timers=pipeline.timers(), rates=db.rates(), msg=request.query_params.get('msg', ''))
+    return page(request, 'admin.html', admin=True, users=users, pending=pending, names=names, live=live, recent=recent,
+                stats=stats, timers=pipeline.timers(), rates=db.rates(), site=db.site(), msg=request.query_params.get('msg', ''),
+                has_ai=ai.ai_ready(), has_cookies=(db.DATA / 'cookies.txt').exists(), google=auth.google_ready())
+
+
+@app.post('/admin/site')
+async def admin_site(request: Request):
+    need_user(request, admin=True)
+    form = await request.form()
+    mode = str(form.get('signup_mode', 'approval'))
+    db.set_setting(0, 'signup_mode', mode if mode in ('approval', 'trial', 'closed') else 'approval')
+    for key in ('trial_days', 'trial_videos', 'trial_minutes'):
+        try:
+            db.set_setting(0, key, str(max(0, int(form.get(key, db.SITE_DEFAULTS[key])))))
+        except ValueError:
+            pass
+    return RedirectResponse('/admin?msg=site_ok#signups', status_code=303)
 
 
 def _user_fields(form):
@@ -440,6 +508,14 @@ async def admin_update_user(request: Request, user_id: int):
         fields = _user_fields(form)
         cols = ', '.join(f'{k}=?' for k in fields)
         db.run(f'update users set {cols} where id=?', (*fields.values(), user_id))
+    elif action == 'approve':
+        fields = _user_fields(form)
+        cols = ', '.join(f'{k}=?' for k in fields)
+        db.run(f'update users set {cols}, approved=1, active=1 where id=?', (*fields.values(), user_id))
+        return RedirectResponse('/admin?msg=approved#signups', status_code=303)
+    elif action == 'reject' and user_id != admin['id']:
+        db.run('delete from users where id=? and approved=0', (user_id,))
+        return RedirectResponse('/admin?msg=rejected#signups', status_code=303)
     elif action == 'pause' and user_id != admin['id']:
         db.run('update users set active=0 where id=?', (user_id,))
     elif action == 'resume':

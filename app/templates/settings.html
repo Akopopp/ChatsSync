@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Settings{% endblock %}
 {% block body %}
-<h1>Settings</h1>
+<div class="page-head"><div><h1>Settings</h1><p>Your accounts, campaign rules and how clips are made.</p></div></div>
 {% set notes = {'saved': ('ok', 'Saved.'), 'pw_ok': ('ok', 'Password changed.'), 'pw_bad': ('bad', 'Current password is wrong, or the new one is under 8 characters.')} %}
 {% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
 {% if msg.startswith('linked_') %}<div class="alert ok">{{ NAMES[msg[7:]] }} connected.</div>{% endif %}
@@ -103,26 +103,12 @@
   <label class="check"><input type="checkbox" name="caption_uppercase" {{ 'checked' if settings.caption_uppercase == '1' }}> Captions in CAPITAL letters</label>
 </div>
 
-{% if user.role == 'admin' %}
-<div class="card" id="youtube-access">
-  <h2>YouTube link downloads <span class="chip">Admin</span></h2>
-  <p class="small" style="margin-top:0">Status: {% if has_cookies %}<b>cookies saved</b>{% else %}<b>no cookies yet</b>{% endif %}.
-    YouTube blocks servers that are not signed in. Give the server the cookies of a <b>spare</b> Google account (never your main one):</p>
-  <ol class="small muted" style="padding-left:18px;margin:0 0 12px">
-    <li>Open a Chrome <b>Incognito</b> window and sign in to youtube.com with the spare account.</li>
-    <li>In the same window, open <code>youtube.com/robots.txt</code> and export cookies with the "Get cookies.txt LOCALLY" extension (allow it in Incognito).</li>
-    <li>Close the Incognito window right away and don't open that session again, so the cookies keep working longer.</li>
-    <li>Upload the file here and save. If links get blocked again later, repeat these steps.</li>
-  </ol>
-  <input type="file" name="cookies" accept=".txt" aria-label="cookies.txt file">
-  {% if has_cookies %}<label class="check"><input type="checkbox" name="remove_cookies"> Remove saved cookies</label>{% endif %}
-  <p class="small muted">AI clip picking is {{ 'on' if has_ai else 'off (add a free GEMINI_API_KEY in Coolify for smarter picks)' }}.</p>
-</div>
-{% endif %}
+
 
 <button class="btn">Save settings</button>
 </form>
 
+{% if user.password %}
 <div class="card" id="password" style="margin-top:20px">
   <h2>Change password</h2>
   <form method="post" action="/password" class="grid2">
@@ -131,4 +117,7 @@
     <div><button class="btn ghost" style="margin-top:14px">Change password</button></div>
   </form>
 </div>
+{% else %}
+<p class="small muted" style="margin-top:20px">You sign in with Google ({{ user.email }}).</p>
+{% endif %}
 {% endblock %}

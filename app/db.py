@@ -74,11 +74,29 @@ def conn():
     return c
 
 
+MIGRATIONS = {
+    'users': {'approved': 'integer default 1', 'google_sub': "text default ''", 'avatar': "text default ''"},
+}
+
+SITE_DEFAULTS = {'signup_mode': 'approval', 'trial_days': '3', 'trial_videos': '5', 'trial_minutes': '60'}
+
+
 def init():
     DATA.mkdir(parents=True, exist_ok=True)
     with conn() as c:
         c.executescript(SCHEMA)
         c.execute('pragma journal_mode=wal')
+        for table, cols in MIGRATIONS.items():
+            have = {r['name'] for r in c.execute(f'pragma table_info({table})')}
+            for col, kind in cols.items():
+                if col not in have:
+                    c.execute(f'alter table {table} add column {col} {kind}')
+
+
+def site():
+    """Admin-wide settings (stored under user 0)."""
+    stored = {r['key']: r['value'] for r in q('select key, value from settings where user_id=0')}
+    return {**SITE_DEFAULTS, **stored}
 
 
 def q(sql, args=()):

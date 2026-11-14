@@ -1,0 +1,20 @@
+{% if not jobs %}<p class="muted" style="margin:6px 0 0">No videos yet. Paste your first link above.</p>{% endif %}
+<div class="list">
+{% for job in jobs %}
+  {% set t = timers.get(job.id) %}
+  <a class="item" href="/jobs/{{ job.id }}">
+    <div class="thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 9 5 3-5 3z"/></svg></div>
+    <div class="grow" style="min-width:0">
+      <div class="t">{{ job.title or job.source }}</div>
+      <div class="meta">
+        {% if job.status == 'queued' and t %}Starts in <b data-left="{{ t.starts_in|int }}">{{ t.starts_in | eta }}</b>
+        {% elif job.status == 'working' and t %}{{ job.step }} · <b data-left="{{ t.left|int }}">{{ t.left | eta }}</b> left
+        {% elif job.status == 'done' %}{{ job.clip_count }} clips · {{ job.posted }} posted
+        {% elif job.status == 'failed' %}{{ job.error[:90] }}
+        {% else %}{{ job.step }}{% endif %}
+        · {{ job.created_at | when }}</div>
+    </div>
+    <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
+  </a>
+{% endfor %}
+</div>
