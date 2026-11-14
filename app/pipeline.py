@@ -127,8 +127,11 @@ def prefetch(job_id):
         db.update_job(job_id, title=title[:200] or job['title'], duration=duration)
         if duration and user['max_minutes'] and duration > user['max_minutes'] * 60:
             db.update_job(job_id, status='failed', error=f'Video is longer than your limit of {user["max_minutes"]} minutes.')
-    except Exception:
-        pass
+    except Exception as err:
+        if 'Sign in to confirm' in str(err) and db.one('select status from jobs where id=?', (job_id,))['status'] == 'queued':
+            db.update_job(job_id, status='failed', finished_at=time.time(), error=(
+                'YouTube blocked the server from downloading this video. Download it on your phone or PC and upload '
+                'the file here instead, or use the Google Drive link from the campaign.'))
 
 
 def _stage(job_id, stage, step):

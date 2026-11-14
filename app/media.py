@@ -69,7 +69,8 @@ def download(url, kind, folder: Path, max_minutes):
     except JobError as err:
         msg = str(err)
         if 'Sign in to confirm' in msg or 'bot' in msg.lower():
-            raise JobError('YouTube blocked the server download. Upload the video file instead, or add a cookies.txt in Settings.')
+            raise JobError('YouTube blocked the server from downloading this video. Download it on your phone or PC and '
+                           'upload the file here instead, or use the Google Drive link from the campaign.')
         raise
     files = sorted(folder.glob('source.*'))
     if not files:
