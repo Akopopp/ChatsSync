@@ -78,7 +78,7 @@ def download_audio(url, folder: Path, max_minutes, session=''):
     """Only the sound track: enough to write the transcript and pick clips, ~1 MB a minute."""
     folder.mkdir(parents=True, exist_ok=True)
     out = _ytdlp(ytdlp_base(session) + [
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best', '--match-filter', f'duration < {int(max_minutes) * 60} | !duration',
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
         '-o', str(folder / 'audio-src.%(ext)s'), '--print', 'after_move:%(title)s', url], timeout=3600)
     files = sorted(folder.glob('audio-src.*'))
     if not files:
@@ -108,7 +108,7 @@ def download(url, kind, folder: Path, max_minutes, session=''):
             raise JobError('Google Drive file could not be downloaded. Make sure sharing is "Anyone with the link".')
         return Path(out), ''
     out = _ytdlp(ytdlp_base(session) + [
-        '-f', VIDEO_FORMAT, '--merge-output-format', 'mp4', '--match-filter', f'duration < {int(max_minutes) * 60} | !duration',
+        '-f', VIDEO_FORMAT, '--merge-output-format', 'mp4',
         '-o', str(folder / 'source.%(ext)s'), '--print', 'after_move:%(title)s', url], timeout=3 * 3600)
     files = sorted(folder.glob('source.*'))
     if not files:
