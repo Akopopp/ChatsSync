@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}{{ target.name or target.email }}{% endblock %}
+{% block body %}
+<p class="small"><a href="/admin#users">&larr; Customers</a></p>
+<h1>{{ target.name or target.email }}</h1>
+<p class="muted" style="margin-top:0">{{ target.email }} · joined {{ target.created_at | day }} · last login {{ target.last_login | when or 'never' }}</p>
+{% if msg == 'saved' %}<div class="alert ok">Saved.</div>{% endif %}
+{% if msg == 'pw_bad' %}<div class="alert bad">Password must be at least 8 characters.</div>{% endif %}
+
+<div class="stats">
+  <div class="stat"><b>{{ target.used }}{% if target.videos_per_month %}/{{ target.videos_per_month }}{% endif %}</b><span>videos this month</span></div>
+  <div class="stat"><b>{{ target.expires_at | day if target.expires_at else 'No end' }}</b><span>plan ends</span></div>
+  <div class="stat"><b>{{ 'Active' if target.active else 'Paused' }}</b><span>status</span></div>
+  <div class="stat"><b>{% for p, on in target.linked.items() if on %}{{ NAMES[p][:2] }} {% else %}None{% endfor %}</b><span>linked accounts</span></div>
+</div>
+
+<div class="card">
+  <h2>Plan</h2>
+  <form method="post" action="/admin/users/{{ target.id }}">
+    <input type="hidden" name="action" value="save">
+    <div class="grid2">
+      <div><label for="name">Name</label><input id="name" type="text" name="name" value="{{ target.name }}"></div>
+      <div><label for="days">Set plan end</label>
+        <select id="days" name="days">
+          <option value="">Keep current ({{ target.expires_at | day if target.expires_at else 'no end' }})</option>
+          <option value="7">7 days from today</option><option value="30">30 days from today</option>
+          <option value="90">90 days from today</option><option value="365">1 year from today</option><option value="0">No end date</option>
+        </select></div>
+      <div><label for="videos_per_month">Videos per month <span class="hint">(0 = unlimited)</span></label>
+        <input id="videos_per_month" type="number" name="videos_per_month" min="0" value="{{ target.videos_per_month }}"></div>
+      <div><label for="max_minutes">Longest video allowed (minutes)</label>
+        <input id="max_minutes" type="number" name="max_minutes" min="1" max="300" value="{{ target.max_minutes }}"></div>
+    </div>
+    <label for="notes">Notes</label><input id="notes" type="text" name="notes" value="{{ target.notes }}">
+    <button class="btn" style="margin-top:14px">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Actions</h2>
+  <div class="row">
+    <form method="post" action="/admin/users/{{ target.id }}"><input type="hidden" name="action" value="extend"><button class="btn ghost">+30 days</button></form>
+    {% if target.role != 'admin' %}
+      {% if target.active %}
+        <form method="post" action="/admin/users/{{ target.id }}"><input type="hidden" name="action" value="pause"><button class="btn ghost">Pause account</button></form>
+      {% else %}
+        <form method="post" action="/admin/users/{{ target.id }}"><input type="hidden" name="action" value="resume"><button class="btn ghost">Resume account</button></form>
+      {% endif %}
+    {% endif %}
+  </div>
+  <form method="post" action="/admin/users/{{ target.id }}" class="row" style="margin-top:14px">
+    <input type="hidden" name="action" value="password">
+    <input class="grow" type="text" name="password" minlength="8" placeholder="New password for this customer" autocomplete="off" aria-label="New password">
+    <button class="btn ghost">Set password</button>
+  </form>
+  {% if target.role != 'admin' %}
+  <form method="post" action="/admin/users/{{ target.id }}" style="margin-top:14px" onsubmit="return confirm('Delete this customer and all their videos? This cannot be undone.')">
+    <input type="hidden" name="action" value="delete"><button class="btn danger">Delete customer</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Their videos</h2>
+  <div class="table">
+  {% for job in jobs %}
+    <a class="tr" href="/jobs/{{ job.id }}">
+      <div class="grow" style="min-width:0"><div class="t">{{ job.title or job.source }}</div>
+        <div class="meta">{{ job.created_at | when }}{% if job.error %} · {{ job.error[:80] }}{% endif %}</div></div>
+      <span class="chip {{ job.status }}">{{ job.status }}</span>
+    </a>
+  {% else %}<p class="muted">No videos yet.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

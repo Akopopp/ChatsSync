@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Videos{% endblock %}
+{% block body %}
+<h1>Make clips</h1>
+<p class="muted" style="margin-top:0">Paste a video link. {{ APP_NAME }} finds the best moments, edits them for Shorts and Reels, writes the titles, descriptions and tags, and posts them for you.</p>
+
+{% if not (linked.youtube or linked.instagram or linked.facebook) %}
+  <div class="alert">No account connected yet. <a href="/settings">Connect YouTube, Instagram or Facebook</a> to post clips.</div>
+{% endif %}
+{% if problem %}<div class="alert bad">{{ problem }}</div>{% endif %}
+{% if error == 'link' %}<div class="alert bad">Paste a full link starting with https://, or choose a video file.</div>{% endif %}
+
+<div class="card">
+  <form method="post" action="/jobs" enctype="multipart/form-data">
+    <label for="url">Video link <span class="hint">(YouTube, Google Drive or another public video link)</span></label>
+    <div class="row">
+      <input class="grow" id="url" type="url" name="url" placeholder="https://www.youtube.com/watch?v=..." {{ 'disabled' if problem }}>
+      <button class="btn" {{ 'disabled' if problem }}>Make clips</button>
+    </div>
+    <label for="file">Or upload the video file</label>
+    <div class="drop"><input id="file" type="file" name="file" accept="video/*" {{ 'disabled' if problem }}
+      onchange="if(this.files.length){this.form.querySelector('button').textContent='Uploading…';this.form.submit()}"></div>
+    <div class="hint" style="margin-top:8px">Only clip videos you have permission to use, like creator clipping campaigns.
+      {% if user.videos_per_month %}Used this month: <b>{{ used }} of {{ user.videos_per_month }}</b> videos.{% endif %}
+      {% if user.expires_at %}Plan active until <b>{{ user.expires_at | day }}</b>.{% endif %}</div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Your videos</h2>
+  {% if not jobs %}<p class="muted">No videos yet.</p>{% endif %}
+  <div class="list">
+  {% for job in jobs %}
+    {% set t = timers.get(job.id) %}
+    <a class="item" href="/jobs/{{ job.id }}">
+      <div class="grow" style="min-width:0">
+        <div class="t">{{ job.title or job.source }}</div>
+        <div class="meta">
+          {% if job.status == 'queued' and t %}Starts in <b data-left="{{ t.starts_in|int }}">{{ t.starts_in | eta }}</b>
+          {% elif job.status == 'working' and t %}{{ job.step }} · <b data-left="{{ t.left|int }}">{{ t.left | eta }}</b> left
+          {% elif job.status == 'done' %}{{ job.clip_count }} clips · {{ job.posted }} posted
+          {% elif job.status == 'failed' %}{{ job.error[:90] }}
+          {% else %}{{ job.step }}{% endif %}
+          · {{ job.created_at | when }}</div>
+      </div>
+      <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
+    </a>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %} | {{ APP_NAME }}</title>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+  <header><div class="in">
+    <a class="logo" href="/"><i>&#9986;</i>{{ APP_NAME }}</a>
+    <nav>
+      <a href="/" class="{{ 'on' if request.url.path == '/' or request.url.path.startswith('/jobs') }}">Videos</a>
+      <a href="/settings" class="{{ 'on' if request.url.path == '/settings' }}">Settings</a>
+      {% if user.role == 'admin' %}<a href="/admin" class="{{ 'on' if request.url.path.startswith('/admin') }}">Admin</a>{% endif %}
+      <a href="/logout">Log out</a>
+    </nav>
+  </div></header>
+  <main>
+    {% if user.role == 'admin' and free_gb < 10 %}<div class="alert bad">Server disk is low ({{ '%.1f' % free_gb }} GB free). New videos pause below 8 GB.</div>{% endif %}
+    {% block body %}{% endblock %}
+  </main>
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>

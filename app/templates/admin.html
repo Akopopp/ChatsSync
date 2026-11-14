@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Admin{% endblock %}
+{% block body %}
+<h1>Admin</h1>
+{% set notes = {'user_ok': ('ok', 'Customer account created.'), 'user_bad': ('bad', 'Check the email (must be new) and use a password of at least 8 characters.'), 'user_deleted': ('ok', 'Customer deleted.')} %}
+{% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
+
+<div class="stats">
+  <div class="stat"><b>{{ stats.active }}</b><span>active customers</span></div>
+  <div class="stat"><b>{{ stats.month }}</b><span>videos this month</span></div>
+  <div class="stat"><b>{{ stats.posts_today }}</b><span>posts in 24 h</span></div>
+  <div class="stat"><b>{{ stats.yt_count }}/{{ stats.yt_limit }}</b><span>YouTube uploads today</span></div>
+  <div class="stat"><b>{{ '%.0f' % free_gb }} GB</b><span>free disk</span></div>
+</div>
+
+<div class="card" id="queue">
+  <h2>Queue</h2>
+  {% if not live %}<p class="muted">Nothing running.</p>{% endif %}
+  <div class="table">
+  {% for job in live %}
+    {% set t = timers.get(job.id) %}
+    <div class="tr">
+      <div class="grow" style="min-width:0">
+        <a class="t" href="/jobs/{{ job.id }}">{{ job.title or job.source }}</a>
+        <div class="meta">{{ names.get(job.user_id, '?') }} · {{ job.duration | dur if job.duration else 'length unknown' }}
+          {% if job.status == 'working' and t %} · {{ job.step }} · <b data-left="{{ t.left|int }}">{{ t.left | eta }}</b> left
+          {% elif t %} · starts in <b data-left="{{ t.starts_in|int }}">{{ t.starts_in | eta }}</b>{% endif %}</div>
+      </div>
+      <span class="chip {{ job.status }}">{{ job.status }}</span>
+      {% if job.status == 'queued' %}<form method="post" action="/admin/jobs/{{ job.id }}/cancel"><button class="link danger">Cancel</button></form>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  <p class="hint">Learned speed: download {{ '%.2f' % rates.download }}×, transcript {{ '%.2f' % rates.transcribe }}×, editing {{ '%.2f' % rates.render }}× of video length. Timers get more accurate after every video.</p>
+</div>
+
+<div class="card" id="users">
+  <h2>Customers</h2>
+  <div class="table">
+  {% for u in users %}
+    <a class="tr" href="/admin/users/{{ u.id }}">
+      <div class="grow" style="min-width:0">
+        <div class="t">{{ u.name or u.email }} {% if u.role == 'admin' %}<span class="chip">Admin</span>{% endif %}</div>
+        <div class="meta">{{ u.email }} · {{ u.used }}{% if u.videos_per_month %}/{{ u.videos_per_month }}{% endif %} videos this month
+          · {% for p, on in u.linked.items() if on %}{{ NAMES[p] }} {% else %}no accounts linked{% endfor %}</div>
+      </div>
+      {% if not u.active %}<span class="chip failed">Paused</span>
+      {% elif u.expires_at and u.expires_at < now %}<span class="chip failed">Expired</span>
+      {% elif u.expires_at %}<span class="chip">Until {{ u.expires_at | day }}</span>
+      {% else %}<span class="chip done">Active</span>{% endif %}
+    </a>
+  {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add a customer</h2>
+  <form method="post" action="/admin/users">
+    <div class="grid2">
+      <div><label for="name">Name</label><input id="name" type="text" name="name" required></div>
+      <div><label for="email">Email (their login)</label><input id="email" type="email" name="email" required></div>
+      <div><label for="password">Password</label><input id="password" type="text" name="password" minlength="8" autocomplete="off" required>
+        <div class="hint">Send it to the customer. They can change it in Settings.</div></div>
+      <div><label for="days">Plan length</label>
+        <select id="days" name="days">
+          <option value="7">7 days (trial)</option><option value="30" selected>30 days</option>
+          <option value="90">90 days</option><option value="365">1 year</option><option value="0">No end date</option>
+        </select></div>
+      <div><label for="videos_per_month">Videos per month <span class="hint">(0 = unlimited)</span></label>
+        <input id="videos_per_month" type="number" name="videos_per_month" min="0" value="30"></div>
+      <div><label for="max_minutes">Longest video allowed (minutes)</label>
+        <input id="max_minutes" type="number" name="max_minutes" min="1" max="300" value="90"></div>
+    </div>
+    <label for="notes">Notes <span class="hint">(only you see this, e.g. payment details)</span></label>
+    <input id="notes" type="text" name="notes">
+    <button class="btn" style="margin-top:14px">Create account</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Recent videos</h2>
+  <div class="table">
+  {% for job in recent %}
+    <a class="tr" href="/jobs/{{ job.id }}">
+      <div class="grow" style="min-width:0">
+        <div class="t">{{ job.title or job.source }}</div>
+        <div class="meta">{{ names.get(job.user_id, '?') }} · {{ job.finished_at | when }}{% if job.started_at and job.finished_at %} · took {{ (job.finished_at - job.started_at) | eta }}{% endif %}
+          {% if job.error %} · {{ job.error[:80] }}{% endif %}</div>
+      </div>
+      <span class="chip {{ job.status }}">{{ job.status }}</span>
+    </a>
+  {% else %}<p class="muted">None yet.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

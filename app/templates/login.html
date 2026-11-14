@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in | {{ APP_NAME }}</title>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+  <div class="login">
+    <div class="card">
+      <div class="logo" style="margin-bottom:6px"><i>&#9986;</i>{{ APP_NAME }}</div>
+      <p class="muted small" style="margin:0 0 6px">Turn long videos into Shorts and Reels, and post them to YouTube, Instagram and Facebook automatically.</p>
+      {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+      <form method="post" action="/login">
+        <label for="email">Email</label>
+        <input id="email" type="email" name="email" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <input id="password" type="password" name="password" autocomplete="current-password" required>
+        <button class="btn" style="width:100%;margin-top:16px">Log in</button>
+      </form>
+    </div>
+    <p class="muted small" style="text-align:center">Need an account? Contact the admin.</p>
+  </div>
+</body>
+</html>

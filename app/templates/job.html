@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}{{ job.title or 'Video' }}{% endblock %}
+{% block body %}
+<p class="small"><a href="/">&larr; All videos</a></p>
+<h1 style="word-break:break-word">{{ job.title or job.source }}</h1>
+<div class="row muted small" style="margin-bottom:14px">
+  <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
+  {% if job.duration %}<span>{{ job.duration | dur }} long</span>{% endif %}
+  {% if job.source_type != 'upload' %}<a href="{{ job.source }}" target="_blank" rel="noopener">Open source video</a>{% endif %}
+</div>
+
+{% if job.status in ('queued', 'working', 'uploading') %}
+<div class="card timer" data-poll="/jobs/{{ job.id }}/status">
+  {% if job.status == 'queued' and timer %}
+    <div class="big">Starts in <span id="starts" data-left="{{ timer.starts_in|int }}" data-done="a moment">{{ timer.starts_in | eta }}</span></div>
+    <div class="muted small"><span id="ahead">{{ timer.ahead }}</span> video(s) ahead of yours. Ready in about
+      <span id="left" data-left="{{ timer.left|int }}">{{ timer.left | eta }}</span>.</div>
+  {% elif job.status == 'working' and timer %}
+    <div class="big"><span id="left" data-left="{{ timer.left|int }}" data-done="almost done">{{ timer.left | eta }}</span> left</div>
+    <div class="muted small" id="step">{{ job.step }}</div>
+    <div class="bar"><i data-bar="left" data-total="{{ timer.total|int }}"></i></div>
+  {% else %}
+    <div class="big"><span class="spin"></span> {{ job.step or 'Getting ready' }}</div>
+  {% endif %}
+  <div class="hint">You can close this page. Clips will be waiting here when they're ready.</div>
+</div>
+{% elif job.status == 'failed' %}
+  <div class="alert bad"><b>Could not make clips.</b> {{ job.error }}</div>
+  <form method="post" action="/jobs/{{ job.id }}/retry"><button class="btn">Try again</button></form>
+{% elif job.step %}
+  <div class="alert">{{ job.step }}</div>
+{% endif %}
+
+{% if request.query_params.get('nolink') %}<div class="alert bad">Connect YouTube, Instagram or Facebook in <a href="/settings">Settings</a> first, and turn posting on there.</div>{% endif %}
+
+{% if clips %}
+<div class="clips" style="margin-top:16px" {% if clips | selectattr('status', 'in', ['rendering', 'approved']) | list %}data-poll="/jobs/{{ job.id }}/status"{% endif %}>
+  {% for clip in clips %}
+  <div class="clip" id="clip-{{ clip.id }}">
+    {% if clip.file %}
+      <video src="/media/{{ clip.id }}.mp4" poster="/media/{{ clip.id }}.jpg" controls preload="none" playsinline></video>
+    {% else %}
+      <div class="ph">{% if clip.status == 'rendering' %}<span><span class="spin"></span> Editing…</span>
+        {% elif clip.status == 'posted' %}Posted everywhere. File removed from the server.
+        {% elif clip.status == 'failed' %}This clip could not be edited.{% else %}File removed{% endif %}</div>
+    {% endif %}
+    <div class="body">
+      <div class="row small muted">
+        <span class="chip {{ clip.status }}">{{ {'rendering': 'Editing', 'ready': 'Ready', 'approved': 'Posting', 'posted': 'Posted', 'failed': 'Failed', 'expired': 'Expired'}[clip.status] }}</span>
+        <span>{{ (clip.end - clip.start) | dur }} · from {{ clip.start | dur }}</span>
+      </div>
+      {% if clip.error %}<div class="hint" style="color:var(--bad)">{{ clip.error }}</div>{% endif %}
+
+      {% if clip.status == 'ready' %}
+        <form method="post" action="/clips/{{ clip.id }}/save">
+          <label class="tight" for="t{{ clip.id }}">Title</label>
+          <input id="t{{ clip.id }}" type="text" name="title" value="{{ clip.title }}" maxlength="100">
+          <details>
+            <summary>Description, tags and hashtags</summary>
+            <label class="tight" for="d{{ clip.id }}">Description</label>
+            <textarea id="d{{ clip.id }}" name="description">{{ clip.meta.get('description', '') }}</textarea>
+            <div class="hint"><b>Tags:</b> {{ clip.text.tags | join(', ') or 'none' }}</div>
+            <div class="hint"><b>Full post text:</b><br><span style="white-space:pre-line">{{ clip.text.body }}</span></div>
+          </details>
+          <div class="acts" style="margin-top:10px">
+            <button class="btn sm" name="post" value="1">Post</button>
+            <button class="btn sm ghost">Save</button>
+            <a class="btn sm ghost" href="/media/{{ clip.id }}.mp4?dl=1">Download</a>
+          </div>
+        </form>
+      {% else %}
+        <div style="font-weight:600">{{ clip.title }}</div>
+      {% endif %}
+
+      {% if clip.posts %}
+      <div class="posts">
+        {% for p in clip.posts %}
+        <div class="post">
+          <b>{{ NAMES[p.platform] }}</b>
+          {% if p.status == 'posted' %}<a href="{{ p.url }}" target="_blank" rel="noopener">Open</a>
+            <button class="link" type="button" onclick="navigator.clipboard.writeText('{{ p.url }}');this.textContent='Copied'">Copy link</button>
+          {% elif p.status == 'waiting' %}<span class="muted">{{ 'at ' ~ (p.due_at | when) if p.due_at > clip.created_at + 300 else 'in a moment' }}</span>
+            <form method="post" action="/posts/{{ p.id }}/now"><button class="link">Post now</button></form>
+          {% elif p.status == 'posting' %}<span class="muted"><span class="spin"></span> posting</span>
+          {% else %}<span style="color:var(--bad)">failed</span>
+            {% if clip.file %}<form method="post" action="/posts/{{ p.id }}/retry"><button class="link">Retry</button></form>{% endif %}
+          {% endif %}
+          {% if p.error and p.status != 'posted' %}<div class="hint">{{ p.error }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if clip.status in ('ready', 'failed', 'expired') %}
+        <form method="post" action="/clips/{{ clip.id }}/reject" style="margin-top:auto"><button class="link danger">Remove clip</button></form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if job.status != 'working' %}
+<form method="post" action="/jobs/{{ job.id }}/delete" style="margin-top:24px" onsubmit="return confirm('Delete this video and its clip files? Posts already published stay online.')">
+  <button class="btn sm danger">Delete this video</button>
+</form>
+{% endif %}
+{% endblock %}
