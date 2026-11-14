@@ -251,7 +251,7 @@ def process(job_id):
                     approve(clip_id)
     except Exception as err:
         db.update_job(job_id, status='failed', stage='', step='', error=str(err)[:600], finished_at=time.time())
-        for pattern in ('source.*', 'upload.*', 'audio-src.*', 'part-*', '*.part'):
+        for pattern in ('source.*', 'upload.*', 'audio-src.*', 'audio.f32', 'part-*', '*.part'):
             for leftover in folder.glob(pattern):
                 leftover.unlink(missing_ok=True)
 

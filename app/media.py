@@ -138,13 +138,19 @@ def probe(path):
 
 def transcribe(path: Path, language='', on_progress=None, duration=0):
     global _model
+    import numpy as np
     from faster_whisper import WhisperModel
-    audio = path.with_name('audio.wav')
-    sh(['ffmpeg', '-y', '-v', 'error', '-i', str(path), '-vn', '-ac', '1', '-ar', '16000', str(audio)])
+    # Decode with ffmpeg ourselves (16 kHz mono float) instead of faster-whisper's PyAV reader,
+    # which breaks on newer PyAV releases. Memory-mapped, so long videos don't fill the RAM.
+    audio = path.with_name('audio.f32')
+    sh(['ffmpeg', '-y', '-v', 'error', '-i', str(path), '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', str(audio)])
+    samples = np.memmap(audio, dtype=np.float32, mode='r')
+    if not len(samples):
+        raise JobError('This video has no sound.')
     if _model is None:
         _model = WhisperModel(os.environ.get('WHISPER_MODEL', 'small'), device='cpu',
                               compute_type='int8', cpu_threads=int(THREADS))
-    segments, info = _model.transcribe(str(audio), language=language or None, word_timestamps=True,
+    segments, info = _model.transcribe(samples, language=language or None, word_timestamps=True,
                                        vad_filter=True, beam_size=1)
     words = []
     for seg in segments:
