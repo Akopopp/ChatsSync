@@ -45,3 +45,74 @@ if (live) {
     } catch (e) { /* try again next round */ }
   }, 5000);
 }
+
+
+// AI helper: chat that can explain the app and do work in it. Actions that publish or delete show a Confirm button.
+(() => {
+  const box = document.getElementById('helper');
+  if (!box) return;
+  const log = document.getElementById('helper-log');
+  const form = document.getElementById('helper-form');
+  const input = document.getElementById('helper-in');
+  const KEY = 'clipper-helper';
+  let history = [];
+  try { history = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { history = []; }
+  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(history.slice(-30))); } catch (e) { /* ignore */ } };
+  const add = (cls, text) => {
+    const el = document.createElement('div');
+    el.className = 'msg ' + cls;
+    el.textContent = text;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  };
+  const confirmCard = (p) => {
+    const card = document.createElement('div');
+    card.className = 'confirm-card';
+    card.innerHTML = '<b>Please confirm</b><div class="txt"></div><div class="row"><button type="button" class="yes">Confirm</button><button type="button" class="no">Cancel</button></div>';
+    card.querySelector('.txt').textContent = p.summary;
+    card.querySelector('.no').onclick = () => { card.remove(); };
+    card.querySelector('.yes').onclick = async () => {
+      card.querySelector('.row').textContent = 'Working…';
+      try {
+        const res = await fetch('/helper/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: p.token }) });
+        const data = await res.json();
+        card.remove();
+        add('bot', data.reply);
+        history.push({ role: 'model', text: '[Confirmed: ' + p.summary + '] ' + data.reply });
+        save();
+      } catch (e) { card.querySelector('.row').textContent = 'Could not reach the server.'; }
+    };
+    log.appendChild(card);
+    log.scrollTop = log.scrollHeight;
+  };
+  history.forEach(m => add(m.role === 'user' ? 'user' : 'bot', m.text));
+  const open = () => { box.hidden = false; input.focus(); };
+  document.querySelectorAll('[data-helper-open]').forEach(b => b.addEventListener('click', open));
+  box.querySelector('[data-helper-close]').addEventListener('click', () => { box.hidden = true; });
+  box.querySelector('[data-helper-clear]').addEventListener('click', () => {
+    history = []; save();
+    log.querySelectorAll('.msg:not(:first-child), .confirm-card').forEach(el => el.remove());
+  });
+  const send = async (text) => {
+    text = text.trim();
+    if (!text) return;
+    add('user', text);
+    history.push({ role: 'user', text });
+    save();
+    input.value = '';
+    const wait = add('bot wait', 'Thinking…');
+    try {
+      const res = await fetch('/helper/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history }) });
+      const data = await res.json();
+      wait.remove();
+      add('bot', data.reply || '…');
+      history.push({ role: 'model', text: data.reply || '' });
+      save();
+      (data.pending || []).forEach(confirmCard);
+    } catch (e) { wait.textContent = 'Could not reach the server. Try again.'; }
+  };
+  form.addEventListener('submit', (e) => { e.preventDefault(); send(input.value); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); } });
+  log.addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b) send(b.dataset.ask); });
+})();
