@@ -1,4 +1,4 @@
-"""Connecting accounts and posting clips to YouTube, Instagram and Facebook."""
+"""Connecting channels (any number of YouTube channels, Instagram accounts and Facebook Pages) and posting to them."""
 import json
 import os
 import time
@@ -47,46 +47,53 @@ def configured(platform):
     return all(os.environ.get(k) for k in keys)
 
 
-def account(user_id, platform):
-    return db.get_json(user_id, f'acct_{platform}')
-
-
-def save_account(user_id, platform, data):
-    db.set_json(user_id, f'acct_{platform}', data)
-
-
 def connected(user_id):
-    return {p: bool(account(user_id, p)) for p in NAMES}
+    have = {c['platform'] for c in db.channels(user_id)}
+    return {p: p in have for p in NAMES}
 
 
 # ---------- post text ----------
 
-def post_text(clip, settings):
-    meta = json.loads(clip.get('meta') or '{}')
-    campaign_tags = [t for t in settings['hashtags'].split() if t.startswith('#')]
-    tags = []
-    for tag in campaign_tags + meta.get('hashtags', []):
-        if tag.lower() not in [t.lower() for t in tags]:
-            tags.append(tag)
-    title = clip['title'].strip()
-    if settings['title_suffix']:
-        title = f'{title} {settings["title_suffix"]}'
-    body = settings['description_template'].format(
-        title=clip['title'].strip(), description=meta.get('description', ''), credit=settings['creator_credit'],
-        hashtags=' '.join(tags[:15]), campaign=settings['campaign_name'],
-    )
+def _hashtags(clip_meta, s, limit=5):
+    """Campaign hashtags first, then the AI's. YouTube shows the first three above the title."""
+    out = []
+    for tag in s['hashtags'].split() + list(clip_meta.get('hashtags', [])):
+        tag = '#' + ''.join(ch for ch in str(tag).strip().lstrip('#') if ch.isalnum() or ch == '_')
+        if len(tag) > 1 and tag.lower() not in [t.lower() for t in out]:
+            out.append(tag)
+    return out[:limit]
+
+
+def post_text(clip, s):
+    """Title, description, tags and caption for one clip, from the AI text and the campaign rules (s)."""
+    meta = clip['meta'] if isinstance(clip.get('meta'), dict) else json.loads(clip.get('meta') or '{}')
+    tags_line = _hashtags(meta, s)
+    title = (clip.get('title') or '').strip()
+    if s.get('title_suffix'):
+        title = f'{title} {s["title_suffix"]}'
+    values = {'title': (clip.get('title') or '').strip(), 'description': meta.get('description', ''),
+              'credit': s.get('credit', ''), 'hashtags': ' '.join(tags_line), 'campaign': '',
+              'cta': s.get('cta', ''), 'links': s.get('links', '')}
+    try:
+        body = s['description_template'].format(**values)
+    except (KeyError, IndexError, ValueError):
+        body = db.DEFAULT_TEMPLATE.format(**values)
     body = '\n\n'.join(part.strip() for part in body.split('\n\n') if part.strip())
     keywords, total = [], 0
-    for kw in [t.strip('#') for t in campaign_tags] + meta.get('tags', []) + [t.strip('#') for t in meta.get('hashtags', [])]:
-        if kw and kw.lower() not in [k.lower() for k in keywords] and total + len(kw) + 1 < 480:
+    for kw in [t.strip('#') for t in s['hashtags'].split()] + meta.get('tags', []) + [t.strip('#') for t in meta.get('hashtags', [])]:
+        kw = str(kw).replace('<', '').replace('>', '').strip()
+        if kw and kw.lower() not in [k.lower() for k in keywords] and total + len(kw) + (3 if ' ' in kw else 1) < 490:
             keywords.append(kw)
-            total += len(kw) + 1
-    return {'title': title[:100], 'body': body[:4900], 'caption': body[:2150], 'tags': keywords}
+            total += len(kw) + (3 if ' ' in kw else 1)
+    return {'title': title[:100], 'body': body[:4900], 'caption': body[:2150], 'tags': keywords,
+            'comment': (meta.get('first_comment') or '').strip()[:1000], 'loc': meta.get('loc') or {}}
 
 
 # ---------- YouTube ----------
 
-YT_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
+YT_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube',
+             'https://www.googleapis.com/auth/youtube.force-ssl']
+YT_OLD_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
 
 
 def _yt_flow(state=None):
@@ -103,16 +110,35 @@ def _yt_service(creds):
     return build('youtube', 'v3', credentials=creds, cache_discovery=False)
 
 
-def _yt_creds(data):
+def full_access(ch):
+    """True when the channel was connected with the scopes needed for comments, playlists and channel setup."""
+    return 'https://www.googleapis.com/auth/youtube.force-ssl' in (ch['d'].get('scopes') or [])
+
+
+def _yt_creds(ch):
     from google.oauth2.credentials import Credentials
+    data = ch['d']
     return Credentials(token=data.get('token'), refresh_token=data['refresh_token'], token_uri='https://oauth2.googleapis.com/token',
-                       client_id=os.environ['YT_CLIENT_ID'], client_secret=os.environ['YT_CLIENT_SECRET'], scopes=YT_SCOPES)
+                       client_id=os.environ['YT_CLIENT_ID'], client_secret=os.environ['YT_CLIENT_SECRET'],
+                       scopes=data.get('scopes') or YT_OLD_SCOPES)
+
+
+def yt(ch):
+    """A YouTube API client for one connected channel. Saves the refreshed login afterwards via keep()."""
+    creds = _yt_creds(ch)
+    return _yt_service(creds), creds
+
+
+def keep(ch, creds):
+    if creds.token and creds.token != ch['d'].get('token'):
+        db.set_channel_data(ch['id'], token=creds.token)
 
 
 def start_auth(platform, session):
     if platform == 'youtube':
         flow = _yt_flow()
-        url, state = flow.authorization_url(access_type='offline', prompt='consent', include_granted_scopes='true')
+        url, state = flow.authorization_url(access_type='offline', prompt='consent select_account',
+                                            include_granted_scopes='true')
         session['oauth_verifier'] = flow.code_verifier
     else:
         import secrets
@@ -130,15 +156,27 @@ def start_auth(platform, session):
 
 
 def finish_auth(platform, user_id, code, state, session):
+    """Connect the account. Returns the ids of the channels that were added or refreshed."""
     if platform == 'youtube':
         flow = _yt_flow(state)
         flow.code_verifier = session.get('oauth_verifier')
         flow.fetch_token(code=code)
         creds = flow.credentials
-        channel = _yt_service(creds).channels().list(part='snippet', mine=True).execute().get('items') or []
-        save_account(user_id, 'youtube', {'token': creds.token, 'refresh_token': creds.refresh_token,
-                                          'name': channel[0]['snippet']['title'] if channel else 'YouTube'})
-    elif platform == 'instagram':
+        items = _yt_service(creds).channels().list(part='snippet', mine=True).execute().get('items') or []
+        if not items:
+            raise RuntimeError('This Google account has no YouTube channel yet.')
+        item = items[0]
+        title = item['snippet']['title']
+        # channels connected before the multi-channel update were saved by name: give them their real id
+        db.run('update channels set ext_id=? where user_id=? and platform="youtube" and ext_id=?',
+               (item['id'], user_id, title))
+        data = {'token': creds.token, 'refresh_token': creds.refresh_token, 'channel_id': item['id'],
+                'thumb': ((item['snippet'].get('thumbnails') or {}).get('default') or {}).get('url', ''),
+                'scopes': list(creds.scopes or YT_SCOPES)}
+        if not creds.refresh_token:
+            data.pop('refresh_token')
+        return [db.save_channel(user_id, 'youtube', item['id'], title, data)]
+    if platform == 'instagram':
         short = _ok(requests.post('https://api.instagram.com/oauth/access_token', data={
             'client_id': os.environ['IG_APP_ID'], 'client_secret': os.environ['IG_APP_SECRET'],
             'grant_type': 'authorization_code', 'redirect_uri': redirect('instagram'), 'code': code}, timeout=30))
@@ -147,27 +185,19 @@ def finish_auth(platform, user_id, code, state, session):
             'access_token': short['access_token']}, timeout=30))
         me = _ok(requests.get(f'{IG_GRAPH}/me', params={'fields': 'user_id,username',
                                                         'access_token': long['access_token']}, timeout=30))
-        save_account(user_id, 'instagram', {'token': long['access_token'], 'ig_id': me.get('user_id') or me['id'],
-                                            'name': '@' + me.get('username', ''), 'refreshed': time.time()})
-    else:
-        app = {'client_id': os.environ['META_APP_ID'], 'client_secret': os.environ['META_APP_SECRET']}
-        short = _ok(requests.get(f'{GRAPH}/oauth/access_token', params={
-            **app, 'redirect_uri': redirect('facebook'), 'code': code}, timeout=30))
-        long = _ok(requests.get(f'{GRAPH}/oauth/access_token', params={
-            **app, 'grant_type': 'fb_exchange_token', 'fb_exchange_token': short['access_token']}, timeout=30))
-        pages = _ok(requests.get(f'{GRAPH}/me/accounts', params={
-            'fields': 'id,name,access_token', 'limit': 100, 'access_token': long['access_token']}, timeout=30)).get('data', [])
-        if not pages:
-            raise RuntimeError('No Facebook Page found on this account.')
-        save_account(user_id, 'facebook', {'pages': pages, 'page_id': pages[0]['id'], 'name': pages[0]['name']})
-
-
-def choose_page(user_id, page_id):
-    acct = account(user_id, 'facebook')
-    page = next((p for p in acct['pages'] if p['id'] == page_id), None)
-    if page:
-        acct.update(page_id=page['id'], name=page['name'])
-        save_account(user_id, 'facebook', acct)
+        ig_id = str(me.get('user_id') or me['id'])
+        return [db.save_channel(user_id, 'instagram', ig_id, '@' + me.get('username', ''),
+                                {'token': long['access_token'], 'ig_id': ig_id, 'refreshed': time.time()})]
+    app = {'client_id': os.environ['META_APP_ID'], 'client_secret': os.environ['META_APP_SECRET']}
+    short = _ok(requests.get(f'{GRAPH}/oauth/access_token', params={
+        **app, 'redirect_uri': redirect('facebook'), 'code': code}, timeout=30))
+    long = _ok(requests.get(f'{GRAPH}/oauth/access_token', params={
+        **app, 'grant_type': 'fb_exchange_token', 'fb_exchange_token': short['access_token']}, timeout=30))
+    pages = _ok(requests.get(f'{GRAPH}/me/accounts', params={
+        'fields': 'id,name,access_token', 'limit': 100, 'access_token': long['access_token']}, timeout=30)).get('data', [])
+    if not pages:
+        raise RuntimeError('No Facebook Page found on this account.')
+    return [db.save_channel(user_id, 'facebook', p['id'], p['name'], {'page': p}) for p in pages]
 
 
 def _ok(res):
@@ -184,38 +214,156 @@ def _ok(res):
 
 # ---------- posting ----------
 
-def post(platform, user_id, clip, settings, public_url):
-    acct = account(user_id, platform)
-    if not acct:
-        raise RuntimeError(f'{NAMES[platform]} is not connected.')
-    text = post_text(clip, settings)
-    return {'youtube': _post_youtube, 'instagram': _post_instagram, 'facebook': _post_facebook}[platform](
-        acct, clip, text, public_url, user_id)
+def post(ch, clip, s, public_url):
+    """Upload one clip to one channel. Returns (external id, link, notes)."""
+    text = post_text(clip, s)
+    return {'youtube': _post_youtube, 'instagram': _post_instagram, 'facebook': _post_facebook}[ch['platform']](
+        ch, clip, text, s, public_url)
 
 
-def _post_youtube(acct, clip, text, public_url, user_id):
+def _yt_error(err):
+    """Readable reason from a googleapiclient HttpError."""
+    try:
+        data = json.loads(err.content.decode())
+        return data['error']['errors'][0].get('reason', ''), data['error'].get('message', str(err))
+    except Exception:
+        return '', str(err)
+
+
+def _post_youtube(ch, clip, text, s, public_url):
     from googleapiclient.http import MediaFileUpload
-    creds = _yt_creds(acct)
-    body = {'snippet': {'title': text['title'], 'description': text['body'], 'tags': text['tags'], 'categoryId': '24'},
-            'status': {'privacyStatus': 'public', 'selfDeclaredMadeForKids': False}}
+    service, creds = yt(ch)
+    lang = s.get('target_language') or 'en'
+    snippet = {'title': text['title'], 'description': text['body'], 'tags': text['tags'],
+               'categoryId': s.get('category_id') or '24', 'defaultLanguage': lang}
+    spoken = (clip.get('lang') or s.get('spoken_language') or '').strip()
+    if spoken:
+        snippet['defaultAudioLanguage'] = spoken
+    body = {'snippet': snippet,
+            'status': {'privacyStatus': s.get('privacy') or 'public', 'selfDeclaredMadeForKids': False}}
+    parts = 'snippet,status'
+    loc = {k: v for k, v in (text['loc'] or {}).items() if k != lang and isinstance(v, dict) and v.get('title')}
+    if s.get('localize') == '1' and loc:
+        body['localizations'] = {k: {'title': v['title'][:100], 'description': (v.get('description') or '')[:4900]}
+                                 for k, v in loc.items()}
+        parts += ',localizations'
     media = MediaFileUpload(clip['file'], mimetype='video/mp4', chunksize=8 * 1024 * 1024, resumable=True)
-    request = _yt_service(creds).videos().insert(part='snippet,status', body=body, media_body=media)
+    request = service.videos().insert(part=parts, body=body, media_body=media)
     response = None
     while response is None:
         _, response = request.next_chunk()
-    if creds.token != acct.get('token'):
-        save_account(user_id, 'youtube', {**acct, 'token': creds.token})
-    return response['id'], f'https://youtube.com/shorts/{response["id"]}'
+    video_id = response['id']
+    notes = []
+    if full_access(ch):
+        if s.get('first_comment') == '1' and text['comment']:
+            try:
+                service.commentThreads().insert(part='snippet', body={'snippet': {
+                    'videoId': video_id, 'topLevelComment': {'snippet': {'textOriginal': text['comment']}}}}).execute()
+            except Exception as err:
+                notes.append('Comment not posted: ' + _yt_error(err)[1][:120])
+        if s.get('playlist') == '1':
+            try:
+                pl = ensure_playlist(ch, s.get('_campaign_id'), s.get('_campaign_name') or 'Shorts', service)
+                service.playlistItems().insert(part='snippet', body={'snippet': {
+                    'playlistId': pl, 'resourceId': {'kind': 'youtube#video', 'videoId': video_id}}}).execute()
+            except Exception as err:
+                notes.append('Not added to playlist: ' + _yt_error(err)[1][:120])
+    keep(ch, creds)
+    return video_id, f'https://youtube.com/shorts/{video_id}', '; '.join(notes)
 
 
-def _post_instagram(acct, clip, text, public_url, user_id):
-    token = acct['token']
-    if time.time() - acct.get('refreshed', 0) > 7 * 86400:
+def ensure_playlist(ch, campaign_id, name, service=None):
+    """The playlist this channel keeps for a campaign (made the first time)."""
+    lists = dict(db.channel(ch['id'])['d'].get('playlists') or {})
+    key = str(campaign_id or 0)
+    if lists.get(key):
+        return lists[key]
+    own = service is None
+    if own:
+        service, creds = yt(ch)
+    res = service.playlists().insert(part='snippet,status', body={
+        'snippet': {'title': name[:150], 'description': f'{name}: best moments, new clips every day.'},
+        'status': {'privacyStatus': 'public'}}).execute()
+    lists[key] = res['id']
+    db.set_channel_data(ch['id'], playlists=lists)
+    if own:
+        keep(ch, creds)
+    return res['id']
+
+
+def yt_stats(ch, video_ids):
+    """{video_id: {'views', 'likes', 'comments'}} for up to 50 videos (1 quota unit)."""
+    service, creds = yt(ch)
+    res = service.videos().list(part='statistics', id=','.join(video_ids[:50])).execute()
+    keep(ch, creds)
+    out = {}
+    for item in res.get('items', []):
+        st = item.get('statistics', {})
+        out[item['id']] = {'views': int(st.get('viewCount', 0)), 'likes': int(st.get('likeCount', 0)),
+                           'comments': int(st.get('commentCount', 0))}
+    return out
+
+
+# ---------- channel setup (YouTube) ----------
+
+def yt_branding(ch):
+    service, creds = yt(ch)
+    items = service.channels().list(part='brandingSettings,snippet', mine=True).execute().get('items') or []
+    keep(ch, creds)
+    return items[0] if items else {}
+
+
+def yt_apply_branding(ch, description=None, keywords=None, country=None, language=None, banner_url=None):
+    service, creds = yt(ch)
+    item = (service.channels().list(part='brandingSettings', mine=True).execute().get('items') or [{}])[0]
+    branding = item.get('brandingSettings') or {}
+    chan = dict(branding.get('channel') or {})
+    if description is not None:
+        chan['description'] = description[:1000]
+    if keywords is not None:
+        chan['keywords'] = keywords[:500]
+    if country:
+        chan['country'] = country
+    if language:
+        chan['defaultLanguage'] = language
+    chan.pop('title', None)
+    body = {'id': item.get('id') or ch['ext_id'], 'brandingSettings': {'channel': chan}}
+    if banner_url:
+        body['brandingSettings']['image'] = {'bannerExternalUrl': banner_url}
+    service.channels().update(part='brandingSettings', body=body).execute()
+    keep(ch, creds)
+
+
+def yt_upload_banner(ch, png: Path):
+    from googleapiclient.http import MediaFileUpload
+    service, creds = yt(ch)
+    res = service.channelBanners().insert(media_body=MediaFileUpload(str(png), mimetype='image/png')).execute()
+    keep(ch, creds)
+    yt_apply_branding(db.channel(ch['id']), banner_url=res['url'])
+
+
+def yt_set_watermark(ch, png: Path):
+    from googleapiclient.http import MediaFileUpload
+    service, creds = yt(ch)
+    service.watermarks().set(channelId=ch['ext_id'], body={
+        'timing': {'type': 'offsetFromStart', 'offsetMs': 0},
+        'position': {'type': 'corner', 'cornerPosition': 'bottomRight'}},
+        media_body=MediaFileUpload(str(png), mimetype='image/png')).execute()
+    keep(ch, creds)
+
+
+# ---------- Instagram and Facebook ----------
+
+def _post_instagram(ch, clip, text, s, public_url):
+    data = ch['d']
+    token = data['token']
+    if time.time() - data.get('refreshed', 0) > 7 * 86400:
         fresh = _ok(requests.get('https://graph.instagram.com/refresh_access_token', params={
             'grant_type': 'ig_refresh_token', 'access_token': token}, timeout=30))
         token = fresh['access_token']
-        save_account(user_id, 'instagram', {**acct, 'token': token, 'refreshed': time.time()})
-    container = _ok(requests.post(f'{IG_GRAPH}/{acct["ig_id"]}/media', data={
+        db.set_channel_data(ch['id'], token=token, refreshed=time.time())
+    ig_id = data.get('ig_id') or ch['ext_id']
+    container = _ok(requests.post(f'{IG_GRAPH}/{ig_id}/media', data={
         'media_type': 'REELS', 'video_url': public_url, 'caption': text['caption'], 'share_to_feed': 'true',
         'access_token': token}, timeout=60))['id']
     for _ in range(90):
@@ -228,15 +376,22 @@ def _post_instagram(acct, clip, text, public_url, user_id):
             raise RuntimeError(f'Instagram could not process the video: {status.get("status", "")}'[:400])
     else:
         raise RuntimeError('Instagram took too long to process the video.')
-    media_id = _ok(requests.post(f'{IG_GRAPH}/{acct["ig_id"]}/media_publish', data={
+    media_id = _ok(requests.post(f'{IG_GRAPH}/{ig_id}/media_publish', data={
         'creation_id': container, 'access_token': token}, timeout=60))['id']
     link = _ok(requests.get(f'{IG_GRAPH}/{media_id}', params={'fields': 'permalink', 'access_token': token},
                             timeout=30)).get('permalink', '')
-    return media_id, link
+    notes = ''
+    if s.get('first_comment') == '1' and text['comment']:
+        try:
+            _ok(requests.post(f'{IG_GRAPH}/{media_id}/comments', data={'message': text['comment'], 'access_token': token},
+                              timeout=30))
+        except Exception as err:
+            notes = f'Comment not posted: {str(err)[:120]}'
+    return media_id, link, notes
 
 
-def _post_facebook(acct, clip, text, public_url, user_id):
-    page = next(p for p in acct['pages'] if p['id'] == acct['page_id'])
+def _post_facebook(ch, clip, text, s, public_url):
+    page = ch['d']['page']
     token, page_id = page['access_token'], page['id']
     start = _ok(requests.post(f'{GRAPH}/{page_id}/video_reels', data={'upload_phase': 'start', 'access_token': token},
                               timeout=60))
@@ -248,4 +403,4 @@ def _post_facebook(acct, clip, text, public_url, user_id):
     _ok(requests.post(f'{GRAPH}/{page_id}/video_reels', data={
         'upload_phase': 'finish', 'video_id': video_id, 'video_state': 'PUBLISHED',
         'description': text['caption'], 'title': text['title'], 'access_token': token}, timeout=60))
-    return video_id, f'https://www.facebook.com/reel/{video_id}'
+    return video_id, f'https://www.facebook.com/reel/{video_id}', ''
