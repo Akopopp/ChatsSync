@@ -6,8 +6,13 @@
 <div class="row muted small" style="margin-bottom:14px">
   <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
   {% if job.duration %}<span>{{ job.duration | dur }} long</span>{% endif %}
+  <span>Campaign: <a href="/campaigns/{{ camp.id }}">{{ camp.name }}</a> · {{ COUNTRIES.get(camp.s.country, ('',))[0] }}</span>
+  <span>Posts to: {% for c in chans %}{{ c.name }}{{ ', ' if not loop.last }}{% else %}<a href="/campaigns/{{ camp.id }}#channels">no channel chosen</a>{% endfor %}</span>
   {% if job.source_type != 'upload' %}<a href="{{ job.source }}" target="_blank" rel="noopener">Open source video</a>{% endif %}
 </div>
+
+{% set notes = {'nochannel': ('bad', 'Choose at least one channel for this campaign first.'), 'rewrite_ok': ('ok', 'New text written.'), 'rewrite_bad': ('bad', 'The AI could not rewrite it right now. See the clip for the reason.')} %}
+{% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}{% if msg == 'nochannel' %} <a href="/campaigns/{{ camp.id }}#channels">Open the campaign</a>{% endif %}</div>{% endif %}
 
 {% if job.status in ('queued', 'working', 'uploading') %}
 <div class="card timer" data-poll="/jobs/{{ job.id }}/status">
@@ -31,7 +36,12 @@
   <div class="alert">{{ job.step }}</div>
 {% endif %}
 
-{% if request.query_params.get('nolink') %}<div class="alert bad">Connect YouTube, Instagram or Facebook in <a href="/settings">Settings</a> first, and turn posting on there.</div>{% endif %}
+{% if clips | selectattr('status', 'equalto', 'ready') | list %}
+<form method="post" action="/jobs/{{ job.id }}/post-all" class="row" style="margin:6px 0 4px">
+  <button class="btn sm">Post all ready clips</button>
+  <span class="hint" style="margin:0">They are spread over the campaign's posting times on {{ chans | length }} channel(s).</span>
+</form>
+{% endif %}
 
 {% if clips %}
 <div class="clips" style="margin-top:16px" {% if clips | selectattr('status', 'in', ['rendering', 'approved']) | list %}data-poll="/jobs/{{ job.id }}/status"{% endif %}>
@@ -46,8 +56,10 @@
     {% endif %}
     <div class="body">
       <div class="row small muted">
-        <span class="chip {{ clip.status }}">{{ {'rendering': 'Editing', 'ready': 'Ready', 'approved': 'Posting', 'posted': 'Posted', 'failed': 'Failed', 'expired': 'Expired'}[clip.status] }}</span>
+        <span class="chip {{ clip.status }}">{{ {'rendering': 'Editing', 'ready': 'Ready', 'approved': 'Scheduled', 'posted': 'Posted', 'failed': 'Failed', 'expired': 'Expired'}[clip.status] }}</span>
         <span>{{ (clip.end - clip.start) | dur }} · from {{ clip.start | dur }}</span>
+        {% if clip.score %}<span title="How likely the AI thinks it is to do well">score {{ clip.score | int }}</span>{% endif %}
+        {% if not clip.meta.get('ai') %}<span class="chip warn" title="Written without AI">basic text</span>{% endif %}
       </div>
       {% if clip.error %}<div class="hint" style="color:var(--bad)">{{ clip.error }}</div>{% endif %}
 
@@ -55,12 +67,20 @@
         <form method="post" action="/clips/{{ clip.id }}/save">
           <label class="tight" for="t{{ clip.id }}">Title</label>
           <input id="t{{ clip.id }}" type="text" name="title" value="{{ clip.title }}" maxlength="100">
+          {% if clip.meta.get('titles') and clip.meta.titles | length > 1 %}
+            <div class="title-opts">{% for t in clip.meta.titles %}<button type="button" class="opt {{ 'on' if t == clip.title }}" onclick="this.form.title.value=this.textContent;this.parentNode.querySelectorAll('.opt').forEach(b=>b.classList.remove('on'));this.classList.add('on')">{{ t }}</button>{% endfor %}</div>
+          {% endif %}
           <details>
-            <summary>Description, tags and hashtags</summary>
+            <summary>Description, tags, hashtags, comment</summary>
             <label class="tight" for="d{{ clip.id }}">Description</label>
-            <textarea id="d{{ clip.id }}" name="description">{{ clip.meta.get('description', '') }}</textarea>
-            <div class="hint"><b>Tags:</b> {{ clip.text.tags | join(', ') or 'none' }}</div>
-            <div class="hint"><b>Full post text:</b><br><span style="white-space:pre-line">{{ clip.text.body }}</span></div>
+            <textarea id="d{{ clip.id }}" name="description" rows="6">{{ clip.meta.get('description', '') }}</textarea>
+            <label for="g{{ clip.id }}">Tags <span class="hint">(comma separated)</span></label>
+            <textarea id="g{{ clip.id }}" name="tags" rows="3">{{ clip.meta.get('tags', []) | join(', ') }}</textarea>
+            <label for="h{{ clip.id }}">Hashtags</label>
+            <input id="h{{ clip.id }}" type="text" name="hashtags" value="{{ clip.meta.get('hashtags', []) | join(' ') }}">
+            <label for="c{{ clip.id }}">First comment</label>
+            <input id="c{{ clip.id }}" type="text" name="first_comment" value="{{ clip.meta.get('first_comment', '') }}">
+            <div class="hint"><b>Full description as posted:</b><br><span style="white-space:pre-line">{{ clip.text.body }}</span></div>
           </details>
           <div class="acts" style="margin-top:10px">
             <button class="btn sm" name="post" value="1">Post</button>
@@ -68,6 +88,8 @@
             <a class="btn sm ghost" href="/media/{{ clip.id }}.mp4?dl=1">Download</a>
           </div>
         </form>
+        <form method="post" action="/clips/{{ clip.id }}/rewrite" onsubmit="this.querySelector('button').textContent='Writing…'">
+          <button class="link">Rewrite text with AI</button></form>
       {% else %}
         <div style="font-weight:600">{{ clip.title }}</div>
       {% endif %}
@@ -76,16 +98,18 @@
       <div class="posts">
         {% for p in clip.posts %}
         <div class="post">
-          <b>{{ NAMES[p.platform] }}</b>
+          <b>{{ p.where }}</b>
           {% if p.status == 'posted' %}<a href="{{ p.url }}" target="_blank" rel="noopener">Open</a>
             <button class="link" type="button" onclick="navigator.clipboard.writeText('{{ p.url }}');this.textContent='Copied'">Copy link</button>
-          {% elif p.status == 'waiting' %}<span class="muted">{{ 'at ' ~ (p.due_at | when) if p.due_at > clip.created_at + 300 else 'in a moment' }}</span>
+            {% if p.views %}<span class="muted">{{ p.views }} views</span>{% endif %}
+          {% elif p.status == 'waiting' %}<span class="muted">{{ 'at ' ~ (p.due_at | when) if p.due_at > now + 120 else 'in a moment' }}</span>
             <form method="post" action="/posts/{{ p.id }}/now"><button class="link">Post now</button></form>
+            <form method="post" action="/posts/{{ p.id }}/cancel"><button class="link danger">Cancel</button></form>
           {% elif p.status == 'posting' %}<span class="muted"><span class="spin"></span> posting</span>
           {% else %}<span style="color:var(--bad)">failed</span>
             {% if clip.file %}<form method="post" action="/posts/{{ p.id }}/retry"><button class="link">Retry</button></form>{% endif %}
           {% endif %}
-          {% if p.error and p.status != 'posted' %}<div class="hint">{{ p.error }}</div>{% endif %}
+          {% if p.error %}<div class="hint">{{ p.error }}</div>{% endif %}
         </div>
         {% endfor %}
       </div>

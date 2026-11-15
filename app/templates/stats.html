@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Stats{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div><h1>Stats</h1><p>Views, likes and comments of your YouTube posts from the last 30 days. Updated every 3 hours{% if updated %} (last {{ updated | when }}){% endif %}.</p></div>
+  <form method="post" action="/stats/refresh"><button class="btn ghost">Update now</button></form>
+</div>
+{% if request.query_params.get('msg') == 'refreshing' %}<div class="alert ok">Updating in the background. Reload in a minute.</div>{% endif %}
+
+<div class="stats">
+  <div class="stat"><b>{{ '{:,}'.format(totals.views) }}</b><span>views</span></div>
+  <div class="stat"><b>{{ '{:,}'.format(totals.likes) }}</b><span>likes</span></div>
+  <div class="stat"><b>{{ totals.posts }}</b><span>posts</span></div>
+  <div class="stat"><b>{{ totals.week }}</b><span>posts this week</span></div>
+  <div class="stat"><b>{{ totals.waiting }}</b><span>waiting to post</span></div>
+</div>
+
+<div class="grid2">
+  <div class="card"><h2>By campaign</h2>
+    <div class="table">{% for b in by_camp %}<div class="tr"><span class="grow"><span class="t">{{ b.name }}</span><span class="meta">{{ b.posts }} posts · {{ b.likes }} likes</span></span><b>{{ '{:,}'.format(b.views) }}</b></div>
+    {% else %}<p class="muted small" style="margin:0">Nothing posted yet.</p>{% endfor %}</div></div>
+  <div class="card"><h2>By channel</h2>
+    <div class="table">{% for b in by_chan %}<div class="tr"><span class="grow"><span class="t">{{ b.name }}</span><span class="meta">{{ b.posts }} posts · {{ b.likes }} likes</span></span><b>{{ '{:,}'.format(b.views) }}</b></div>
+    {% else %}<p class="muted small" style="margin:0">Nothing posted yet.</p>{% endfor %}</div></div>
+</div>
+
+<div class="card"><h2>Top clips</h2>
+  <p class="small muted" style="margin-top:-6px">The AI looks at the best titles of each campaign when it writes new ones.</p>
+  <div class="table">{% for r in top %}
+    <a class="tr" href="{{ r.url }}" target="_blank" rel="noopener"><span class="grow" style="min-width:0"><span class="t">{{ r.title }}</span>
+      <span class="meta">{{ r.where }} · {{ r.posted_at | when }} · {{ r.likes }} likes · {{ r.comments }} comments</span></span><b>{{ '{:,}'.format(r.views or 0) }}</b></a>
+  {% else %}<p class="muted small" style="margin:0">Nothing posted yet.</p>{% endfor %}</div>
+</div>
+{% endblock %}

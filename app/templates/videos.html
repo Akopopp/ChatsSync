@@ -5,5 +5,6 @@
   <div><h1>My videos</h1><p>Every video you sent, its clips and where they were posted.</p></div>
   <a class="btn" href="/">New clips</a>
 </div>
+{% if msg and msg.startswith('added_') %}<div class="alert ok">{{ msg[6:] }} videos added. They are made one after another.</div>{% endif %}
 <div class="card">{% include 'job_list.html' %}</div>
 {% endblock %}

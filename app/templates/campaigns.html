@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Campaigns{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div><h1>Campaigns</h1><p>One campaign = one kind of clips: its own brief, country, channels, posting times and editing style.</p></div>
+  <form method="post" action="/campaigns/new"><button class="btn">+ New campaign</button></form>
+</div>
+{% if msg == 'deleted' %}<div class="alert ok">Campaign deleted. Its videos moved to your first campaign.</div>{% endif %}
+
+<div class="camp-grid">
+{% for c in camps %}
+  <div class="card camp">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">{{ c.name }}</h2>
+      <span class="chip {{ 'ok' if c.s.auto_post == '1' else '' }}">{{ 'Auto-post on' if c.s.auto_post == '1' else 'You approve each clip' }}</span>
+    </div>
+    <p class="small muted brief">{{ c.brief[:180] or 'No brief yet. Tell the AI what this campaign is about.' }}{{ '…' if c.brief | length > 180 }}</p>
+    <div class="facts">
+      <span><b>Country</b>{{ COUNTRIES.get(c.s.country, ('?',))[0] }}</span>
+      <span><b>Language</b>{{ LANGS.get(c.s.target_language, c.s.target_language) }}</span>
+      <span><b>Posting</b>{% if c.s.schedule_mode == 'peak' %}{{ c.s.posts_per_day }}/day at peak hours{% elif c.s.schedule_mode == 'gap' %}every {{ c.s.gap_hours }} h{% else %}right away{% endif %}</span>
+      <span><b>Auto-pilot</b>{{ 'On' if c.s.autopilot == '1' else 'Off' }}</span>
+      <span><b>Videos</b>{{ c.jobs }} · {{ c.posted }} posts</span>
+    </div>
+    <div class="small" style="margin:10px 0 14px"><b>Channels:</b>
+      {% for i in c.channel_ids %}{% if chans.get(i) %}<span class="chip blue">{{ chans[i].name }}</span> {% endif %}{% else %}<span class="chip bad">none chosen</span>{% endfor %}</div>
+    <div class="row">
+      <a class="btn sm" href="/campaigns/{{ c.id }}">Edit settings</a>
+      <a class="btn sm ghost" href="/?campaign={{ c.id }}">Add videos</a>
+      <form method="post" action="/campaigns/new"><input type="hidden" name="copy" value="{{ c.id }}"><button class="btn sm ghost">Duplicate</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>
+<p class="hint">Tip: open the <b>AI helper</b> (bottom right) and say e.g. "make a campaign for UK football fans, 5 posts a day on my second channel".</p>
+{% endblock %}

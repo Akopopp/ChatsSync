@@ -12,7 +12,7 @@
         {% elif job.status == 'done' %}{{ job.clip_count }} clips · {{ job.posted }} posted
         {% elif job.status == 'failed' %}{{ job.error[:90] }}
         {% else %}{{ job.step }}{% endif %}
-        · {{ job.created_at | when }}</div>
+        · {{ job.created_at | when }}{% if job.campaign_name %} · {{ job.campaign_name }}{% endif %}</div>
     </div>
     <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
   </a>

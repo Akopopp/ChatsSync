@@ -3,23 +3,33 @@
 {% block body %}
 <div class="page-head">
   <div>
-    <h1>Turn a long video into clips</h1>
-    <p>Paste a link or upload a file. We find the best moments, edit them for Shorts and Reels, and write the post text.</p>
+    <h1>Turn long videos into clips</h1>
+    <p>Paste one or more links, or upload a file. The AI finds the best moments, edits them for Shorts and Reels, writes the post and posts it on schedule.</p>
   </div>
   {% if user.videos_per_month %}<span class="chip blue">{{ used }} / {{ user.videos_per_month }} videos this month</span>{% endif %}
 </div>
 
 {% if not (linked.youtube or linked.instagram or linked.facebook) %}
-  <div class="alert">No account connected yet. <a href="/settings">Connect YouTube</a> so clips can be posted for you.</div>
+  <div class="alert">No channel connected yet. <a href="/channels">Connect a YouTube channel</a> so clips can be posted for you.</div>
 {% endif %}
 {% if problem %}<div class="alert bad">{{ problem }}</div>{% endif %}
 {% if error == 'link' %}<div class="alert bad">Paste a full link starting with https://, or choose a video file.</div>{% endif %}
 
 <div class="card glow">
   <form method="post" action="/jobs" enctype="multipart/form-data">
-    <label for="url" class="tight">Video link</label>
-    <div class="row">
-      <input class="grow" id="url" type="url" name="url" placeholder="Paste a YouTube or Google Drive link" {{ 'disabled' if problem }}>
+    <div class="grid2">
+      <div>
+        <label for="campaign_id" class="tight">Campaign</label>
+        <select id="campaign_id" name="campaign_id">
+          {% for c in camps %}<option value="{{ c.id }}" {{ 'selected' if c.id == pick }}>{{ c.name }} · {{ COUNTRIES.get(c.s.country, ('',))[0] }}{{ ' · auto-post' if c.s.auto_post == '1' }}</option>{% endfor %}
+        </select>
+        <div class="hint">Its brief, country, channels and editing style are used. <a href="/campaigns">Edit campaigns</a></div>
+      </div>
+      <div></div>
+    </div>
+    <label for="url">Video links <span class="hint">(one per line, up to 30)</span></label>
+    <textarea id="url" name="url" rows="3" placeholder="https://www.youtube.com/watch?v=…&#10;https://drive.google.com/…" {{ 'disabled' if problem }}></textarea>
+    <div class="row" style="margin-top:10px">
       <button class="btn" {{ 'disabled' if problem }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8z"/></svg>
         Make clips</button>

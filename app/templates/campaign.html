@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}{{ camp.name }}{% endblock %}
+{% block body %}
+<p class="small" style="margin-top:0"><a href="/campaigns">&larr; Campaigns</a></p>
+<div class="page-head">
+  <div><h1>{{ camp.name }}</h1><p>Every switch below has a short note. Not sure? Ask the AI helper at the bottom right.</p></div>
+  <a class="btn ghost" href="/?campaign={{ camp.id }}">Add videos to this campaign</a>
+</div>
+{% set notes = {'saved': ('ok', 'Saved. New clips use these settings.'), 'new': ('ok', 'Campaign made. Write its brief, pick channels and save.'),
+  'last': ('bad', 'You need at least one campaign, so this one cannot be deleted.'), 'music_removed': ('ok', 'Track removed.')} %}
+{% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
+{% if msg.startswith('music_') and msg[6:].isdigit() %}<div class="alert ok">{{ msg[6:] }} track(s) added.</div>{% endif %}
+{% if msg.startswith('checked_') %}<div class="alert ok">Checked the channels: {{ msg[8:] }} new video(s) added.</div>{% endif %}
+
+<nav class="jump">{% for title, _, _ in SECTIONS %}<a href="#sec{{ loop.index }}">{{ title }}</a>{% endfor %}<a href="#channels">Channels</a><a href="#music">Music</a></nav>
+
+<form method="post" action="/campaigns/{{ camp.id }}" id="campaign-form">
+<div class="card glow">
+  <h2>About this campaign</h2>
+  <label for="name" class="tight">Name</label>
+  <input id="name" type="text" name="name" value="{{ camp.name }}" maxlength="80">
+  <label for="brief">Brief for the AI</label>
+  <textarea id="brief" name="brief" rows="5" placeholder="Example: Clips of the Stylish PUBG streamer for US gamers aged 16-30. Funny fails, clutch 1v4s and rage moments. Energetic, short titles with gamer slang. Never mention cheats. Always credit @creator.">{{ camp.brief }}</textarea>
+  <div class="hint">Write in your own words what the clips are, who watches, the tone, and anything to avoid. The AI follows it when it picks moments and writes titles, descriptions, tags and comments.</div>
+</div>
+
+<div class="card" id="channels">
+  <h2>Channels for this campaign</h2>
+  {% if not chans %}<p class="muted" style="margin:0">No channel connected yet. <a href="/channels">Connect a channel</a> first.</p>{% endif %}
+  <div class="accounts">
+  {% for c in chans %}
+    <label class="acct pick">
+      <span class="row" style="justify-content:space-between;width:100%">
+        <span class="check-line"><input type="checkbox" name="channel" value="{{ c.id }}" {{ 'checked' if c.id in camp.channel_ids }}> <b>{{ c.name }}</b></span>
+        <span class="chip">{{ NAMES[c.platform] }}</span></span>
+      <span class="hint" style="margin:0">Up to {{ c.daily_limit }} posts a day{% if c.note %} · <span style="color:var(--amber)">{{ c.note }}</span>{% endif %}</span>
+    </label>
+  {% endfor %}
+  </div>
+  <div class="hint">Tick every channel this campaign's clips should go to. <a href="/channels">Add another channel</a></div>
+</div>
+
+{% for title, intro, items in SECTIONS %}
+<div class="card" id="sec{{ loop.index }}">
+  {% if title == 'Auto-pilot' %}<span id="autopilot"></span>{% endif %}
+  <h2>{{ title }}</h2>
+  <p class="small muted" style="margin-top:-6px">{{ intro }}</p>
+  <div class="set-list">
+  {% for key, label, kind, opts, help in items %}
+    {% set val = camp.s[key] %}
+    {% if kind == 'switch' %}
+      <div class="set">
+        <label class="switch"><input type="checkbox" name="{{ key }}" {{ 'checked' if val == '1' }}><i></i><span>{{ label }}</span></label>
+        {% if help %}<div class="hint">{{ help }}</div>{% endif %}
+        {% if key == 'broll' and not has_pexels %}<div class="hint" style="color:var(--amber)">Needs PEXELS_API_KEY on the server (free at pexels.com/api). Without it this switch does nothing.</div>{% endif %}
+        {% if key == 'emojis' and not emoji_ok %}<div class="hint" style="color:var(--amber)">The emoji font is installed with the next server update.</div>{% endif %}
+        {% if key == 'music' %}<div class="hint"><a href="#music">Upload music tracks below.</a></div>{% endif %}
+      </div>
+    {% else %}
+      <div class="set {{ 'wide' if kind == 'textarea' }}">
+        <label for="f-{{ key }}" class="tight">{{ label }}</label>
+        {% if kind == 'select' %}
+          <select id="f-{{ key }}" name="{{ key }}">{% for v, t in opts %}<option value="{{ v }}" {{ 'selected' if v == val }}>{{ t }}</option>{% endfor %}</select>
+        {% elif kind == 'number' %}
+          <input id="f-{{ key }}" type="number" name="{{ key }}" min="{{ opts[0] }}" max="{{ opts[1] }}" step="{{ '0.5' if key == 'gap_hours' else '1' }}" value="{{ val }}">
+        {% elif kind == 'textarea' %}
+          <textarea id="f-{{ key }}" name="{{ key }}" rows="3">{{ val }}</textarea>
+        {% else %}
+          <input id="f-{{ key }}" type="text" name="{{ key }}" value="{{ val }}">
+        {% endif %}
+        {% if help %}<div class="hint">{{ help }}</div>{% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+  {% if title == 'Auto-pilot' %}
+    <button class="btn sm ghost" formaction="/campaigns/{{ camp.id }}/check" formmethod="post" style="margin-top:12px">Check the channels now</button>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="savebar"><button class="btn">Save campaign</button><span class="hint" style="margin:0">Changes apply to new clips. Clips already made keep their edit.</span></div>
+</form>
+
+<div class="card" id="music">
+  <h2>Background music</h2>
+  <p class="small muted" style="margin-top:-6px">Upload royalty-free tracks you may use (e.g. from the YouTube Audio Library). One is picked at random for each clip when "Background music" is on.</p>
+  {% if tracks %}<div class="table">{% for t in tracks %}
+    <div class="tr"><span class="grow">{{ t }}</span>
+      <form method="post" action="/campaigns/{{ camp.id }}/music"><input type="hidden" name="remove" value="{{ t }}"><button class="link danger">Remove</button></form></div>
+  {% endfor %}</div>{% else %}<p class="muted small">No tracks yet.</p>{% endif %}
+  <form method="post" action="/campaigns/{{ camp.id }}/music" enctype="multipart/form-data" class="row" style="margin-top:10px">
+    <input type="file" name="tracks" accept="audio/*" multiple aria-label="Music files"><button class="btn sm">Upload</button>
+  </form>
+</div>
+
+<form method="post" action="/campaigns/{{ camp.id }}/delete" onsubmit="return confirm('Delete this campaign? Its videos move to your first campaign.')" style="margin-top:20px">
+  <button class="btn sm danger">Delete campaign</button>
+</form>
+{% endblock %}

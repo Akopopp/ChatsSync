@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Channels{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div><h1>Channels</h1><p>Connect as many YouTube channels, Instagram accounts and Facebook Pages as you like. Each campaign picks where its clips go.</p></div>
+</div>
+{% set notes = {'saved': ('ok', 'Saved.'), 'removed': ('ok', 'Channel disconnected. Its waiting posts were cancelled.')} %}
+{% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
+{% if msg.startswith('linked_') %}<div class="alert ok">{{ NAMES[msg[7:]] }} connected. Now tick it in a <a href="/campaigns">campaign</a>.</div>{% endif %}
+{% if msg.startswith('link_fail_') %}<div class="alert bad">{{ NAMES.get(msg[10:], 'Account') }} was not connected. Please try again.</div>{% endif %}
+
+<div class="card glow">
+  <h2>Add a channel</h2>
+  <div class="row">
+    {% if ready.youtube %}<a class="btn" href="/oauth/youtube/start">+ Add YouTube channel</a>{% endif %}
+    {% if ready.instagram %}<a class="btn ghost" href="/oauth/instagram/start">+ Add Instagram</a>{% endif %}
+    {% if ready.facebook %}<a class="btn ghost" href="/oauth/facebook/start">+ Add Facebook Pages</a>{% endif %}
+  </div>
+  <div class="hint" style="margin-top:10px">
+    <b>Second YouTube channel?</b> Press "Add YouTube channel" again and pick that channel in Google's chooser (brand channels are listed after you choose the Google account).
+    If Google shows "Google hasn't verified this app", press <b>Advanced → Go to the app</b>.
+  </div>
+</div>
+
+{% if not chans %}<p class="muted">No channels yet.</p>{% endif %}
+<div class="camp-grid">
+{% for c in chans %}
+  <div class="card camp">
+    <div class="row" style="justify-content:space-between">
+      <div class="row" style="gap:10px">
+        {% if c.d.get('thumb') %}<img src="{{ c.d.thumb }}" alt="" class="ch-av" referrerpolicy="no-referrer">{% else %}<div class="ch-av">{{ c.name[:1] | upper }}</div>{% endif %}
+        <div><b>{{ c.name }}</b><div class="hint" style="margin:0">{{ NAMES[c.platform] }}</div></div>
+      </div>
+      <span class="chip ok">Connected</span>
+    </div>
+    {% if c.note %}<div class="alert" style="margin:12px 0 0">{{ c.note }}</div>{% endif %}
+    {% if c.platform == 'youtube' and not c.full %}
+      <div class="alert" style="margin:12px 0 0">Connected with the old permissions: posting works, but first comments, playlists and channel setup need a reconnect. <a href="/oauth/youtube/start">Reconnect</a> and pick <b>{{ c.name }}</b>.</div>
+    {% endif %}
+    <div class="facts" style="margin-top:12px">
+      <span><b>Posted (24 h)</b>{{ c.today }}</span>
+      <span><b>Waiting</b>{{ c.waiting }}</span>
+      <span><b>Campaigns</b>{{ c.camps | join(', ') or 'none' }}</span>
+    </div>
+    <form method="post" action="/channels/{{ c.id }}/limit" class="row" style="margin-top:12px">
+      <label class="tight" for="lim{{ c.id }}" style="margin:0">Max posts a day</label>
+      <input id="lim{{ c.id }}" type="number" name="per_day" min="1" max="100" value="{{ c.daily_limit }}" style="width:90px">
+      <button class="btn sm ghost">Save</button>
+    </form>
+    {% if c.platform == 'youtube' %}<div class="hint">New YouTube channels can upload about 10 to 15 a day. Verify the channel at youtube.com/verify for more.</div>{% endif %}
+    <div class="row" style="margin-top:12px">
+      {% if c.platform == 'youtube' %}<a class="btn sm" href="/channels/{{ c.id }}/setup">Channel setup</a>{% endif %}
+      <form method="post" action="/channels/{{ c.id }}/disconnect" onsubmit="return confirm('Disconnect {{ c.name }}? Its waiting posts are cancelled.')"><button class="link danger">Disconnect</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}
