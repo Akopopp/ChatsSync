@@ -3,7 +3,7 @@ FROM python:3.12-slim-bookworm
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 HF_HOME=/models CPU_THREADS=2 WHISPER_MODEL=small
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fonts-noto-color-emoji ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv

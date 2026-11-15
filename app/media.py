@@ -140,6 +140,23 @@ def download(url, kind, folder: Path, max_minutes, session=''):
     return files[0], (lines[-1] if lines else '')
 
 
+def latest_videos(url, n=5):
+    """Newest uploads of a channel or playlist (for auto-pilot): [{'id', 'title', 'url'}], newest first."""
+    url = url.strip()
+    if re.search(r'youtube\.com/(@[^/?#]+|channel/[^/?#]+|c/[^/?#]+|user/[^/?#]+)/?$', url):
+        url = url.rstrip('/') + '/videos'
+    cmd = [x for x in ytdlp_base() if x != '--no-playlist'] + [
+        '--flat-playlist', '--playlist-end', str(n), '--print', '%(id)s\t%(title)s\t%(url)s', url]
+    out = _ytdlp(cmd, timeout=180)
+    videos = []
+    for line in out.strip().splitlines():
+        parts = line.split('\t')
+        if len(parts) >= 2 and parts[0] and parts[0] != 'NA':
+            link = parts[2] if len(parts) > 2 and parts[2].startswith('http') else f'https://www.youtube.com/watch?v={parts[0]}'
+            videos.append({'id': parts[0], 'title': parts[1], 'url': link})
+    return videos
+
+
 def media_duration(path):
     out = sh(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(path)])
     return float(out.strip() or 0)
