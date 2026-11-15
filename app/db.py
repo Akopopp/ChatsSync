@@ -76,6 +76,7 @@ def conn():
 
 MIGRATIONS = {
     'users': {'approved': 'integer default 1', 'google_sub': "text default ''", 'avatar': "text default ''"},
+    'jobs': {'attempts': 'integer default 0'},
 }
 
 SITE_DEFAULTS = {'signup_mode': 'approval', 'trial_days': '3', 'trial_videos': '5', 'trial_minutes': '60'}

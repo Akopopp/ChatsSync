@@ -13,7 +13,12 @@ JOBS = db.DATA / 'jobs'
 MIN_FREE_GB = float(os.environ.get('MIN_FREE_GB', '8'))
 YT_DAILY_LIMIT = int(os.environ.get('YT_DAILY_LIMIT', '95'))
 DEFAULT_MINUTES = 20  # assumed length while a linked video's length is still unknown
+MAX_TRIES = int(os.environ.get('MAX_TRIES', '3'))  # restarts allowed in the middle of one video before giving up on it
+CRASHED = ('The server restarted several times while making clips from this video, so it was stopped to keep the '
+           'queue moving. Try a shorter video, or upload the file instead.')
 _wake = threading.Event()
+_stop = set()  # job ids the user stopped while they were being worked on
+_current = {}  # {'job': id, 'thread': id} of the job being worked on right now
 
 
 def job_dir(job_id):
@@ -95,6 +100,10 @@ def learn(stage, seconds, media_seconds):
 # ---------- workers ----------
 
 def start():
+    # A job still "working" here was cut off by a restart. If it keeps doing that (e.g. it crashes the server),
+    # stop retrying it instead of looping forever and blocking every video behind it.
+    db.run('update jobs set status="failed", stage="", step="", error=?, finished_at=? where status="working" and attempts>=?',
+           (CRASHED, time.time(), MAX_TRIES))
     db.run('update jobs set status="queued", stage="", step="Waiting" where status="working"')
     db.run('update posts set status="waiting" where status="posting"')
     for target in (_job_loop, _post_loop, _cleanup_loop):
@@ -103,6 +112,18 @@ def start():
 
 def wake():
     _wake.set()
+
+
+def stop(job_id):
+    """Stop a job that is being worked on: end its running command and make the worker give it up."""
+    _stop.add(job_id)
+    if _current.get('job') == job_id:
+        media.kill(_current['thread'])
+
+
+def _check(job_id):
+    if job_id in _stop:
+        raise media.JobError(media.STOPPED)
 
 
 def _job_loop():
@@ -148,6 +169,8 @@ def process(job_id):
     folder = job_dir(job_id)
     folder.mkdir(parents=True, exist_ok=True)
     db.update_job(job_id, status='working', started_at=time.time(), error='')
+    db.run('update jobs set attempts=attempts+1 where id=?', (job_id,))
+    _current.update(job=job_id, thread=threading.get_ident())
     try:
         if media.free_gb() < MIN_FREE_GB:
             raise media.JobError('The server is busy with storage right now. Please try again in a while.')
@@ -180,6 +203,7 @@ def process(job_id):
         if duration > limit * 60:
             raise media.JobError(f'Video is longer than your limit of {limit} minutes.')
 
+        _check(job_id)
         _stage(job_id, 'transcribe', 'Listening to the video and writing captions')
         words_file = folder / 'words.json'
         if words_file.exists():
@@ -187,18 +211,21 @@ def process(job_id):
         else:
             t0 = time.time()
             words, _ = media.transcribe(listen, settings['language'], duration=duration,
-                                        on_progress=lambda p: db.update_job(job_id, progress=round(p, 3)))
+                                        on_progress=lambda p: db.update_job(job_id, progress=round(p, 3)),
+                                        should_stop=lambda: job_id in _stop)
             learn('transcribe', time.time() - t0, duration)
             words_file.write_text(json.dumps(words))
         if len(words) < 30:
             raise media.JobError('Not enough speech in this video to make clips.')
 
+        _check(job_id)
         _stage(job_id, 'pick', 'Finding the best moments')
         t0 = time.time()
         picks, used_ai = ai.pick_clips(words, settings)
         learn('pick', time.time() - t0, 1)
         if not picks:
             raise media.JobError('No good clips found. Try different clip lengths in Settings.')
+        _check(job_id)
         job = db.one('select * from jobs where id=?', (job_id,))
         clip_ids = [db.run(
             'insert into clips(job_id, user_id, start, end, title, hook, reason, score, meta, status, created_at) '
@@ -211,6 +238,7 @@ def process(job_id):
         rendered = 0
         t0 = time.time()
         for n, clip_id in enumerate(clip_ids, 1):
+            _check(job_id)
             db.update_job(job_id, step=f'Editing clip {n} of {len(clip_ids)}', clips_done=n - 1)
             clip = db.one('select * from clips where id=?', (clip_id,))
             out = folder / f'clip-{clip_id}.mp4'
@@ -243,6 +271,7 @@ def process(job_id):
         if not any(db.one('select status from clips where id=?', (c,))['status'] == 'ready' for c in clip_ids):
             failed = db.one('select error from clips where job_id=? and error != "" limit 1', (job_id,))
             raise media.JobError(failed['error'] if failed else 'Clips could not be edited.')
+        _check(job_id)
         note = '' if used_ai else 'Clips were picked without AI.'
         db.update_job(job_id, status='done', stage='', step=note, finished_at=time.time(), clips_done=len(clip_ids))
         if settings['upload_mode'] == 'auto':
@@ -250,10 +279,21 @@ def process(job_id):
                 if db.one('select status from clips where id=?', (clip_id,))['status'] == 'ready':
                     approve(clip_id)
     except Exception as err:
-        db.update_job(job_id, status='failed', stage='', step='', error=str(err)[:600], finished_at=time.time())
+        stopped = job_id in _stop
+        if not stopped:  # a stopped job was already marked (cancelled) or removed (deleted) by whoever stopped it
+            db.update_job(job_id, status='failed', stage='', step='', error=str(err)[:600], finished_at=time.time())
         for pattern in ('source.*', 'upload.*', 'audio-src.*', 'audio.f32', 'part-*', '*.part'):
             for leftover in folder.glob(pattern):
                 leftover.unlink(missing_ok=True)
+        if stopped and db.one('select id from jobs where id=?', (job_id,)):
+            db.update_job(job_id, stage='', step='')
+        elif stopped:
+            # the user deleted it while it was running: clear anything written after the delete
+            db.run('delete from clips where job_id=?', (job_id,))
+            shutil.rmtree(folder, ignore_errors=True)
+    finally:
+        _current.clear()
+        _stop.discard(job_id)
 
 
 # ---------- posting ----------

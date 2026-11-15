@@ -4,12 +4,17 @@ import re
 import shutil
 import statistics
 import subprocess
+import threading
 from pathlib import Path
 
 THREADS = os.environ.get('CPU_THREADS', '2')
 FONTS = Path(__file__).resolve().parent.parent / 'fonts'
 W, H = 1080, 1920
+# Long audio is transcribed in windows of this many seconds, so memory stays the same for a 10 min or a 5 h video.
+CHUNK_SECONDS = int(os.environ.get('TRANSCRIBE_CHUNK_SECONDS', '600'))
+STOPPED = 'Stopped.'
 _model = None
+_running = {}  # thread id -> the command that thread is running right now (so a stopped job can end it)
 
 
 class JobError(Exception):
@@ -17,11 +22,27 @@ class JobError(Exception):
 
 
 def sh(cmd, timeout=None):
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    if res.returncode != 0:
-        tail = (res.stderr or res.stdout).strip().splitlines()[-6:]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    _running[threading.get_ident()] = proc
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        raise
+    finally:
+        _running.pop(threading.get_ident(), None)
+    if proc.returncode != 0:
+        tail = (err or out).strip().splitlines()[-6:]
         raise JobError(' '.join(tail)[-600:] or f'{cmd[0]} failed')
-    return res.stdout
+    return out
+
+
+def kill(thread_id):
+    """End the command (yt-dlp, ffmpeg) a worker thread is waiting on."""
+    proc = _running.get(thread_id)
+    if proc and proc.poll() is None:
+        proc.kill()
 
 
 def free_gb():
@@ -138,7 +159,7 @@ def probe(path):
 
 # ---------- transcription ----------
 
-def transcribe(path: Path, language='', on_progress=None, duration=0):
+def transcribe(path: Path, language='', on_progress=None, duration=0, should_stop=None):
     global _model
     import numpy as np
     from faster_whisper import WhisperModel
@@ -152,18 +173,35 @@ def transcribe(path: Path, language='', on_progress=None, duration=0):
     if _model is None:
         _model = WhisperModel(os.environ.get('WHISPER_MODEL', 'small'), device='cpu',
                               compute_type='int8', cpu_threads=int(THREADS))
-    segments, info = _model.transcribe(samples, language=language or None, word_timestamps=True,
-                                       vad_filter=True, beam_size=1)
+    # faster-whisper builds the spectrogram of everything it is given at once (~1.5 GB per hour of sound),
+    # so a 2-3 hour video went over the container's memory and crashed it. Feed it one window at a time.
+    rate, step = 16000, CHUNK_SECONDS * 16000
+    lang = language or None
     words = []
-    for seg in segments:
-        if on_progress and duration:
-            on_progress(min(seg.end / duration, 0.99))
-        for w in seg.words or []:
-            text = w.word.strip()
-            if text:
-                words.append({'s': round(w.start, 2), 'e': round(w.end, 2), 'w': text})
+    for begin in range(0, len(samples), step):
+        if should_stop and should_stop():
+            raise JobError(STOPPED)
+        offset = begin / rate
+        window = np.array(samples[begin:begin + step])
+        segments, info = _model.transcribe(window, language=lang, word_timestamps=True,
+                                           vad_filter=True, beam_size=1)
+        found = False
+        for seg in segments:
+            if should_stop and should_stop():
+                raise JobError(STOPPED)
+            if on_progress and duration:
+                on_progress(min((offset + seg.end) / duration, 0.99))
+            for w in seg.words or []:
+                text = w.word.strip()
+                if text:
+                    found = True
+                    words.append({'s': round(offset + w.start, 2), 'e': round(offset + w.end, 2), 'w': text})
+        if lang is None and found:
+            lang = info.language  # keep the language heard first, as before
+        del window
+    del samples
     audio.unlink(missing_ok=True)
-    return words, info.language
+    return words, lang or ''
 
 
 # ---------- framing ----------

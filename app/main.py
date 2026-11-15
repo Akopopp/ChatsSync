@@ -253,7 +253,7 @@ def job_status(request: Request, job_id: int):
 def retry_job(request: Request, job_id: int):
     user = need_user(request)
     own_job(user, job_id)
-    db.update_job(job_id, status='queued', step='Waiting', error='', created_at=time.time())
+    db.update_job(job_id, status='queued', step='Waiting', error='', created_at=time.time(), attempts=0)
     pipeline.wake()
     return RedirectResponse(f'/jobs/{job_id}', status_code=303)
 
@@ -263,7 +263,7 @@ def remove_job(request: Request, job_id: int):
     user = need_user(request)
     job = own_job(user, job_id)
     if job['status'] == 'working':
-        return RedirectResponse(f'/jobs/{job_id}', status_code=303)
+        pipeline.stop(job_id)  # stuck or not, end the work on it so the next video can start
     pipeline.delete_job(job_id)
     return RedirectResponse(request.query_params.get('back', '/'), status_code=303)
 
@@ -542,8 +542,10 @@ async def admin_update_user(request: Request, user_id: int):
 def admin_cancel(request: Request, job_id: int):
     need_user(request, admin=True)
     job = db.one('select status from jobs where id=?', (job_id,))
-    if job and job['status'] == 'queued':
-        db.update_job(job_id, status='failed', error='Cancelled by admin.', finished_at=time.time())
+    if job and job['status'] in ('queued', 'working'):
+        if job['status'] == 'working':
+            pipeline.stop(job_id)
+        db.update_job(job_id, status='failed', stage='', step='', error='Cancelled by admin.', finished_at=time.time())
     return RedirectResponse('/admin#queue', status_code=303)
 
 
