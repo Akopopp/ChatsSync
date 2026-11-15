@@ -100,7 +100,11 @@
 </div>
 {% endif %}
 
-{% if job.status != 'working' %}
+{% if job.status == 'working' %}
+<form method="post" action="/jobs/{{ job.id }}/delete" style="margin-top:24px" onsubmit="return confirm('Stop working on this video and delete it? The next video in line will start.')">
+  <button class="btn sm danger">Stop &amp; delete this video</button>
+</form>
+{% else %}
 <form method="post" action="/jobs/{{ job.id }}/delete" style="margin-top:24px" onsubmit="return confirm('Delete this video and its clip files? Posts already published stay online.')">
   <button class="btn sm danger">Delete this video</button>
 </form>

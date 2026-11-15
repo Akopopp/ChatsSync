@@ -79,7 +79,7 @@
           {% elif t %} · starts in <b data-left="{{ t.starts_in|int }}">{{ t.starts_in | eta }}</b>{% endif %}</div>
       </div>
       <span class="chip {{ job.status }}">{{ job.status }}</span>
-      {% if job.status == 'queued' %}<form method="post" action="/admin/jobs/{{ job.id }}/cancel"><button class="link danger">Cancel</button></form>{% endif %}
+      {% if job.status in ('queued', 'working') %}<form method="post" action="/admin/jobs/{{ job.id }}/cancel"><button class="link danger">{{ 'Stop' if job.status == 'working' else 'Cancel' }}</button></form>{% endif %}
     </div>
   {% endfor %}
   </div>
