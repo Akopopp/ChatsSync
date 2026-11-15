@@ -182,20 +182,25 @@ def top_titles(campaign_id):
     return list(dict.fromkeys(r['title'] for r in rows if r['title']))
 
 
-def _render(path, out, start, end, words, meta, src, s, camp_id):
-    """Full edit; if that fails, a simpler edit; if that fails too, the basic edit. The clip always gets made."""
+def _render(path, out, start, end, words, meta, src, s, camp):
+    """Full edit; if that fails, a simpler edit; if that fails too, the basic edit. The clip always gets made.
+    Returns (thumbnail, how the layout was chosen)."""
     audio = edit.has_audio(path)
     try:
-        return edit.render(path, out, start, end, words, meta, src, s, camp_id, has_audio=audio)[0]
+        thumb, info = edit.render(path, out, start, end, words, meta, src, s, camp['id'], has_audio=audio,
+                                  brief=camp['brief'])
+        return thumb, info['plan']
     except Exception as err:
         print('full edit failed, trying simple edit:', str(err)[:400])
     try:
-        return edit.render(path, out, start, end, words, meta, src, s, camp_id, simple=True, has_audio=audio)[0]
+        thumb, info = edit.render(path, out, start, end, words, meta, src, s, camp['id'], simple=True,
+                                  has_audio=audio, brief=camp['brief'], review=False)
+        return thumb, info['plan']
     except Exception as err:
         print('simple edit failed, using basic edit:', str(err)[:400])
     basic = {'show_title': '1' if s.get('hook') != 'off' else '0', 'caption_uppercase': s.get('caption_uppercase', '1'),
-             'crop_mode': s.get('crop_mode') if s.get('crop_mode') in ('auto', 'face', 'fit') else 'auto'}
-    return media.render(path, out, start, end, words, meta.get('hook', ''), src, basic)
+             'crop_mode': s.get('crop_mode') if s.get('crop_mode') in ('face', 'fit') else 'auto'}
+    return media.render(path, out, start, end, words, meta.get('hook', ''), src, basic), {}
 
 
 def process(job_id):
@@ -306,12 +311,13 @@ def process(job_id):
                         info, parts = media.probe(src), False
                 if parts:
                     length = clip['end'] - clip['start']
-                    thumb = _render(part, out, 0, length, _shift(words, clip['start'], clip['end']), meta,
-                                    media.probe(part), s, camp['id'])
+                    thumb, layout = _render(part, out, 0, length, _shift(words, clip['start'], clip['end']), meta,
+                                            media.probe(part), s, camp)
                     part.unlink(missing_ok=True)
                 else:
-                    thumb = _render(src, out, clip['start'], clip['end'], words, meta, info, s, camp['id'])
-                db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready')
+                    thumb, layout = _render(src, out, clip['start'], clip['end'], words, meta, info, s, camp)
+                meta['layout'] = layout
+                db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready', meta=json.dumps(meta))
                 rendered += clip['end'] - clip['start']
             except Exception as err:
                 db.update_clip(clip_id, status='failed', error=str(err)[:500])

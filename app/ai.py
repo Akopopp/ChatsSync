@@ -89,14 +89,19 @@ def _mistral(prompt, json_out=True):
     return res.json()['choices'][0]['message']['content']
 
 
-def ask_json(prompt, temperature=0.4):
-    """Send a prompt, get parsed JSON back. Raises AIError with a readable reason."""
+def ask_json(prompt, temperature=0.4, images=None):
+    """Send a prompt (and optional JPEG images), get parsed JSON back. Raises AIError with a readable reason."""
     if not ai_ready():
         raise AIError('No AI key is set (GEMINI_API_KEY).')
     if os.environ.get('GEMINI_API_KEY'):
-        content = _gemini({'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+        import base64
+        parts = [{'text': prompt}] + [{'inlineData': {'mimeType': 'image/jpeg', 'data': base64.b64encode(img).decode()}}
+                                      for img in images or []]
+        content = _gemini({'contents': [{'role': 'user', 'parts': parts}],
                            'generationConfig': {'temperature': temperature, 'responseMimeType': 'application/json'}})
         text = ''.join(p.get('text', '') for p in content['parts'] if not p.get('thought'))
+    elif images:
+        raise AIError('Looking at video frames needs GEMINI_API_KEY.')
     else:
         text = _mistral(prompt)
     text = text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
@@ -409,3 +414,57 @@ def channel_profile(name, s, brief=''):
             'keywords': ' '.join(f'"{k}"' if ' ' in k else k for k in kws)[:480],
             'tagline': str(data.get('tagline', '')).strip()[:40], 'playlist': str(data.get('playlist', '')).strip()[:60],
             'colors': [c for c in (data.get('colors') or []) if re.fullmatch(r'#[0-9a-fA-F]{6}', str(c))][:2]}
+
+
+# ---------- looking at the video: layout and a check of the finished edit ----------
+
+LAYOUT_PROMPT = '''You are a professional Shorts editor. A horizontal video clip must become a vertical 9:16 Short (1080x1920).
+The images are frames from the clip, in order. {brief}Face finder says: a face is seen in {faces:.0%} of frames, main face
+width is {size:.0%} of the frame, two people too far apart for one crop in {apart:.0%} of frames.
+Pick the layout that looks best and loses nothing important:
+- "crop": a 9:16 window (about 32% of the frame width) that follows the main subject. Best when one person or one
+  subject fills the frame: talking head, interview close-up, one player, one object.
+- "full": the whole horizontal picture in the middle of the vertical frame, blurred background, title above and
+  captions below. Best for gameplay, sports, wide shots, two or more people talking, screens, slides, text on screen,
+  or anything where a crop would cut off what matters.
+Also give:
+- "focus": for every frame, where the most important subject is across the width (0 = left edge, 1 = right edge).
+- "captions": the best caption spot that covers nothing important. For "full": "below" or "above" the picture.
+  For "crop": "low", "middle" or "high" (avoid faces, scoreboards, game HUD and any text already on screen).
+- "burned_subtitles": true only if the video already shows spoken-word subtitles in the picture.
+- "reason": one short sentence a user understands.
+Reply with JSON only: {{"layout": "full", "focus": [0.5], "captions": "below", "burned_subtitles": false, "reason": ""}}'''
+
+
+def layout_advice(images, stats, brief=''):
+    data = ask_json(LAYOUT_PROMPT.format(brief=_brief(brief), faces=stats.get('faces', 0), size=stats.get('size', 0),
+                                         apart=stats.get('apart', 0)), 0.2, images=images)
+    layout = data.get('layout') if data.get('layout') in ('crop', 'full') else 'full'
+    focus = []
+    for i in range(len(images)):
+        try:
+            focus.append(min(max(float((data.get('focus') or [])[i]), 0.0), 1.0))
+        except (IndexError, TypeError, ValueError):
+            focus.append(focus[-1] if focus else 0.5)
+    return {'layout': layout, 'focus': focus, 'captions': str(data.get('captions', '')).lower(),
+            'burned_subtitles': bool(data.get('burned_subtitles')), 'reason': str(data.get('reason', ''))[:200]}
+
+
+REVIEW_PROMPT = '''You are checking a finished vertical Short before it is posted. The images are frames from it.
+Layout used: {layout} ({what}); captions are {captions}. {brief}
+Look for real problems only: captions or titles covering faces, the main action, a scoreboard or text already in the
+video; the main subject cut off or out of the frame; an empty or useless picture; text running off the screen.
+Reply with JSON only: {{"ok": true, "fix": "none", "reason": "one short sentence"}}
+"fix" is one of: "none", "switch_to_full", "switch_to_crop", "captions_below", "captions_above", "captions_low",
+"captions_middle", "captions_high".'''
+
+
+def review_edit(images, plan, brief=''):
+    if not images:
+        return None
+    what = 'whole picture in the middle, text above and below' if plan.get('layout') == 'full' else '9:16 crop of the subject'
+    data = ask_json(REVIEW_PROMPT.format(layout=plan.get('layout'), what=what, captions=plan.get('captions'),
+                                         brief=_brief(brief)), 0.1, images=images)
+    fix = str(data.get('fix', 'none'))
+    ok = bool(data.get('ok', True)) or fix == 'none'
+    return {'ok': ok, 'fix': fix, 'reason': str(data.get('reason', ''))[:200]}

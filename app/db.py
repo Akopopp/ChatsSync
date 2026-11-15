@@ -68,13 +68,14 @@ CAMPAIGN_DEFAULTS = {
     'description_template': DEFAULT_TEMPLATE,
     'best_title': '1',
     # editing
-    'crop_mode': 'auto',
+    'crop_mode': 'ai',
+    'ai_check': '1',
     'cut_silence': '1',
     'cut_fillers': '1',
     'zoom': '1',
     'caption_style': 'bold',
     'caption_uppercase': '1',
-    'caption_position': 'middle',
+    'caption_position': 'auto',
     'highlight_keywords': '1',
     'emojis': '1',
     'hook': 'top',
@@ -96,7 +97,7 @@ CAMPAIGN_DEFAULTS = {
 }
 
 # Switches (stored as '1' / '0'); the campaign form sends only the ones that are on.
-CAMPAIGN_SWITCHES = ('auto_post', 'first_comment', 'playlist', 'localize', 'best_title', 'cut_silence', 'cut_fillers',
+CAMPAIGN_SWITCHES = ('auto_post', 'ai_check', 'first_comment', 'playlist', 'localize', 'best_title', 'cut_silence', 'cut_fillers',
                      'zoom', 'caption_uppercase', 'highlight_keywords', 'emojis', 'progress_bar', 'music', 'sfx',
                      'broll', 'loudnorm', 'color_boost', 'outro', 'watermark', 'translate_captions', 'autopilot')
 
@@ -177,6 +178,7 @@ def init():
                 if col not in have:
                     c.execute(f'alter table {table} add column {col} {kind}')
     migrate_campaigns()
+    migrate_layout()
 
 
 def site():
@@ -379,3 +381,17 @@ def migrate_campaigns():
         cid = create_campaign(uid, old['campaign_name'] or 'Main campaign', '', values)
         run('update jobs set campaign_id=? where user_id=? and (campaign_id is null or campaign_id=0)', (cid, uid))
     set_stat('campaigns_v1', time.time())
+
+
+def migrate_layout():
+    """One time: campaigns that cropped every video now let the AI pick the layout per clip."""
+    if stat('layout_v2'):
+        return
+    for row in q('select id, settings from campaigns'):
+        stored = json.loads(row['settings'] or '{}')
+        if stored.get('crop_mode', 'auto') in ('auto', 'face'):
+            stored['crop_mode'] = 'ai'
+        if stored.get('caption_position') == 'middle':
+            stored['caption_position'] = 'auto'
+        run('update campaigns set settings=? where id=?', (json.dumps(stored), row['id']))
+    set_stat('layout_v2', time.time())

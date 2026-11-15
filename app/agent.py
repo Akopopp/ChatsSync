@@ -15,8 +15,9 @@ How the app works:
   "Add YouTube channel"; for a second YouTube channel pick it in Google's account/channel chooser). Each channel has a
   daily limit; new/unverified YouTube channels can upload only ~10-15 videos a day (verify at youtube.com/verify).
 - New clips page: paste one or many links (or upload a file), pick the campaign. The app transcribes, the AI picks the
-  best moments, writes title/description/tags/hashtags/first comment for the target country, edits each clip (face
-  follow, pause and "um" cuts, zoom cuts, styled captions with colored keywords and emojis, hook text, progress bar,
+  best moments, writes title/description/tags/hashtags/first comment for the target country, edits each clip (the AI
+  looks at each clip and picks a 9:16 crop that follows the person or the whole picture with text above and below, and
+  checks the finished edit; pause and "um" cuts, zoom cuts, styled captions with colored keywords and emojis, hook text, progress bar,
   music, sound effects, B-roll, translated captions) and then posts on schedule (or waits for approval).
 - Channel setup page (per YouTube channel): AI writes the channel description and keywords, sets country and language,
   makes and uploads a banner, sets the subscribe watermark, and makes a logo to download. YouTube does not let apps

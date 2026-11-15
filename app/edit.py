@@ -113,13 +113,15 @@ def zoom_pieces(segs, words, s, meta):
 
 # ---------- framing ----------
 
-def face_track(path, start, end, src):
-    """Smooth camera path [(t, x_center)] that follows the main face, or None when there is no face."""
+def face_scan(path, start, end, src):
+    """Faces across the clip: ([(t, x_center or None)], stats). Stats say how often one face is seen,
+    how big it is (share of the frame width) and how often two people stand too far apart for one 9:16 window."""
     import cv2
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     cap = cv2.VideoCapture(str(path))
     step = max(0.5, (end - start) / 120)
-    samples, t = [], start + 0.2
+    samples, sizes, spread, t = [], [], 0, start + 0.2
+    window = 9 / 16 * src['height'] / src['width']  # share of the width a 9:16 crop keeps
     while t < end:
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ok, frame = cap.read()
@@ -127,15 +129,28 @@ def face_track(path, start, end, src):
         if ok:
             small = cv2.resize(frame, (640, int(640 * frame.shape[0] / frame.shape[1])))
             faces = cascade.detectMultiScale(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), scaleFactor=1.15,
-                                             minNeighbors=6, minSize=(40, 40))
+                                             minNeighbors=6, minSize=(36, 36))
             if len(faces):
-                fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
-                x = (fx + fw / 2) / small.shape[1] * src['width']
+                big = max(faces, key=lambda f: f[2] * f[3])
+                x = (big[0] + big[2] / 2) / small.shape[1] * src['width']
+                sizes.append(big[2] / small.shape[1])
+                others = [f for f in faces if f[2] >= big[2] * 0.6]
+                centers = [(f[0] + f[2] / 2) / small.shape[1] for f in others]
+                if len(others) >= 2 and max(centers) - min(centers) > window * 0.8:
+                    spread += 1
         samples.append((t - start, x))
         t += step
     cap.release()
+    n = max(len(samples), 1)
+    stats = {'faces': sum(1 for _, x in samples if x is not None) / n,
+             'size': statistics.median(sizes) if sizes else 0.0, 'apart': spread / n}
+    return samples, stats
+
+
+def camera_path(samples, width):
+    """Smooth camera keys [(t, x_center)] from points [(t, x or None)]: hold still, glide only on big moves."""
     found = [x for _, x in samples if x is not None]
-    if len(found) < max(3, len(samples) * 0.3):
+    if not found:
         return None
     filled, cur = [], found[0]
     for t, x in samples:
@@ -147,10 +162,17 @@ def face_track(path, start, end, src):
         smooth.append((t, statistics.median(window)))
     keys, cam = [(0.0, smooth[0][1])], smooth[0][1]
     for t, x in smooth:
-        if abs(x - cam) > src['width'] * 0.07 and t - keys[-1][0] > 0.6:
+        if abs(x - cam) > width * 0.07 and t - keys[-1][0] > 0.6:
             keys += [(t, cam), (t + 0.5, x)]
             cam = x
     return keys[:60]
+
+
+def face_track(path, start, end, src):
+    samples, stats = face_scan(path, start, end, src)
+    if stats['faces'] < 0.3:
+        return None
+    return camera_path(samples, src['width'])
 
 
 def _path_expr(keys, cw, w):
@@ -166,28 +188,102 @@ def _path_expr(keys, cw, w):
     return expr
 
 
-def framing(path, start, end, src, s):
+def grab_frames(path, start, end, n=6, width=512):
+    """n JPEG frames spread over start..end: [(clip seconds, bytes)]."""
+    import cv2
+    cap = cv2.VideoCapture(str(path))
+    out = []
+    for i in range(n):
+        t = start + (end - start) * (i + 0.5) / n
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        small = cv2.resize(frame, (width, int(width * frame.shape[0] / frame.shape[1])))
+        good, buf = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, 72])
+        if good:
+            out.append((round(t - start, 2), buf.tobytes()))
+    cap.release()
+    return out
+
+
+CAPTION_SPOTS = {'full': ('below', 'above'), 'crop': ('low', 'middle', 'high'), 'vertical': ('low', 'middle', 'high')}
+
+
+def plan_layout(path, start, end, src, s, brief=''):
+    """How this clip should look: 9:16 crop that follows the subject, or the whole picture with text above and
+    below, and where the captions go. With AI on, it looks at frames of the clip and decides."""
+    from . import ai
+    w, h = src['width'], src['height']
+    pos = s.get('caption_position', 'auto')
+    pos = pos if pos in ('low', 'middle') else 'low'
+    if h >= w * 1.5:
+        return {'layout': 'vertical', 'captions': pos, 'by': 'shape', 'reason': 'The video is already vertical.'}
+    mode = s.get('crop_mode', 'ai')
+    if mode == 'fit':
+        return {'layout': 'full', 'captions': 'below', 'by': 'setting', 'reason': 'Campaign is set to full picture.'}
+    if mode == 'center':
+        return {'layout': 'crop', 'keys': [(0.0, w / 2)], 'captions': pos, 'by': 'setting', 'reason': 'Campaign is set to cut out the middle.'}
+    try:
+        samples, stats = face_scan(path, start, end, src)
+    except Exception as err:
+        print('face scan failed:', err)
+        samples, stats = [], {'faces': 0, 'size': 0, 'apart': 0}
+    face_keys = camera_path(samples, w) if stats['faces'] >= 0.3 else None
+    if mode == 'face':
+        if face_keys:
+            return {'layout': 'crop', 'keys': face_keys, 'captions': pos, 'by': 'setting', 'reason': 'Following the face.'}
+        return {'layout': 'full', 'captions': 'below', 'by': 'setting', 'reason': 'No face found, so the whole picture is kept.'}
+    advice = None
+    if ai.ai_ready():
+        try:
+            frames = grab_frames(path, start, end, 6)
+            if frames:
+                advice = ai.layout_advice([b for _, b in frames], stats, brief)
+                advice['times'] = [t for t, _ in frames]
+        except Exception as err:
+            print('AI layout failed:', str(err)[:200])
+    if advice:
+        layout = advice['layout']
+        spot = advice['captions'] if advice['captions'] in CAPTION_SPOTS['full' if layout == 'full' else 'crop'] else None
+        plan = {'layout': layout, 'by': 'ai', 'reason': advice.get('reason', ''), 'burned': advice.get('burned_subtitles', False)}
+        if layout == 'crop':
+            if face_keys and stats['apart'] < 0.3:
+                plan['keys'] = face_keys
+            else:
+                points = list(zip(advice['times'], [f * w for f in advice['focus']]))
+                plan['keys'] = camera_path(points, w) or [(0.0, w / 2)]
+            plan['captions'] = spot or pos
+        else:
+            plan['captions'] = spot or 'below'
+        return plan
+    close_up = stats['faces'] >= 0.6 and stats['size'] >= 0.07 and stats['apart'] <= 0.25
+    if close_up and face_keys:
+        return {'layout': 'crop', 'keys': face_keys, 'captions': pos, 'by': 'faces', 'reason': 'One person fills the frame.'}
+    return {'layout': 'full', 'captions': 'below', 'by': 'faces', 'reason': 'Wide shot, group or game: whole picture kept.'}
+
+
+def full_box(src):
+    """Where the whole picture sits in the 1080x1920 frame (a little above the middle, so captions have room)."""
+    vh = int(W * src['height'] / src['width']) // 2 * 2
+    top = max(0, (H - vh) // 2 - 90)
+    return top, top + vh
+
+
+def framing(plan, src, s):
     """Filter that turns the source into a 1080x1920 picture (on the clip's own timeline)."""
     w, h = src['width'], src['height']
     boost = ',eq=saturation=1.12:contrast=1.04' if s.get('color_boost') == '1' else ''
-    if h >= w * 1.5:  # already vertical
+    if plan['layout'] == 'vertical':
         return f'fps={FPS},scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}{media._sharpen(H / h)},setsar=1{boost}'
-    mode = s.get('crop_mode', 'auto')
-    cw = int(h * 9 / 16) // 2 * 2
-    if mode == 'center':
-        return f'fps={FPS},crop={cw}:{h}:{(w - cw) // 2}:0,scale={W}:{H}:flags=lanczos{media._sharpen(H / h)},setsar=1{boost}'
-    want_face = mode == 'face' or (mode == 'auto' and h >= 1000)
-    try:
-        keys = face_track(path, start, end, src) if want_face else None
-    except Exception as err:  # never let face finding stop the edit
-        print('face tracking failed:', err)
-        keys = None
-    if keys:
-        return (f"fps={FPS},crop={cw}:{h}:'{_path_expr(keys, cw, w)}':0,scale={W}:{H}:flags=lanczos"
+    if plan['layout'] == 'crop':
+        cw = int(h * 9 / 16) // 2 * 2
+        return (f"fps={FPS},crop={cw}:{h}:'{_path_expr(plan['keys'], cw, w)}':0,scale={W}:{H}:flags=lanczos"
                 f'{media._sharpen(H / h)},setsar=1{boost}')
+    top, _ = full_box(src)
     return (f'fps={FPS},split[fa][fb];[fa]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},'
-            f'boxblur=8:2,scale={W}:{H}[fbg];[fb]scale={W}:-2:flags=lanczos{media._sharpen(W / w)}[ffg];'
-            f'[fbg][ffg]overlay=0:(H-h)/2,setsar=1{boost}')
+            f'boxblur=10:2,eq=brightness=-0.12,scale={W}:{H}[fbg];[fb]scale={W}:-2:flags=lanczos{media._sharpen(W / w)}[ffg];'
+            f'[fbg][ffg]overlay=0:{top},setsar=1{boost}')
 
 
 # ---------- captions ----------
@@ -204,8 +300,24 @@ STYLES = {
 GROUP_WORDS = {'bold': 3, 'beast': 2, 'boxed': 3, 'karaoke': 5, 'minimal': 5}
 
 
-def caption_margin(s):
-    return 330 if s.get('caption_position') == 'low' else 620
+CROP_MARGIN = {'low': 330, 'middle': 620, 'high': 1150}
+
+
+def placement(plan, src):
+    """Where captions, hook, ending text and emojis sit for this layout.
+    Returns {'cap': (alignment, marginV), 'hook': (alignment, marginV), 'intro': (alignment, marginV),
+             'outro': (alignment, marginV), 'emoji_y': y}."""
+    if plan.get('layout') == 'full':
+        top, bottom = full_box(src)
+        if plan.get('captions') == 'above':
+            return {'cap': (2, H - top + 36), 'hook': (8, bottom + 70), 'intro': (8, bottom + 60),
+                    'outro': (8, bottom + 70), 'emoji_y': max(30, top - 560)}
+        band = max(60, top // 2 - 90)
+        return {'cap': (8, bottom + 44), 'hook': (8, band), 'intro': (8, band), 'outro': (8, bottom + 44),
+                'emoji_y': min(bottom + 300, H - 230)}
+    margin = CROP_MARGIN.get(plan.get('captions'), 330)
+    return {'cap': (2, margin), 'hook': (8, 170), 'intro': (8, 230), 'outro': (5, 0),
+            'emoji_y': max(40, H - margin - 360)}
 
 
 def ass_time(t):
@@ -219,12 +331,13 @@ def esc(text):
     return str(text).replace('\\', '').replace('{', '(').replace('}', ')').replace('\n', ' ')
 
 
-def build_ass(words, subs, dur, meta, s):
+def build_ass(words, subs, dur, meta, s, spots=None):
     style = s.get('caption_style', 'bold')
     if style not in STYLES and style != 'off':
         style = 'bold'
     font, size, prim, outl, back, border, outline, shadow = STYLES.get(style, STYLES['bold'])
-    margin = caption_margin(s)
+    spots = spots or placement({'layout': 'crop', 'captions': 'low'}, {'width': W, 'height': H})
+    (ca, cm), (ha, hm), (ia, im), (oa, om) = spots['cap'], spots['hook'], spots['intro'], spots['outro']
     upper = s.get('caption_uppercase') == '1' and style != 'minimal'
     keys = {norm(k) for k in meta.get('keywords', [])} - {''} if s.get('highlight_keywords') == '1' else set()
     accent = RED if style == 'boxed' else GREEN
@@ -237,10 +350,10 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{font},{size},{prim},{prim},{outl},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},2,70,70,{margin},1
-Style: Title,Montserrat ExtraBold,62,&H00111111,&H00111111,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,3,18,0,8,90,90,170,1
-Style: Hook,Montserrat Black,110,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,10,4,5,80,80,0,1
-Style: Outro,Montserrat Black,86,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,9,3,5,80,80,0,1
+Style: Cap,{font},{size},{prim},{prim},{outl},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{ca},70,70,{cm},1
+Style: Title,Montserrat ExtraBold,62,&H00111111,&H00111111,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,3,18,0,{ha},90,90,{hm},1
+Style: Hook,Montserrat Black,{110 if ia == 5 else 96},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,10,4,{ia},80,80,{im},1
+Style: Outro,Montserrat Black,86,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,9,3,{oa},80,80,{om},1
 Style: Mark,Montserrat ExtraBold,40,&H66FFFFFF,&H66FFFFFF,&H99000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,40,40,60,1
 
 [Events]
@@ -401,8 +514,11 @@ def _first_time(words, target, after=0.0):
 
 # ---------- the whole edit ----------
 
-def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0, simple=False, has_audio=True):
-    """Edit one clip. words are in the source's time; start/end cut the clip. Returns the thumbnail path."""
+def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0, simple=False, has_audio=True,
+           plan=None, brief='', review=True):
+    """Edit one clip. words are in the source's time; start/end cut the clip. Returns (thumbnail path, info).
+    The layout (crop or whole picture, caption spot) is planned first; with AI on, the finished edit is looked at
+    by the AI and redone once if something looks wrong."""
     folder = out.parent
     dur = round(end - start, 3)
     clip_words = [{'s': round(w['s'] - start, 3), 'e': round(w['e'] - start, 3), 'w': w['w']}
@@ -421,11 +537,17 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
             kept_words.append({'s': round(ns, 3), 'e': round(ne, 3), 'w': w['w']})
     subs = [{'s': round(to_new(x['s']), 3), 'e': round(to_new(x['e']), 3), 't': x['t']}
             for x in (meta.get('subs') or []) if x['e'] > 0 and x['s'] < dur]  # clip seconds
-    pieces = zoom_pieces(segs, clip_words, s, meta)
+    if plan is None:
+        plan = plan_layout(path, start, end, src, s, brief)
+    if plan.get('burned') and not subs:  # the video already has subtitles: don't stack ours on top
+        s = {**s, 'caption_style': 'off'}
+    spots = placement(plan, src)
+    # zoom cuts would crop the sides of a whole-picture layout, so they are only used on crops
+    pieces = zoom_pieces(segs, clip_words, s if plan['layout'] != 'full' else {**s, 'zoom': '0'}, meta)
 
     inputs = ['-ss', f'{start:.3f}', '-to', f'{end:.3f}', '-i', str(path)]
     n_in = 1
-    graph = [f'[0:v]{framing(path, start, end, src, s)}[base]']
+    graph = [f'[0:v]{framing(plan, src, s)}[base]']
     if len(pieces) == 1 and pieces[0][2] == 1.0 and len(segs) == 1:
         graph.append(f'[base]trim=start=0:end={new_dur},setpts=PTS-STARTPTS[vc]')
     else:
@@ -480,12 +602,12 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
             used += 1
 
     ass = out.with_suffix('.ass')
-    ass.write_text(build_ass(kept_words, subs, new_dur, meta, s), encoding='utf-8')
+    ass.write_text(build_ass(kept_words, subs, new_dur, meta, s, spots), encoding='utf-8')
     graph.append(f"[{video}]subtitles=filename='{ass}':fontsdir='{FONTS}'[vs]")
     video = 'vs'
 
     if s.get('emojis') == '1' and not simple:
-        y = H - caption_margin(s) - (560 if subs else 360)
+        y = spots['emoji_y'] - (200 if subs and plan['layout'] != 'full' else 0)
         shown = 0
         for item in meta.get('emojis', [])[:4]:
             w = _first_time(kept_words, item.get('word', ''), after=2.5 if s.get('hook') == 'intro' else 0.0)
@@ -554,7 +676,47 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
             leftover.unlink(missing_ok=True)
     thumb = out.with_suffix('.jpg')
     sh(['ffmpeg', '-y', '-v', 'error', '-ss', '1', '-i', str(out), '-frames:v', '1', '-vf', 'scale=360:-2', str(thumb)])
-    return thumb, {'duration': new_dur, 'cuts': len(segs) - 1, 'zooms': sum(1 for p in pieces if p[2] > 1)}
+    summary = {k: plan.get(k, '') for k in ('layout', 'captions', 'by', 'reason', 'checked')}
+    info = {'duration': new_dur, 'cuts': len(segs) - 1, 'zooms': sum(1 for p in pieces if p[2] > 1), 'plan': summary}
+    if review and not simple and s.get('ai_check', '1') == '1':
+        from . import ai
+        if ai.ai_ready():
+            try:
+                verdict = ai.review_edit([b for _, b in grab_frames(out, 0, new_dur, 4, 360)], summary, brief)
+            except Exception as err:
+                print('AI check failed:', str(err)[:200])
+                verdict = None
+            if verdict and not verdict['ok']:
+                better = fix_plan(plan, verdict['fix'], path, start, end, src)
+                if better:
+                    better['checked'] = f'AI check fixed it: {verdict["reason"]}'[:200]
+                    return render(path, out, start, end, words, meta, src, s, campaign_id, simple, has_audio,
+                                  plan=better, brief=brief, review=False)
+            if verdict:
+                info['plan']['checked'] = ('AI check: looks good. ' if verdict['ok'] else 'AI check: ') + verdict['reason'][:160]
+    return thumb, info
+
+
+def fix_plan(plan, fix, path, start, end, src):
+    """A new layout plan for what the AI check asked for, or None."""
+    w = src['width']
+    if src['height'] >= w * 1.5:
+        if fix in ('captions_low', 'captions_middle', 'captions_high'):
+            return {**plan, 'captions': fix.split('_')[1]}
+        return None
+    if fix == 'switch_to_full' and plan['layout'] != 'full':
+        return {'layout': 'full', 'captions': 'below', 'by': 'ai', 'reason': 'AI check: the whole picture works better.'}
+    if fix == 'switch_to_crop' and plan['layout'] == 'full':
+        try:
+            keys = face_track(path, start, end, src)
+        except Exception:
+            keys = None
+        return {'layout': 'crop', 'keys': keys or [(0.0, w / 2)], 'captions': 'low', 'by': 'ai',
+                'reason': 'AI check: a 9:16 crop works better.'}
+    spot = fix.split('_', 1)[1] if fix.startswith('captions_') else ''
+    if spot in CAPTION_SPOTS['full' if plan['layout'] == 'full' else 'crop'] and spot != plan.get('captions'):
+        return {**plan, 'captions': spot}
+    return None
 
 
 def has_audio(path):

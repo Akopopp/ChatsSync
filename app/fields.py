@@ -54,9 +54,13 @@ SECTIONS = [
     ]),
     ('Editing', 'How each clip is edited so people keep watching.', [
         ('crop_mode', 'Framing', 'select',
-         [('auto', 'Automatic: follow the face on sharp videos'), ('face', 'Always follow the speaker\'s face'),
-          ('center', 'Cut out the middle (good for games and sports)'), ('fit', 'Whole picture with a blurred background')],
-         'The camera smoothly follows the speaker\'s face when it moves.'),
+         [('ai', 'AI decides for every clip (recommended)'), ('fit', 'Always the whole picture, text above and below'),
+          ('face', 'Always a 9:16 crop that follows the face'), ('center', 'Always cut out the middle')],
+         'AI looks at each clip: close-ups become a 9:16 crop that follows the person; games, sports, groups and wide '
+         'shots keep the whole horizontal picture with the title above and captions below, so nothing is covered.'),
+        ('ai_check', 'AI checks every finished clip', 'switch', None,
+         'After editing, the AI looks at the clip. If captions cover a face or the subject is cut off, it fixes the '
+         'layout and edits the clip again.'),
         ('cut_silence', 'Cut out pauses', 'switch', None,
          'Removes silent gaps while people talk, so the clip feels fast. Videos with little talking are left whole.'),
         ('cut_fillers', 'Cut "um" and "uh"', 'switch', None, 'Removes filler sounds.'),
@@ -66,7 +70,9 @@ SECTIONS = [
           ('boxed', 'Boxed: black words on a white box'), ('karaoke', 'Karaoke: words light up as they are said'),
           ('minimal', 'Minimal: small, clean, normal case'), ('off', 'No captions')],
          'Captions are written word by word from what is said.'),
-        ('caption_position', 'Caption position', 'select', [('middle', 'Middle (recommended)'), ('low', 'Low')], ''),
+        ('caption_position', 'Caption position', 'select',
+         [('auto', 'AI picks a spot that covers nothing'), ('low', 'Low'), ('middle', 'Middle')],
+         'With the whole picture, captions always go under (or above) the video, never on it.'),
         ('caption_uppercase', 'Captions in CAPITAL letters', 'switch', None, ''),
         ('highlight_keywords', 'Color the important words', 'switch', None, 'The AI picks the key words and colors them green.'),
         ('emojis', 'Emojis', 'switch', None, 'A fitting emoji pops up above the captions on a few key words.'),
