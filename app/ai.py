@@ -23,27 +23,39 @@ def ai_ready():
 
 
 def gemini_models():
-    return [m for m in (os.environ.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash',
-                        'gemini-flash-lite-latest', 'gemini-2.5-flash-lite') if m]
+    # Tested on this key: 3.5-flash and the lite models answer in seconds; flash-latest and 3.8-flash often hang.
+    return [m for m in (os.environ.get('GEMINI_MODEL'), 'gemini-3.5-flash', 'gemini-flash-lite-latest',
+                        'gemini-3.5-flash-lite', 'gemini-flash-latest') if m]
 
 
-def _gemini(body):
-    """Raw Gemini call with retries; busy (429/5xx) or retired (404) models fall through to the next one."""
+_resting = {}  # model -> time until which it is skipped (busy, timing out or retired)
+
+
+def _gemini(body, timeout=150):
+    """Gemini call. A model that is busy, too slow or retired is skipped for a while and the next one is used."""
     key = os.environ['GEMINI_API_KEY']
+    now = time.time()
+    models = list(dict.fromkeys(gemini_models()))
+    ready = [m for m in models if _resting.get(m, 0) < now] or models
     last = ''
-    for model in dict.fromkeys(gemini_models()):
-        for attempt in range(3):
+    for model in ready:
+        for attempt in range(2):
             try:
-                res = requests.post(GEMINI_URL.format(model=model), json=body, timeout=240,
+                res = requests.post(GEMINI_URL.format(model=model), json=body, timeout=timeout,
                                     headers={'x-goog-api-key': key})
+            except requests.Timeout:
+                last = f'{model}: no answer in {timeout} s'
+                _resting[model] = time.time() + 1800
+                break
             except requests.RequestException as err:
-                last = f'{model}: {err}'
-                time.sleep(4)
+                last = f'{model}: {str(err)[:150]}'
+                time.sleep(2)
                 continue
             if res.status_code == 200:
                 data = res.json()
                 cands = data.get('candidates') or []
                 if cands and (cands[0].get('content') or {}).get('parts'):
+                    _resting.pop(model, None)
                     return cands[0]['content']
                 last = f'{model}: empty answer ({(cands[0].get("finishReason") if cands else data.get("promptFeedback"))})'
                 break
@@ -54,9 +66,15 @@ def _gemini(body):
             last = f'{model}: HTTP {res.status_code} {msg[:220]}'
             if res.status_code in (400, 401, 403) and 'API key' in msg:
                 raise AIError('The Gemini API key is not valid. Check GEMINI_API_KEY.')
-            if res.status_code == 404 or res.status_code < 429:
+            if res.status_code == 404:
+                _resting[model] = time.time() + 86400
                 break
-            time.sleep(6 * (attempt + 1))
+            if res.status_code == 429 or res.status_code >= 500:
+                if attempt == 0:
+                    time.sleep(3)
+                    continue
+                _resting[model] = time.time() + 600
+            break
     raise AIError(last or 'AI did not answer.')
 
 
@@ -99,7 +117,7 @@ def chat_with_tools(contents, system, tools):
     if not os.environ.get('GEMINI_API_KEY'):
         raise AIError('The AI helper needs GEMINI_API_KEY.')
     return _gemini({'systemInstruction': {'parts': [{'text': system}]}, 'contents': contents,
-                    'tools': [{'functionDeclarations': tools}], 'generationConfig': {'temperature': 0.3}})
+                    'tools': [{'functionDeclarations': tools}], 'generationConfig': {'temperature': 0.3}}, timeout=60)
 
 
 # ---------- choosing the moments ----------
