@@ -3,7 +3,7 @@
 {% block body %}
 <p class="small" style="margin-top:0"><a href="/campaigns">&larr; Campaigns</a></p>
 <div class="page-head">
-  <div><h1>{{ camp.name }}</h1><p>Every switch below has a short note. Not sure? Ask the AI helper at the bottom right.</p></div>
+  <div><h1>{{ camp.name }}</h1><p>Every switch below has a short note. Not sure? Ask the AI helper.</p></div>
   <a class="btn ghost" href="/?campaign={{ camp.id }}">Add videos to this campaign</a>
 </div>
 {% set notes = {'saved': ('ok', 'Saved. New clips use these settings.'), 'new': ('ok', 'Campaign made. Write its brief, pick channels and save.'),
