@@ -25,6 +25,24 @@ def norm(word):
     return re.sub(r'[^\w]', '', str(word).lower())
 
 
+SWEARS = re.compile(r"(bitch\w*|cunts?|puss(y|ies)|dicks?|dickhead|cocks?|whores?|sluts?|bastards?)", re.I)
+SLURS = re.compile(r"(nigg\w*|faggots?|fags?|retard(s|ed)?)", re.I)
+
+
+def censor(text):
+    """F*CK instead of FUCK in on-screen text; slurs are hidden completely."""
+    def fix(m):
+        word = m.group(0)
+        if SLURS.fullmatch(word):
+            return word[0] + '*' * (len(word) - 1)
+        if re.search(r'fuck|shit', word, re.I):
+            return re.sub(r'(?i)(f)u(ck)', r'\1*\2', re.sub(r'(?i)(sh)i(t)', r'\1*\2', word))
+        if SWEARS.fullmatch(word):
+            return word[0] + re.sub(r'[aeiouAEIOU]', '*', word[1:], count=1)
+        return word
+    return re.sub(r"[A-Za-z']+", fix, str(text))
+
+
 def grid(t):
     return round(round(t * FPS) / FPS, 4)
 
@@ -384,6 +402,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
     lines = []
     hook = (meta.get('hook') or '').strip()
+    if s.get('censor_captions', '1') == '1':
+        hook = censor(hook)
     if hook and s.get('hook') == 'top':
         lines.append(f'Dialogue: 1,{ass_time(0)},{ass_time(dur)},Title,,0,0,0,,{esc(hook)}')
     elif hook and s.get('hook') == 'intro':
@@ -397,8 +417,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                      '{\\fad(200,0)\\fscx80\\fscy80\\t(0,180,\\fscx100\\fscy100)}' + esc(s['outro_text'].upper()))
     cap_end = outro_at if outro_at else dur + 1
 
+    clean = censor if s.get('censor_captions', '1') == '1' else str
+
     def word_txt(w):
-        return esc(w.upper() if upper else w)
+        return esc(clean(w.upper() if upper else w))
 
     if style != 'off' and subs:
         for sub in subs:

@@ -75,6 +75,7 @@ CAMPAIGN_DEFAULTS = {
     'zoom': '1',
     'caption_style': 'bold',
     'caption_uppercase': '1',
+    'censor_captions': '1',
     'caption_position': 'auto',
     'highlight_keywords': '1',
     'emojis': '1',
@@ -101,7 +102,7 @@ CAMPAIGN_DEFAULTS = {
 
 # Switches (stored as '1' / '0'); the campaign form sends only the ones that are on.
 CAMPAIGN_SWITCHES = ('auto_post', 'ai_check', 'first_comment', 'playlist', 'localize', 'best_title', 'cut_silence', 'cut_fillers',
-                     'zoom', 'caption_uppercase', 'highlight_keywords', 'emojis', 'progress_bar', 'music', 'sfx',
+                     'zoom', 'caption_uppercase', 'censor_captions', 'highlight_keywords', 'emojis', 'progress_bar', 'music', 'sfx',
                      'broll', 'loudnorm', 'color_boost', 'outro', 'watermark', 'translate_captions', 'autopilot')
 
 # Seconds of work per second of video, learned from real jobs (see pipeline.learn).

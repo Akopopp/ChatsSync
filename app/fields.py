@@ -74,6 +74,7 @@ SECTIONS = [
          [('auto', 'AI picks a spot that covers nothing'), ('low', 'Low'), ('middle', 'Middle')],
          'With the whole picture, captions always go under (or above) the video, never on it.'),
         ('caption_uppercase', 'Captions in CAPITAL letters', 'switch', None, ''),
+        ('censor_captions', 'Hide swear words in text', 'switch', None, 'Strong swear words show as F*CK in captions and hook text.'),
         ('highlight_keywords', 'Color the important words', 'switch', None, 'The AI picks the key words and colors them green.'),
         ('emojis', 'Emojis', 'switch', None, 'A fitting emoji pops up above the captions on a few key words.'),
         ('hook', 'Hook text', 'select',
