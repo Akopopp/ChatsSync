@@ -324,6 +324,7 @@ def process(job_id):
                                    error=f'AI safety check: {layout["unsafe"]}'[:500])
                     continue
                 db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready', meta=json.dumps(meta))
+                threading.Thread(target=platforms.drop_clip, args=(clip_id, str(out)), daemon=True).start()
                 rendered += clip['end'] - clip['start']
             except Exception as err:
                 db.update_clip(clip_id, status='failed', error=str(err)[:500])

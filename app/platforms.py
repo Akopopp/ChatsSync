@@ -404,3 +404,27 @@ def _post_facebook(ch, clip, text, s, public_url):
         'upload_phase': 'finish', 'video_id': video_id, 'video_state': 'PUBLISHED',
         'description': text['caption'], 'title': text['title'], 'access_token': token}, timeout=60))
     return video_id, f'https://www.facebook.com/reel/{video_id}', ''
+
+
+# ---------- clip drop (GitHub release, for manual TikTok/Instagram uploads) ----------
+
+def drop_clip(clip_id, path):
+    """Copy a finished clip to a private GitHub release so it can be uploaded by hand elsewhere."""
+    token, repo = os.environ.get('CLIPDROP_TOKEN'), os.environ.get('CLIPDROP_REPO', 'Akopopp/clip-drop')
+    if not token:
+        return
+    api = f'https://api.github.com/repos/{repo}'
+    head = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'}
+    try:
+        res = requests.get(f'{api}/releases/tags/clips', headers=head, timeout=30)
+        if res.status_code == 404:
+            res = requests.post(f'{api}/releases', headers=head, json={'tag_name': 'clips', 'name': 'clips'}, timeout=30)
+        res.raise_for_status()
+        upload = res.json()['upload_url'].split('{')[0]
+        with open(path, 'rb') as fh:
+            up = requests.post(f'{upload}?name=clip-{clip_id}.mp4', data=fh, timeout=600,
+                               headers={**head, 'Content-Type': 'video/mp4'})
+        if up.status_code not in (201, 422):  # 422: already there
+            print('clip drop failed:', up.status_code, up.text[:200])
+    except Exception as err:
+        print('clip drop failed:', str(err)[:200])
