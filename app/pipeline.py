@@ -261,7 +261,8 @@ def process(job_id):
             learn('transcribe', time.time() - t0, duration)
             words_file.write_text(json.dumps(words))
             lang_file.write_text(lang or '')
-        if len(words) < 30:
+        # short sources (stream clips) are often reactions with few words; long videos need real talking
+        if len(words) < (8 if duration and duration <= 120 else 30):
             raise media.JobError('Not enough speech in this video to make clips.')
 
         _check(job_id)
