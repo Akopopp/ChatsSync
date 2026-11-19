@@ -770,6 +770,9 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
             except Exception as err:
                 print('AI check failed:', str(err)[:200])
                 verdict = None
+            if verdict and verdict['unsafe']:
+                info['plan']['unsafe'] = verdict['reason'] or 'Not safe for the channel.'
+                return thumb, info
             if verdict and not verdict['ok']:
                 better = fix_plan(plan, verdict['fix'], path, start, end, src)
                 if better:

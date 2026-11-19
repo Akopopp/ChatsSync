@@ -318,6 +318,11 @@ def process(job_id):
                 else:
                     thumb, layout = _render(src, out, clip['start'], clip['end'], words, meta, info, s, camp)
                 meta['layout'] = layout
+                if layout.get('unsafe'):  # the AI check saw nudity, a strip club, drugs or gambling: never post it
+                    out.unlink(missing_ok=True)
+                    db.update_clip(clip_id, thumb=str(thumb), status='rejected', meta=json.dumps(meta),
+                                   error=f'AI safety check: {layout["unsafe"]}'[:500])
+                    continue
                 db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready', meta=json.dumps(meta))
                 rendered += clip['end'] - clip['start']
             except Exception as err:

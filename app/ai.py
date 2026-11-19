@@ -471,7 +471,9 @@ REVIEW_PROMPT = '''You are checking a finished vertical Short before it is poste
 Layout used: {layout} ({what}); captions are {captions}. {brief}
 Look for real problems only: captions or titles covering faces, the main action, a scoreboard or text already in the
 video; the main subject cut off or out of the frame; an empty or useless picture; text running off the screen.
-Reply with JSON only: {{"ok": true, "fix": "none", "reason": "one short sentence"}}
+Also check safety: "unsafe" is true if any frame shows nudity, underwear or lingerie, sexual content, a strip
+club, drug use or gambling.
+Reply with JSON only: {{"ok": true, "fix": "none", "unsafe": false, "reason": "one short sentence"}}
 "fix" is one of: "none", "switch_to_full", "switch_to_crop", "captions_below", "captions_above", "captions_low",
 "captions_middle", "captions_high".'''
 
@@ -485,4 +487,4 @@ def review_edit(images, plan, brief=''):
                                          brief=_brief(brief)), 0.1, images=images)
     fix = str(data.get('fix', 'none'))
     ok = bool(data.get('ok', True)) or fix == 'none'
-    return {'ok': ok, 'fix': fix, 'reason': str(data.get('reason', ''))[:200]}
+    return {'ok': ok, 'fix': fix, 'reason': str(data.get('reason', ''))[:200], 'unsafe': data.get('unsafe') is True}
