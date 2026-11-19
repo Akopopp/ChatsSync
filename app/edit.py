@@ -12,7 +12,8 @@ import requests
 from . import db, media
 from .media import FONTS, H, THREADS, W, JobError, sh
 
-FPS = 30
+FPS = 60
+OUT_W, OUT_H = 1440, 2560  # uploads at 1440p get YouTube's sharper VP9 encode
 ASSETS = db.DATA / 'assets'
 MUSIC = db.DATA / 'music'
 LOGOS = db.DATA / 'logos'
@@ -705,9 +706,10 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
         graph.append(f'[ac]anull{tail}[aout]')
 
     cmd = ['nice', '-n', '15', 'ffmpeg', '-y', '-v', 'error'] + inputs + [
-        '-filter_complex', ';'.join(graph), '-map', f'[{video}]', '-map', '[aout]', '-t', f'{new_dur:.3f}',
+        '-filter_complex', ';'.join(graph + [f'[{video}]scale={OUT_W}:{OUT_H}:flags=lanczos[vout]']), '-map', '[vout]',
+        '-map', '[aout]', '-t', f'{new_dur:.3f}',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-r', str(FPS), '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-threads', THREADS, '-movflags', '+faststart', str(out)]
+        '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-threads', THREADS, '-movflags', '+faststart', str(out)]
     try:
         sh(cmd, timeout=2400)
     finally:
