@@ -397,7 +397,17 @@ def public_clip(token: str):
     clip = db.one('select file from clips where id=?', (clip_id,))
     if not clip or not clip['file'] or not Path(clip['file']).exists():
         raise HTTPException(status_code=404)
-    return FileResponse(clip['file'], media_type='video/mp4')
+    return FileResponse(clip['file'], media_type='video/mp4', headers={'Access-Control-Allow-Origin': '*'})
+
+
+@app.get('/clips/{clip_id}/public-link')
+def clip_public_link(request: Request, clip_id: int):
+    """Short-lived link to the clip file, for uploading it by hand on TikTok or Instagram."""
+    user = need_user(request)
+    clip = own_clip(user, clip_id)
+    if not clip['file'] or not Path(clip['file']).exists():
+        raise HTTPException(status_code=404)
+    return {'url': platforms.public_link(clip_id)}
 
 
 # ---------- campaigns ----------

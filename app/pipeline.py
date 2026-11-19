@@ -567,8 +567,7 @@ def _finish_clip(clip_id):
         return
     clip = db.one('select * from clips where id=?', (clip_id,))
     if all(p['status'] == 'posted' for p in posts):
-        Path(clip['file']).unlink(missing_ok=True)
-        db.update_clip(clip_id, status='posted', file='')
+        db.update_clip(clip_id, status='posted')  # the file stays a week so it can be posted elsewhere by hand
     else:
         db.update_clip(clip_id, status='ready', error='Some posts failed. Check below and try again.')
 
@@ -679,8 +678,8 @@ def _cleanup_loop():
     """Delete clip files nobody posted within 7 days, to keep the disk free."""
     while True:
         cutoff = time.time() - 7 * 86400
-        for clip in db.q('select id, file from clips where created_at<? and file != ""', (cutoff,)):
+        for clip in db.q('select id, file, status from clips where created_at<? and file != ""', (cutoff,)):
             if not db.one('select id from posts where clip_id=? and status in ("waiting","posting")', (clip['id'],)):
                 Path(clip['file']).unlink(missing_ok=True)
-                db.update_clip(clip['id'], file='', status='expired')
+                db.update_clip(clip['id'], file='', status='posted' if clip['status'] == 'posted' else 'expired')
         time.sleep(3600)
