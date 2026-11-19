@@ -6,6 +6,7 @@
 <div class="row muted small" style="margin-bottom:14px">
   <span class="chip {{ job.status }}">{{ {'uploading': 'Uploading', 'queued': 'In line', 'working': 'Working', 'done': 'Ready', 'failed': 'Failed'}[job.status] }}</span>
   {% if job.duration %}<span>{{ job.duration | dur }} long</span>{% endif %}
+  {% if campaign %}<a class="chip blue" href="/campaigns/{{ campaign.id }}">{{ campaign.name }}</a>{% endif %}
   {% if job.source_type != 'upload' %}<a href="{{ job.source }}" target="_blank" rel="noopener">Open source video</a>{% endif %}
 </div>
 
@@ -34,21 +35,23 @@
 {% if request.query_params.get('nolink') %}<div class="alert bad">Connect YouTube, Instagram or Facebook in <a href="/settings">Settings</a> first, and turn posting on there.</div>{% endif %}
 
 {% if clips %}
-<div class="clips" style="margin-top:16px" {% if clips | selectattr('status', 'in', ['rendering', 'approved']) | list %}data-poll="/jobs/{{ job.id }}/status"{% endif %}>
+<div class="clips" style="margin-top:16px" {% if clips | selectattr('status', 'in', ['rendering', 'approved', 'reedit']) | list %}data-poll="/jobs/{{ job.id }}/status"{% endif %}>
   {% for clip in clips %}
   <div class="clip" id="clip-{{ clip.id }}">
-    {% if clip.file %}
-      <video src="/media/{{ clip.id }}.mp4" poster="/media/{{ clip.id }}.jpg" controls preload="none" playsinline></video>
+    {% if clip.file and clip.status not in ('rendering', 'reedit') %}
+      <video src="/media/{{ clip.id }}.mp4?v={{ clip.edit_at | int }}" poster="/media/{{ clip.id }}.jpg?v={{ clip.edit_at | int }}" controls preload="none" playsinline></video>
     {% else %}
-      <div class="ph">{% if clip.status == 'rendering' %}<span><span class="spin"></span> Editing…</span>
+      <div class="ph">{% if clip.status in ('rendering', 'reedit') %}<span><span class="spin"></span> Editing…</span>
         {% elif clip.status == 'posted' %}Posted everywhere. File removed from the server.
         {% elif clip.status == 'failed' %}This clip could not be edited.{% else %}File removed{% endif %}</div>
     {% endif %}
     <div class="body">
       <div class="row small muted">
-        <span class="chip {{ clip.status }}">{{ {'rendering': 'Editing', 'ready': 'Ready', 'approved': 'Posting', 'posted': 'Posted', 'failed': 'Failed', 'expired': 'Expired'}[clip.status] }}</span>
-        <span>{{ (clip.end - clip.start) | dur }} · from {{ clip.start | dur }}</span>
+        <span class="chip {{ 'rendering' if clip.status == 'reedit' else clip.status }}">{{ {'rendering': 'Editing', 'reedit': 'Editing', 'ready': 'Ready', 'approved': 'Posting', 'posted': 'Posted', 'failed': 'Failed', 'expired': 'Expired'}[clip.status] }}</span>
+        <span>{{ (clip.meta.length or (clip.end - clip.start)) | dur }} · from {{ clip.start | dur }}</span>
+        {% if clip.meta.why %}<span class="chip blue" title="Viral score">{{ clip.meta.why.total }}</span>{% endif %}
       </div>
+      {% if clip.reason %}<div class="why-line">{{ clip.reason[:140] }}</div>{% endif %}
       {% if clip.error %}<div class="hint" style="color:var(--bad)">{{ clip.error }}</div>{% endif %}
 
       {% if clip.status == 'ready' %}
@@ -62,9 +65,16 @@
             <div class="hint"><b>Tags:</b> {{ clip.text.tags | join(', ') or 'none' }}</div>
             <div class="hint"><b>Full post text:</b><br><span style="white-space:pre-line">{{ clip.text.body }}</span></div>
           </details>
+          {% if clip.checks %}
+          <details class="checklist" {{ 'open' if clip.blocked }}>
+            <summary>{% if clip.blocked %}Fix before posting{% else %}Ready to post: {{ clip.checks | selectattr(0) | list | length }} of {{ clip.checks | length }} checks passed{% endif %}</summary>
+            <ul>{% for ok, must, msg in clip.checks %}<li class="{{ 'ok' if ok else ('bad' if must else 'warn') }}">{{ msg }}</li>{% endfor %}</ul>
+          </details>
+          {% endif %}
           <div class="acts" style="margin-top:10px">
-            <button class="btn sm" name="post" value="1">Post</button>
+            <button class="btn sm" name="post" value="1" {{ 'disabled title="Fix the checks above first"' if clip.blocked }}>Post</button>
             <button class="btn sm ghost">Save</button>
+            {% if clip.editable %}<a class="btn sm ghost" href="/clips/{{ clip.id }}/edit">Edit video</a>{% endif %}
             <a class="btn sm ghost" href="/media/{{ clip.id }}.mp4?dl=1">Download</a>
           </div>
         </form>
@@ -91,6 +101,7 @@
       </div>
       {% endif %}
 
+      {% if clip.editable and clip.status != 'ready' %}<a class="btn sm ghost" href="/clips/{{ clip.id }}/edit">Edit video</a>{% endif %}
       {% if clip.status in ('ready', 'failed', 'expired') %}
         <form method="post" action="/clips/{{ clip.id }}/reject" style="margin-top:auto"><button class="link danger">Remove clip</button></form>
       {% endif %}

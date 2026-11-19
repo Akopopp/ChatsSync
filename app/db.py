@@ -27,6 +27,17 @@ DEFAULT_SETTINGS = {
     'show_title': '1',
     'caption_uppercase': '1',
     'language': '',
+    'hook_show': 'full',
+    'caption_style': 'bold',
+    'caption_color': 'yellow',
+    'caption_position': 'bottom',
+    'fx_zoom': '1',
+    'fx_emoji': '1',
+    'fx_progress': '1',
+    'fx_fillers': '1',
+    'fx_jumpcuts': '0',
+    'music_default': '',
+    'music_volume': '12',
 }
 
 # Seconds of work per second of video, learned from real jobs (see pipeline.learn).
@@ -62,6 +73,9 @@ create table if not exists posts (
   status text default 'waiting', due_at real, external_id text default '', url text default '',
   error text default '', posted_at real default 0, tries integer default 0
 );
+create table if not exists campaigns (
+  id integer primary key autoincrement, user_id integer, name text, data text default '{}', created_at real
+);
 create index if not exists posts_due on posts(status, due_at);
 create index if not exists jobs_user on jobs(user_id, created_at);
 create index if not exists clips_job on clips(job_id);
@@ -76,9 +90,11 @@ def conn():
 
 MIGRATIONS = {
     'users': {'approved': 'integer default 1', 'google_sub': "text default ''", 'avatar': "text default ''"},
+    'clips': {'edit_at': 'real default 0'},
+    'jobs': {'campaign_id': 'integer default 0', 'language': "text default ''"},
 }
 
-SITE_DEFAULTS = {'signup_mode': 'approval', 'trial_days': '3', 'trial_videos': '5', 'trial_minutes': '60'}
+SITE_DEFAULTS = {'signup_mode': 'approval', 'trial_days': '3', 'trial_videos': '5', 'trial_minutes': '60', 'picker': 'mix'}
 
 
 def init():
@@ -156,3 +172,18 @@ def update_job(job_id, **fields):
 def update_clip(clip_id, **fields):
     cols = ', '.join(f'{k}=?' for k in fields)
     run(f'update clips set {cols} where id=?', (*fields.values(), clip_id))
+
+
+def campaign(campaign_id, user_id=None):
+    """A campaign's rules as a dict (with id and name), or None."""
+    if not campaign_id:
+        return None
+    row = one('select * from campaigns where id=?', (campaign_id,))
+    if not row or (user_id is not None and row['user_id'] != user_id):
+        return None
+    return {**json.loads(row['data'] or '{}'), 'id': row['id'], 'name': row['name']}
+
+
+def campaigns(user_id):
+    return [{**json.loads(r['data'] or '{}'), 'id': r['id'], 'name': r['name']}
+            for r in q('select * from campaigns where user_id=? order by id desc', (user_id,))]

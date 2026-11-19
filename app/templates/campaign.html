@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}{{ c.name or 'New campaign' }}{% endblock %}
+{% block body %}
+<p class="small" style="margin-top:0"><a href="/campaigns">&larr; Campaigns</a></p>
+<div class="page-head"><div><h1>{{ c.name or 'New campaign' }}</h1>
+  <p>Paste the campaign's rules and press "Read the rules". Check what was found, then save.</p></div></div>
+{% if msg == 'saved' %}<div class="alert ok">Campaign saved. Pick it on the <a href="/">New clips</a> page.</div>{% endif %}
+{% if findings %}<div class="alert ok"><b>Found in the rules:</b><ul style="margin:6px 0 0;padding-left:20px">{% for f in findings %}<li>{{ f }}</li>{% endfor %}</ul>
+  <div style="margin-top:6px">Check the fields below, then press Save.</div></div>{% endif %}
+
+<form method="post" action="/campaigns/save" id="campaign">
+  <input type="hidden" name="id" value="{{ c.id or '' }}">
+  <div class="card">
+    <h2>Rules</h2>
+    <div class="grid2">
+      <div><label class="tight" for="name">Campaign name</label><input id="name" type="text" name="name" value="{{ c.name }}" required maxlength="80"></div>
+      <div><label class="tight" for="link">Campaign page <span class="hint">(optional)</span></label><input id="link" type="url" name="link" value="{{ c.link }}" placeholder="https://"></div>
+    </div>
+    <label for="rules_text">Campaign rules <span class="hint">(paste them from the campaign page)</span></label>
+    <textarea id="rules_text" name="rules_text" rows="7" placeholder="Clips must be 15-60 seconds. Tag @creator and use #creator #podcast...">{{ c.rules_text }}</textarea>
+    <button class="btn ghost sm" formaction="/campaigns/read" style="margin-top:10px">Read the rules</button>
+  </div>
+
+  <div class="card">
+    <h2>Post text</h2>
+    <div class="grid2">
+      <div><label class="tight" for="credit">Credit line</label><input id="credit" type="text" name="credit" value="{{ c.credit }}" placeholder="Credit: @creator"></div>
+      <div><label class="tight" for="mentions">Accounts to tag</label><input id="mentions" type="text" name="mentions" value="{{ c.mentions }}" placeholder="@creator"></div>
+      <div><label for="hashtags">Required hashtags</label><input id="hashtags" type="text" name="hashtags" value="{{ c.hashtags }}" placeholder="#creator #podcast"></div>
+      <div><label for="title_suffix">Add to the end of every title</label><input id="title_suffix" type="text" name="title_suffix" value="{{ c.title_suffix }}" placeholder="#shorts"></div>
+    </div>
+    <label for="phrases">Text that must be in every post <span class="hint">(one per line)</span></label>
+    <textarea id="phrases" name="phrases" rows="2">{{ c.phrases }}</textarea>
+    <label for="banned">Words that must not appear <span class="hint">(comma separated)</span></label>
+    <input id="banned" type="text" name="banned" value="{{ c.banned }}">
+  </div>
+
+  <div class="card">
+    <h2>Clips</h2>
+    <div class="grid2">
+      <div><label class="tight" for="min_len">Shortest clip (seconds)</label><input id="min_len" type="number" name="min_len" min="0" max="180" value="{{ c.min_len or '' }}" placeholder="Your setting"></div>
+      <div><label class="tight" for="max_len">Longest clip (seconds)</label><input id="max_len" type="number" name="max_len" min="0" max="180" value="{{ c.max_len or '' }}" placeholder="Your setting"></div>
+    </div>
+    <label for="keywords">Topics to look for <span class="hint">(comma separated: names, products, subjects)</span></label>
+    <input id="keywords" type="text" name="keywords" value="{{ c.keywords }}" placeholder="bitcoin, trading, mindset">
+    <label>Post to</label>
+    <div class="checks">{% for p, n in NAMES.items() %}
+      <label class="check"><input type="checkbox" name="on_{{ p }}" {{ 'checked' if p in (c.platforms or []) }}> {{ n }}</label>{% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Audience</h2>
+    <div class="grid2">
+      <div><label class="tight" for="country">Target country</label>
+        <select id="country" name="country"><option value="">Anywhere</option>
+          {% for code, info in COUNTRIES.items() %}<option value="{{ code }}" {{ 'selected' if c.country == code }}>{{ info[0] }}</option>{% endfor %}</select></div>
+      <div><label class="tight" for="language">Spoken language</label>
+        <select id="language" name="language">{% for code, name in LANGUAGES.items() %}<option value="{{ code }}" {{ 'selected' if c.language == code }}>{{ name }}</option>{% endfor %}</select></div>
+    </div>
+    {% if peak %}<p class="hint" style="margin-top:12px">{{ peak }}</p>{% endif %}
+    {% if trends %}<label>Trending searches in {{ COUNTRIES[c.country][0] }} right now</label>
+      <div class="row">{% for t in trends[:15] %}<span class="chip">{{ t }}</span>{% endfor %}</div>
+      <div class="hint">Clips that mention these get a higher score and the matching tags.</div>{% endif %}
+  </div>
+
+  <div class="savebar">
+    <span class="small muted">Clips made for this campaign follow these rules and are checked before posting.</span>
+    <button class="btn">Save campaign</button>
+  </div>
+</form>
+{% if c.id %}
+<form method="post" action="/campaigns/{{ c.id }}/delete" onsubmit="return confirm('Delete this campaign? Clips already made stay.')">
+  <button class="btn sm danger">Delete campaign</button>
+</form>
+{% endif %}
+{% endblock %}

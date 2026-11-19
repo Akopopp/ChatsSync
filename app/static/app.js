@@ -45,3 +45,65 @@ if (live) {
     } catch (e) { /* try again next round */ }
   }, 5000);
 }
+
+// Clip editor: click words in the transcript to set where the clip starts and ends, or to cut words out.
+const editor = document.getElementById('editor');
+if (editor) {
+  const box = document.getElementById('words');
+  const words = [...box.querySelectorAll('.w')];
+  const field = name => editor.querySelector(`[name="${name}"]`);
+  const mid = w => (parseFloat(w.dataset.s) + parseFloat(w.dataset.e)) / 2;
+  const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  const lo = parseFloat(box.dataset.lo), hi = parseFloat(box.dataset.hi);
+  let start = parseFloat(field('start').value), end = parseFloat(field('end').value);
+  const cut = new Set();
+  JSON.parse(field('cuts').value || '[]').forEach(([a, b]) => words.forEach((w, i) => {
+    if (mid(w) >= a && mid(w) <= b) cut.add(i);
+  }));
+  const inside = w => mid(w) >= start && mid(w) <= end;
+
+  function paint() {
+    let first = -1, last = -1, cutLen = 0;
+    const ranges = [];
+    words.forEach((w, i) => {
+      const on = inside(w);
+      w.classList.toggle('keep', on && !cut.has(i));
+      w.classList.toggle('cut', on && cut.has(i));
+      w.classList.remove('first', 'last');
+      if (!on) return;
+      if (first < 0) first = i;
+      last = i;
+      if (cut.has(i)) {
+        const a = parseFloat(w.dataset.s) - 0.03, b = parseFloat(w.dataset.e) + 0.03;
+        cutLen += b - a;
+        const prev = ranges[ranges.length - 1];
+        if (prev && cut.has(i - 1) && inside(words[i - 1])) prev[1] = b; else ranges.push([a, b]);
+      }
+    });
+    if (first >= 0) { words[first].classList.add('first'); words[last].classList.add('last'); }
+    const span = end - start;
+    const ok = span >= 3 && span <= 180;
+    document.getElementById('span-info').textContent =
+      `${fmt(start)} to ${fmt(end)}, about ${Math.round(span - cutLen)} s` + (ok ? '' : '. A clip must be 3 s to 3 min.');
+    const save = document.getElementById('save');
+    if (!editor.querySelector('fieldset').disabled) save.disabled = !ok;
+    field('start').value = start.toFixed(2);
+    field('end').value = end.toFixed(2);
+    field('cuts').value = JSON.stringify(ranges.map(r => r.map(x => Math.round(x * 100) / 100)));
+  }
+
+  box.addEventListener('click', e => {
+    const w = e.target.closest('.w');
+    if (!w) return;
+    const i = words.indexOf(w);
+    const mode = editor.querySelector('[name=mode]:checked').value;
+    if (mode === 'start') start = Math.max(lo, parseFloat(w.dataset.s) - 0.08);
+    else if (mode === 'end') end = Math.min(hi, parseFloat(w.dataset.e) + 0.25);
+    else if (inside(w)) cut.has(i) ? cut.delete(i) : cut.add(i);
+    paint();
+  });
+  document.getElementById('reset-cuts').addEventListener('click', () => { cut.clear(); paint(); });
+  paint();
+  const firstWord = box.querySelector('.w.first');
+  if (firstWord) box.scrollTop = firstWord.offsetTop - box.offsetTop - 40;
+}

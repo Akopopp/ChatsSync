@@ -62,7 +62,8 @@ def connected(user_id):
 # ---------- post text ----------
 
 def post_text(clip, settings):
-    meta = json.loads(clip.get('meta') or '{}')
+    meta = clip.get('meta') or '{}'
+    meta = meta if isinstance(meta, dict) else json.loads(meta)
     campaign_tags = [t for t in settings['hashtags'].split() if t.startswith('#')]
     tags = []
     for tag in campaign_tags + meta.get('hashtags', []):
@@ -81,7 +82,8 @@ def post_text(clip, settings):
         if kw and kw.lower() not in [k.lower() for k in keywords] and total + len(kw) + 1 < 480:
             keywords.append(kw)
             total += len(kw) + 1
-    return {'title': title[:100], 'body': body[:4900], 'caption': body[:2150], 'tags': keywords}
+    return {'title': title[:100], 'body': body[:4900], 'caption': body[:2150], 'tags': keywords,
+            'language': settings.get('post_language', '')}
 
 
 # ---------- YouTube ----------
@@ -198,6 +200,8 @@ def _post_youtube(acct, clip, text, public_url, user_id):
     creds = _yt_creds(acct)
     body = {'snippet': {'title': text['title'], 'description': text['body'], 'tags': text['tags'], 'categoryId': '24'},
             'status': {'privacyStatus': 'public', 'selfDeclaredMadeForKids': False}}
+    if text.get('language'):  # tells YouTube who the video is for
+        body['snippet'].update(defaultLanguage=text['language'], defaultAudioLanguage=text['language'])
     media = MediaFileUpload(clip['file'], mimetype='video/mp4', chunksize=8 * 1024 * 1024, resumable=True)
     request = _yt_service(creds).videos().insert(part='snippet,status', body=body, media_body=media)
     response = None

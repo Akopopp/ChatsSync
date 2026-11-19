@@ -88,28 +88,6 @@ def ask_ai(transcript, settings, count):
     return data.get('clips', []) if isinstance(data, dict) else data
 
 
-def heuristic(lines, settings, count):
-    min_s, max_s = float(settings['clip_min']), float(settings['clip_max'])
-    target = (min_s + max_s) / 2
-    picks = []
-    for i, first in enumerate(lines):
-        words, j = [], i
-        while j < len(lines) and lines[j][-1]['e'] - first[0]['s'] <= max_s:
-            words += lines[j]
-            j += 1
-        if not words:
-            continue
-        dur = words[-1]['e'] - first[0]['s']
-        if dur < min_s:
-            continue
-        text = ' '.join(w['w'] for w in words)
-        score = len(words) / dur * 10 + text.count('!') * 4 + text.count('?') * 3 - abs(dur - target) / 3
-        picks.append({'start': first[0]['s'], 'end': words[-1]['e'], 'score': score,
-                      'title': ' '.join(w['w'] for w in first)[:70], 'hook': '', 'reason': 'Fast, dense talking'})
-    picks.sort(key=lambda p: -p['score'])
-    return picks[: count * 4]
-
-
 def clean_list(value, limit, hashtag):
     if isinstance(value, str):
         value = re.split(r'[,\n]', value)
@@ -139,30 +117,24 @@ def snap(clip, words, min_s, max_s):
     return round(max(start - 0.1, 0), 2), round(end, 2)
 
 
-def pick_clips(words, settings):
-    count = int(settings['clips_per_video'])
+def candidates(words, settings):
+    """AI's picks, snapped to word edges, each with its title, hook, reason, score and post text. None without AI."""
     min_s, max_s = float(settings['clip_min']), float(settings['clip_max'])
+    count = int(settings['clips_per_video'])
     lines = lines_from_words(words)
     transcript = '\n'.join(f'[{ln[0]["s"]:.1f}] ' + ' '.join(w['w'] for w in ln) for ln in lines)
-    raw, used_ai = None, False
-    try:
-        raw = ask_ai(transcript[:400000], settings, count)
-        used_ai = raw is not None
-    except Exception as err:  # fall back to the heuristic when the AI call fails
-        print('AI pick failed:', err)
-    if not raw:
-        raw = heuristic(lines, settings, count)
-    chosen = []
-    for clip in sorted(raw, key=lambda c: -float(c.get('score', 0))):
+    raw = ask_ai(transcript[:400000], settings, count + 2)
+    if raw is None:
+        return None
+    out = []
+    for clip in raw:
         span = snap(clip, words, min_s, max_s)
-        if not span or any(span[0] < c['end'] and span[1] > c['start'] for c in chosen):
+        if not span:
             continue
-        chosen.append({'start': span[0], 'end': span[1], 'title': (clip.get('title') or '').strip()[:90],
-                       'hook': (clip.get('hook') or '').strip()[:60], 'reason': (clip.get('reason') or '')[:300],
-                       'score': float(clip.get('score', 0)), 'meta': {
-                           'description': str(clip.get('description') or '').strip()[:1500],
-                           'tags': clean_list(clip.get('tags'), 15, hashtag=False),
-                           'hashtags': clean_list(clip.get('hashtags'), 6, hashtag=True)}})
-        if len(chosen) >= count:
-            break
-    return chosen, used_ai
+        out.append({'start': span[0], 'end': span[1], 'title': (clip.get('title') or '').strip()[:90],
+                    'hook': (clip.get('hook') or '').strip()[:60], 'reason': (clip.get('reason') or '')[:300],
+                    'score': float(clip.get('score', 0) or 0), 'meta': {
+                        'description': str(clip.get('description') or '').strip()[:1500],
+                        'tags': clean_list(clip.get('tags'), 15, hashtag=False),
+                        'hashtags': clean_list(clip.get('hashtags'), 6, hashtag=True)}})
+    return out

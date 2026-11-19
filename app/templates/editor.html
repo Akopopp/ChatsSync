@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block title %}Edit clip{% endblock %}
+{% block body %}
+<p class="small" style="margin-top:0"><a href="/jobs/{{ job.id }}#clip-{{ clip.id }}">&larr; {{ job.title or 'Back to video' }}</a></p>
+<div class="page-head">
+  <div><h1>Edit clip</h1><p style="word-break:break-word">{{ clip.title }}</p></div>
+  <div class="row">
+    {% if meta.length %}<span class="chip blue">{{ meta.length | round(1) }} s</span>{% endif %}
+    {% if meta.layout %}<span class="chip">{{ {'face': 'Following speaker', 'split': 'Split screen', 'fit': 'Full frame', 'vertical': 'Vertical video'}.get(meta.layout, meta.layout) }}</span>{% endif %}
+  </div>
+</div>
+
+{% set busy = clip.status in ('reedit', 'rendering') %}
+{% set notes = {'bad_length': ('bad', 'A clip has to be between 3 seconds and 3 minutes long.'), 'busy': ('bad', 'This clip is being posted, so it can\'t be changed right now.')} %}
+{% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
+{% if busy %}<div class="alert" data-poll="/jobs/{{ job.id }}/status"><span class="spin"></span> Applying your changes. This takes about a minute, the page refreshes by itself.</div>
+{% elif clip.error %}<div class="alert bad">{{ clip.error }}</div>{% endif %}
+{% if not can_video %}<div class="alert">The original footage of this clip is no longer on the server, so the video can't be changed. You can still change the title and post text on the <a href="/jobs/{{ job.id }}">video page</a>.</div>{% endif %}
+
+<div class="editor">
+  <div class="ed-preview">
+    {% if clip.file and not busy %}
+      <video src="/media/{{ clip.id }}.mp4?v={{ clip.edit_at | int }}" poster="/media/{{ clip.id }}.jpg?v={{ clip.edit_at | int }}" controls playsinline preload="metadata"></video>
+    {% else %}
+      <div class="ph">{% if busy %}<span><span class="spin"></span> Editing…</span>{% else %}No video yet{% endif %}</div>
+    {% endif %}
+    {% if clip.file and not busy %}<a class="btn ghost sm wide" style="margin-top:10px" href="/media/{{ clip.id }}.mp4?dl=1">Download</a>{% endif %}
+    <div class="card why">
+      <h2>Why this clip</h2>
+      {% if why %}
+        <div class="score"><b>{{ why.total }}</b><span>/ 100 viral score</span></div>
+        {% for part in why.parts %}
+          <div class="meter"><span>{{ part.name }}</span><i><em style="width:{{ part.value }}%"></em></i><b>{{ part.value }}</b></div>
+        {% endfor %}
+      {% endif %}
+      {% if clip.reason and not (why and why.notes) %}<p class="small muted" style="margin:10px 0 0">{{ clip.reason }}</p>{% endif %}
+      {% if why and why.notes %}<ul class="small muted notes">{% for n in why.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+
+  <form class="ed-panel" method="post" action="/clips/{{ clip.id }}/edit" id="editor">
+    <fieldset {{ 'disabled' if busy or not can_video }}>
+    <div class="card">
+      <h2>Trim and cut</h2>
+      <p class="small muted" style="margin-top:-6px">Pick what a click on a word does, then click words in the transcript. Grey words are outside the clip.</p>
+      <div class="seg" role="radiogroup" aria-label="Click on a word">
+        <label><input type="radio" name="mode" value="start" checked><span>Start here</span></label>
+        <label><input type="radio" name="mode" value="end"><span>End here</span></label>
+        <label><input type="radio" name="mode" value="cut"><span>Cut word out</span></label>
+      </div>
+      <div class="words" id="words" data-lo="{{ lo }}" data-hi="{{ hi }}">
+        {% for w in window %}<span class="w" data-s="{{ w.s }}" data-e="{{ w.e }}">{{ w.w }}</span> {% endfor %}
+      </div>
+      <div class="row small muted" style="margin-top:10px;justify-content:space-between">
+        <span id="span-info"></span>
+        <button type="button" class="link" id="reset-cuts">Clear cuts</button>
+      </div>
+      <input type="hidden" name="start" value="{{ edit.start }}">
+      <input type="hidden" name="end" value="{{ edit.end }}">
+      <input type="hidden" name="cuts" value="{{ edit.cuts | tojson }}">
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="fillers" {{ 'checked' if edit.fillers }}> Remove "um" and "uh"</label>
+        <label class="check"><input type="checkbox" name="jumpcuts" {{ 'checked' if edit.jumpcuts }}> Jump cuts: remove pauses</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Captions</h2>
+      <div class="grid2">
+        <div><label class="tight" for="style">Style</label>
+          <select id="style" name="style">{% for k, v in STYLES.items() %}<option value="{{ k }}" {{ 'selected' if edit.style == k }}>{{ v }}</option>{% endfor %}</select></div>
+        <div><label class="tight" for="position">Position</label>
+          <select id="position" name="position">{% for k, v in POSITIONS.items() %}<option value="{{ k }}" {{ 'selected' if edit.position == k }}>{{ v }}</option>{% endfor %}</select></div>
+      </div>
+      <label>Highlight color</label>
+      <div class="swatches">{% for k, hex in COLORS.items() %}
+        <label title="{{ k | capitalize }}"><input type="radio" name="color" value="{{ k }}" {{ 'checked' if edit.color == k }}><i style="background:#{{ hex }}"></i></label>{% endfor %}
+      </div>
+      <label class="check"><input type="checkbox" name="uppercase" {{ 'checked' if edit.uppercase }}> CAPITAL letters</label>
+      <label class="check"><input type="checkbox" name="emoji" {{ 'checked' if edit.emoji }}> Emojis on key words</label>
+      <label for="caption_text">Caption text</label>
+      <textarea id="caption_text" name="caption_text" rows="5">{{ caption_text }}</textarea>
+      <input type="hidden" name="text_from" value="{{ edit.start }}"><input type="hidden" name="text_to" value="{{ edit.end }}">
+      <div class="hint">Fix wrong words here. Keep roughly the same words so the timing stays right.</div>
+    </div>
+
+    <div class="card">
+      <h2>Hook</h2>
+      <div class="grid2">
+        <div><label class="tight" for="hook">Text at the top</label><input id="hook" type="text" name="hook" value="{{ edit.hook }}" maxlength="80"></div>
+        <div><label class="tight" for="hook_show">Show it</label>
+          <select id="hook_show" name="hook_show">{% for k, v in HOOK_SHOW.items() %}<option value="{{ k }}" {{ 'selected' if edit.hook_show == k }}>{{ v }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Layout and motion</h2>
+      <div class="opts">{% for k, v in LAYOUTS.items() %}
+        <label><input type="radio" name="layout" value="{{ k }}" {{ 'checked' if edit.layout == k }}><span>{{ v }}</span></label>{% endfor %}
+      </div>
+      <label class="check"><input type="checkbox" name="zoom" {{ 'checked' if edit.zoom }}> Zoom punch-ins on new sentences</label>
+      <label class="check"><input type="checkbox" name="progress" {{ 'checked' if edit.progress }}> Progress bar at the top</label>
+    </div>
+
+    <div class="card">
+      <h2>Music</h2>
+      {% if tracks %}
+      <div class="grid2">
+        <div><label class="tight" for="music">Background track</label>
+          <select id="music" name="music"><option value="">No music</option>
+            {% for t in tracks %}<option value="{{ t }}" {{ 'selected' if edit.music == t }}>{{ t }}</option>{% endfor %}</select></div>
+        <div><label class="tight" for="music_volume">Volume <span class="hint" id="vol-out">{{ edit.music_volume }}%</span></label>
+          <input id="music_volume" type="range" name="music_volume" min="0" max="40" value="{{ edit.music_volume }}"
+            oninput="document.getElementById('vol-out').textContent=this.value+'%'"></div>
+      </div>
+      <div class="hint">Music gets quieter by itself while someone talks.</div>
+      {% else %}
+      <p class="small muted" style="margin:0">Add tracks you have the rights to in <a href="/settings#music">Settings</a>, then pick one here.</p>
+      {% endif %}
+    </div>
+    </fieldset>
+
+    <div class="savebar">
+      <span class="small muted">Saving re-edits the video. It takes about a minute.</span>
+      <button class="btn" id="save" {{ 'disabled' if busy or not can_video }}>Save and re-edit</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

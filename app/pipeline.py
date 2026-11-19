@@ -7,12 +7,14 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import ai, db, media, platforms
+from . import agent, ai, db, edits, media, platforms
 
 JOBS = db.DATA / 'jobs'
 MIN_FREE_GB = float(os.environ.get('MIN_FREE_GB', '8'))
 YT_DAILY_LIMIT = int(os.environ.get('YT_DAILY_LIMIT', '95'))
 DEFAULT_MINUTES = 20  # assumed length while a linked video's length is still unknown
+PAD = 12  # seconds of footage kept on both sides of a clip, so it can be trimmed longer later
+RAW_KEEP_HOURS = 48  # footage kept this long for edits (links can always be fetched again)
 _wake = threading.Event()
 
 
@@ -96,6 +98,7 @@ def learn(stage, seconds, media_seconds):
 
 def start():
     db.run('update jobs set status="queued", stage="", step="Waiting" where status="working"')
+    db.run('update clips set status="reedit" where status="rendering" and job_id in (select id from jobs where status="done")')
     db.run('update posts set status="waiting" where status="posting"')
     for target in (_job_loop, _post_loop, _cleanup_loop):
         threading.Thread(target=target, daemon=True).start()
@@ -107,6 +110,13 @@ def wake():
 
 def _job_loop():
     while True:
+        waiting = db.one('select id from clips where status="reedit" order by edit_at limit 1')
+        if waiting:  # people wait on the editor page, and one clip is quick, so edits go first
+            try:
+                rerender(waiting['id'])
+            except Exception:
+                traceback.print_exc()
+            continue
         order = queue_order()
         if not order:
             _wake.wait(15)
@@ -141,10 +151,52 @@ def _stage(job_id, stage, step):
     db.update_job(job_id, stage=stage, step=step, stage_started=time.time(), progress=0)
 
 
+def job_settings(job):
+    """The user's settings with the job's campaign rules on top, and the campaign."""
+    campaign = db.campaign(job.get('campaign_id'), job['user_id'])
+    return agent.effective(db.settings(job['user_id']), campaign), campaign
+
+
+def clip_settings(clip):
+    job = db.one('select * from jobs where id=?', (clip['job_id'],))
+    settings, campaign = job_settings(job)
+    settings['post_language'] = (campaign or {}).get('language') or job.get('language') or ''
+    return settings, campaign
+
+
+def choose_clips(words, loud, settings, campaign):
+    """Pick clips with the built-in rules; when AI is on and a key is set, its picks compete in the same ranking."""
+    trend_list = agent.trends((campaign or {}).get('country', ''), db)
+    ctx = agent.context(words, loud, settings, campaign, trend_list)
+    from_ai, used_ai = [], False
+    if db.site().get('picker') != 'rules':
+        try:
+            from_ai = ai.candidates(words, settings) or []
+            used_ai = bool(from_ai)
+        except Exception as err:  # the rules still work without AI
+            print('AI pick failed:', err)
+    by_span = {(c['start'], c['end']): c for c in from_ai}
+    chosen = agent.pick(words, ctx, int(settings['clips_per_video']), float(settings['clip_min']),
+                        float(settings['clip_max']), [(c['start'], c['end'], c['score']) for c in from_ai])
+    picks = []
+    for c in chosen:
+        why = c['why']
+        found = by_span.get((c['start'], c['end'])) if c['source'] == 'ai' else None
+        if found:
+            pick = {**found, 'score': why['total'], 'meta': {**found['meta'], 'why': why}}
+        else:
+            text = agent.write_text(words, c['start'], c['end'], words, campaign, trend_list)
+            pick = {'start': c['start'], 'end': c['end'], 'title': text['title'], 'hook': text['hook'],
+                    'reason': ' '.join(why['notes'][:2]) or 'High score on hook, energy and value.', 'score': why['total'],
+                    'meta': {'description': text['description'], 'tags': text['tags'], 'hashtags': text['hashtags'], 'why': why}}
+        picks.append(pick)
+    return picks, used_ai
+
+
 def process(job_id):
     job = db.one('select * from jobs where id=?', (job_id,))
     user = db.one('select * from users where id=?', (job['user_id'],))
-    settings = db.settings(job['user_id'])
+    settings, campaign = job_settings(job)
     folder = job_dir(job_id)
     folder.mkdir(parents=True, exist_ok=True)
     db.update_job(job_id, status='working', started_at=time.time(), error='')
@@ -186,16 +238,19 @@ def process(job_id):
             words = json.loads(words_file.read_text())
         else:
             t0 = time.time()
-            words, _ = media.transcribe(listen, settings['language'], duration=duration,
-                                        on_progress=lambda p: db.update_job(job_id, progress=round(p, 3)))
+            words, language, loud = media.transcribe(listen, settings['language'], duration=duration,
+                                                     on_progress=lambda p: db.update_job(job_id, progress=round(p, 3)))
             learn('transcribe', time.time() - t0, duration)
             words_file.write_text(json.dumps(words))
+            (folder / 'loud.json').write_text(json.dumps(loud))
+            db.update_job(job_id, language=language or '')
         if len(words) < 30:
             raise media.JobError('Not enough speech in this video to make clips.')
 
         _stage(job_id, 'pick', 'Finding the best moments')
         t0 = time.time()
-        picks, used_ai = ai.pick_clips(words, settings)
+        loud_file = folder / 'loud.json'
+        picks, used_ai = choose_clips(words, json.loads(loud_file.read_text()) if loud_file.exists() else [], settings, campaign)
         learn('pick', time.time() - t0, 1)
         if not picks:
             raise media.JobError('No good clips found. Try different clip lengths in Settings.')
@@ -204,7 +259,8 @@ def process(job_id):
             'insert into clips(job_id, user_id, start, end, title, hook, reason, score, meta, status, created_at) '
             'values(?,?,?,?,?,?,?,?,?,?,?)',
             (job_id, job['user_id'], p['start'], p['end'], p['title'] or job['title'][:90], p['hook'], p['reason'],
-             p['score'], json.dumps(p.get('meta', {})), 'rendering', time.time())) for p in picks]
+             p['score'], json.dumps({**p.get('meta', {}), 'edit': edits.defaults(p, settings)}), 'rendering',
+             time.time())) for p in picks]
 
         _stage(job_id, 'render', 'Editing clips')
         db.update_job(job_id, clips_total=len(clip_ids), clips_done=0)
@@ -213,73 +269,183 @@ def process(job_id):
         for n, clip_id in enumerate(clip_ids, 1):
             db.update_job(job_id, step=f'Editing clip {n} of {len(clip_ids)}', clips_done=n - 1)
             clip = db.one('select * from clips where id=?', (clip_id,))
-            out = folder / f'clip-{clip_id}.mp4'
             try:
                 if parts:
                     try:
-                        part = media.download_section(job['source'], folder / f'part-{clip_id}', clip['start'], clip['end'], session)
+                        raw = raw_from_link(job, clip_id, clip['start'], clip['end'], session)
                     except media.JobError as err:
                         if str(err) == media.BLOCKED:
                             raise
                         # this site can't send parts: fetch the whole video once and cut locally
                         db.update_job(job_id, step='Downloading the full video')
                         src, _ = media.download(job['source'], job['source_type'], folder, limit, session)
-                        info, parts = media.probe(src), False
-                if parts:
-                    length = clip['end'] - clip['start']
-                    thumb = media.render(part, out, 0, length, _shift(words, clip['start'], clip['end']), clip['hook'],
-                                         media.probe(part), settings)
-                    part.unlink(missing_ok=True)
-                else:
-                    thumb = media.render(src, out, clip['start'], clip['end'], words, clip['hook'], info, settings)
-                db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready')
+                        parts = False
+                if not parts:
+                    raw = raw_from_file(src, folder, clip_id, clip['start'], clip['end'], duration)
+                meta = edits.meta_of(clip)
+                meta['raw'] = raw
+                db.update_clip(clip_id, meta=json.dumps(meta))
+                render_clip(clip_id, words)
                 rendered += clip['end'] - clip['start']
             except Exception as err:
                 db.update_clip(clip_id, status='failed', error=str(err)[:500])
         learn('render', time.time() - t0, rendered)
         for leftover in [src, listen] + list(folder.glob('part-*')):
             if leftover:
-                Path(leftover).unlink(missing_ok=True)
+                Path(leftover).unlink(missing_ok=True)  # each clip keeps its own footage (raw-*) for edits
         if not any(db.one('select status from clips where id=?', (c,))['status'] == 'ready' for c in clip_ids):
             failed = db.one('select error from clips where job_id=? and error != "" limit 1', (job_id,))
             raise media.JobError(failed['error'] if failed else 'Clips could not be edited.')
-        note = '' if used_ai else 'Clips were picked without AI.'
-        db.update_job(job_id, status='done', stage='', step=note, finished_at=time.time(), clips_done=len(clip_ids))
+        db.update_job(job_id, status='done', stage='', step='', finished_at=time.time(), clips_done=len(clip_ids))
         if settings['upload_mode'] == 'auto':
             for clip_id in clip_ids:
                 if db.one('select status from clips where id=?', (clip_id,))['status'] == 'ready':
                     approve(clip_id)
     except Exception as err:
         db.update_job(job_id, status='failed', stage='', step='', error=str(err)[:600], finished_at=time.time())
-        for pattern in ('source.*', 'upload.*', 'audio-src.*', 'audio.f32', 'part-*', '*.part'):
+        for pattern in ('source.*', 'upload.*', 'audio-src.*', 'audio.f32', 'part-*', 'raw-*', '*.part'):
             for leftover in folder.glob(pattern):
                 leftover.unlink(missing_ok=True)
 
 
+# ---------- clip footage, rendering and edits ----------
+
+def raw_from_link(job, clip_id, start, end, session):
+    """Download just this clip's part of the video (plus some extra on both sides)."""
+    folder = job_dir(job['id'])
+    for old in folder.glob(f'raw-{clip_id}.*'):
+        old.unlink(missing_ok=True)
+    a = max(start - PAD, 0)
+    b = min(end + PAD, job['duration']) if job['duration'] else end + PAD
+    path = media.download_section(job['source'], folder / f'raw-{clip_id}', a, b, session)
+    return {'file': str(path), 'offset': round(a, 2), 'end': round(b, 2), 'at': time.time()}
+
+
+def raw_from_file(src, folder, clip_id, start, end, duration):
+    a, b = max(start - PAD, 0), min(end + PAD, duration or end + PAD)
+    path = media.cut_raw(src, folder / f'raw-{clip_id}.mp4', a, b)
+    return {'file': str(path), 'offset': round(a, 2), 'end': round(b, 2), 'at': time.time()}
+
+
+def music_path(user_id, name):
+    if not name:
+        return None
+    path = db.DATA / 'music' / str(user_id) / Path(name).name
+    return path if path.exists() else None
+
+
+def render_clip(clip_id, words):
+    """Render a clip from its saved footage with its current edit, replacing the old file."""
+    clip = db.one('select * from clips where id=?', (clip_id,))
+    meta = edits.meta_of(clip)
+    edit = edits.get(clip, clip_settings(clip)[0])
+    raw = meta['raw']
+    info = media.probe(raw['file'])
+    faces = meta.get('faces')
+    if edit['layout'] != 'fit' and info['height'] < info['width'] * 1.5 and not (
+            faces and faces['from'] <= edit['start'] + 0.5 and faces['to'] >= edit['end'] - 0.5):
+        a, b = max(edit['start'] - 3, raw['offset']), min(edit['end'] + 3, raw['end'])
+        faces = {'from': a, 'to': b, 'samples': media.face_samples(
+            Path(raw['file']), a - raw['offset'], b - raw['offset'], info, raw['offset'])}
+    out = job_dir(clip['job_id']) / f'clip-{clip_id}-{int(time.time())}.mp4'
+    thumb, layout, length = media.render(
+        Path(raw['file']), out, edit, edits.caption_words(words, edit), raw['offset'], info,
+        faces['samples'] if faces else None, music_path(clip['user_id'], edit.get('music')))
+    meta.update(edit=edit, faces=faces, layout=layout, length=length)
+    db.update_clip(clip_id, file=str(out), thumb=str(thumb), status='ready', error='', meta=json.dumps(meta),
+                   start=edit['start'], end=edit['end'], hook=edit['hook'])
+    for old in (clip['file'], clip['thumb']):
+        if old and old not in (str(out), str(thumb)):
+            Path(old).unlink(missing_ok=True)
+
+
+def request_edit(clip_id, edit):
+    clip = db.one('select * from clips where id=?', (clip_id,))
+    meta = edits.meta_of(clip)
+    meta['edit'] = edit
+    db.update_clip(clip_id, meta=json.dumps(meta), status='reedit', error='', edit_at=time.time())
+    wake()
+
+
+def can_edit_video(clip, job):
+    raw = edits.meta_of(clip).get('raw') or {}
+    return job['source_type'] == 'link' or bool(raw.get('file') and Path(raw['file']).exists())
+
+
+def rerender(clip_id):
+    clip = db.one('select * from clips where id=?', (clip_id,))
+    job = db.one('select * from jobs where id=?', (clip['job_id'],))
+    db.update_clip(clip_id, status='rendering')
+    try:
+        words = json.loads((job_dir(job['id']) / 'words.json').read_text())
+        meta = edits.meta_of(clip)
+        edit, raw = meta['edit'], meta.get('raw') or {}
+        covered = raw.get('file') and Path(raw['file']).exists() and raw['offset'] <= edit['start'] + 0.05 \
+            and raw['end'] >= edit['end'] - 0.05
+        if not covered:
+            if job['source_type'] != 'link':
+                raise media.JobError('The original footage of this clip was removed from the server, so the video '
+                                     'can no longer be changed. The title and post text can still be edited.')
+            meta['raw'] = raw_from_link(job, clip_id, edit['start'], edit['end'], f'c{clip_id}t{int(time.time())}')
+            db.update_clip(clip_id, meta=json.dumps(meta))
+        render_clip(clip_id, words)
+    except Exception as err:
+        traceback.print_exc()
+        fresh = db.one('select file from clips where id=?', (clip_id,))
+        has_file = fresh['file'] and Path(fresh['file']).exists()
+        db.update_clip(clip_id, status='ready' if has_file else 'failed', error=f'Changes not applied: {err}'[:500])
+
+
+def drop_raw(clip_id):
+    clip = db.one('select meta from clips where id=?', (clip_id,))
+    meta = edits.meta_of(clip)
+    raw = meta.get('raw')
+    if raw and raw.get('file'):
+        Path(raw['file']).unlink(missing_ok=True)
+        meta['raw'] = {**raw, 'file': ''}
+        db.update_clip(clip_id, meta=json.dumps(meta))
+
+
 # ---------- posting ----------
 
-def next_slot(user_id, platform, gap_hours):
+def next_slot(user_id, platform, gap_hours, country=''):
     last = db.one('select max(due_at) as t from posts where user_id=? and platform=? and status != "failed"',
                   (user_id, platform))
     soonest = time.time() + 60
     if gap_hours > 0 and last and last['t']:
-        return max(soonest, last['t'] + gap_hours * 3600)
-    return soonest
+        soonest = max(soonest, last['t'] + gap_hours * 3600)
+    return agent.next_peak(soonest, country) if country else soonest
+
+
+def post_targets(clip, settings):
+    linked = platforms.connected(clip['user_id'])
+    return [p for p in platforms.NAMES if settings.get(f'post_{p}') == '1' and linked[p]]
+
+
+def clip_checks(clip, settings, campaign, targets=None):
+    text = platforms.post_text(clip, settings)
+    meta = edits.meta_of(clip)
+    length = meta.get('length') or (clip['end'] - clip['start'])
+    return agent.checks(clip, text, campaign, length, targets if targets is not None else post_targets(clip, settings))
 
 
 def approve(clip_id):
     clip = db.one('select * from clips where id=?', (clip_id,))
-    settings = db.settings(clip['user_id'])
+    settings, campaign = clip_settings(clip)
     gap = float(settings['schedule_gap_hours'] or 0)
-    linked = platforms.connected(clip['user_id'])
-    targets = [p for p in platforms.NAMES if settings.get(f'post_{p}') == '1' and linked[p]]
+    targets = post_targets(clip, settings)
     if not targets:
         db.update_clip(clip_id, error='Connect at least one account in Settings first.')
+        return False
+    problems = [msg for ok, must, msg in clip_checks(clip, settings, campaign, targets) if must and not ok]
+    if problems:
+        db.update_clip(clip_id, error='Fix before posting: ' + ' '.join(problems))
         return False
     for platform in targets:
         if not db.one('select id from posts where clip_id=? and platform=? and status != "failed"', (clip_id, platform)):
             db.run('insert into posts(clip_id, user_id, platform, due_at) values(?,?,?,?)',
-                   (clip_id, clip['user_id'], platform, next_slot(clip['user_id'], platform, gap)))
+                   (clip_id, clip['user_id'], platform, next_slot(clip['user_id'], platform, gap,
+                                                                  (campaign or {}).get('country', ''))))
     db.update_clip(clip_id, status='approved', error='')
     return True
 
@@ -314,7 +480,7 @@ def _post_loop():
                 continue
         db.run('update posts set status="posting", tries=tries+1 where id=?', (due['id'],))
         try:
-            ext_id, url = platforms.post(due['platform'], due['user_id'], clip, db.settings(due['user_id']),
+            ext_id, url = platforms.post(due['platform'], due['user_id'], clip, clip_settings(clip)[0],
                                          platforms.public_link(clip['id']))
             db.run('update posts set status="posted", external_id=?, url=?, error="", posted_at=? where id=?',
                    (ext_id, url, time.time(), due['id']))
@@ -339,6 +505,7 @@ def _finish_clip(clip_id):
     if all(p['status'] == 'posted' for p in posts):
         Path(clip['file']).unlink(missing_ok=True)
         db.update_clip(clip_id, status='posted', file='')
+        drop_raw(clip_id)
     else:
         db.update_clip(clip_id, status='ready', error='Some posts failed. Check below and try again.')
 
@@ -353,8 +520,13 @@ def delete_job(job_id):
 
 
 def _cleanup_loop():
-    """Delete clip files nobody posted within 7 days, to keep the disk free."""
+    """Delete clip footage after 2 days and clip files nobody posted within 7 days, to keep the disk free."""
     while True:
+        stale = time.time() - RAW_KEEP_HOURS * 3600
+        for clip in db.q('select id, meta, edit_at from clips where meta like \'%"raw"%\' and status not in ("reedit", "rendering")'):
+            raw = edits.meta_of(clip).get('raw') or {}
+            if raw.get('file') and max(raw.get('at', 0), clip['edit_at'] or 0) < stale:
+                drop_raw(clip['id'])
         cutoff = time.time() - 7 * 86400
         for clip in db.q('select id, file from clips where created_at<? and file != ""', (cutoff,)):
             if not db.one('select id from posts where clip_id=? and status in ("waiting","posting")', (clip['id'],)):

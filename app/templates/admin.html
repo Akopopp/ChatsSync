@@ -147,7 +147,8 @@
 <div class="card" id="server">
   <h2>Server</h2>
   <div class="row small" style="gap:8px;margin-bottom:12px">
-    <span class="chip {{ 'ok' if has_ai else 'warn' }}">AI picks {{ 'on (Gemini)' if has_ai else 'off, using built-in rules' }}</span>
+    <span class="chip ok">Agent on</span>
+    <span class="chip {{ 'ok' if has_ai and site.picker != 'rules' else '' }}">AI ideas {{ 'on (Gemini)' if has_ai and site.picker != 'rules' else 'off' }}</span>
     <span class="chip {{ 'ok' if google else 'warn' }}">Google sign-in {{ 'on' if google else 'off' }}</span>
     <span class="chip {{ 'ok' if has_cookies else 'warn' }}">YouTube downloads {{ 'ready' if has_cookies else 'need cookies' }}</span>
   </div>
@@ -157,6 +158,17 @@
     {% if has_cookies %}<label class="check"><input type="checkbox" name="remove_cookies"> Remove saved cookies</label>{% endif %}
     <div class="hint">Export youtube.com cookies from a separate Chrome profile signed in to a spare account, then don't open YouTube in that profile again. Replace the file when the "blocked" alert shows.</div>
     <button class="btn ghost sm" style="margin-top:12px">Save</button>
+  </form>
+  <form method="post" action="/admin/site" style="margin-top:16px;border-top:1px solid var(--line);padding-top:4px">
+    <label for="picker">How clips are picked</label>
+    <div class="row">
+      <select id="picker" name="picker" class="grow">
+        <option value="mix" {{ 'selected' if site.picker != 'rules' }}>Built-in agent, plus AI ideas when a Gemini key is set</option>
+        <option value="rules" {{ 'selected' if site.picker == 'rules' }}>Built-in agent only (no AI at all)</option>
+      </select>
+      <button class="btn ghost sm">Save</button>
+    </div>
+    <div class="hint">The built-in agent scores every moment on hook, energy, value, complete sentences and keywords, and writes titles and tags itself.</div>
   </form>
   <p class="hint" style="margin-top:14px">Learned speed: download {{ '%.2f' % rates.download }}×, transcript {{ '%.2f' % rates.transcribe }}×, editing {{ '%.2f' % rates.render }}× of video length. Timers get more accurate after every video.</p>
 </div>

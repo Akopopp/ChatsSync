@@ -2,7 +2,8 @@
 {% block title %}Settings{% endblock %}
 {% block body %}
 <div class="page-head"><div><h1>Settings</h1><p>Your accounts, campaign rules and how clips are made.</p></div></div>
-{% set notes = {'saved': ('ok', 'Saved.'), 'pw_ok': ('ok', 'Password changed.'), 'pw_bad': ('bad', 'Current password is wrong, or the new one is under 8 characters.')} %}
+{% set notes = {'saved': ('ok', 'Saved.'), 'pw_ok': ('ok', 'Password changed.'), 'pw_bad': ('bad', 'Current password is wrong, or the new one is under 8 characters.'),
+  'music_ok': ('ok', 'Track added.'), 'music_bad': ('bad', 'Use an MP3, M4A, AAC, WAV or OGG file under 25 MB (30 tracks at most).')} %}
 {% if msg in notes %}<div class="alert {{ notes[msg][0] }}">{{ notes[msg][1] }}</div>{% endif %}
 {% if msg.startswith('linked_') %}<div class="alert ok">{{ NAMES[msg[7:]] }} connected.</div>{% endif %}
 {% if msg.startswith('link_fail_') %}<div class="alert bad">{{ NAMES.get(msg[10:], 'Account') }} was not connected. Please try again.</div>{% endif %}
@@ -54,8 +55,9 @@
 </div>
 
 <div class="card">
-  <h2>Campaign rules</h2>
-  <p class="small muted" style="margin-top:0">These are added to every post, on top of the title, description, tags and hashtags the AI writes for each clip.</p>
+  <h2>Default post rules</h2>
+  <p class="small muted" style="margin-top:0">Added to every post, on top of the title, description, tags and hashtags written for each clip.
+    For a specific clipping campaign, add it under <a href="/campaigns">Campaigns</a> instead.</p>
   <div class="grid2">
     <div>
       <label for="campaign_name">Campaign name</label>
@@ -72,7 +74,7 @@
   <input id="title_suffix" type="text" name="title_suffix" value="{{ settings.title_suffix }}" placeholder="#shorts">
   <label for="description_template">Post text layout</label>
   <textarea id="description_template" name="description_template">{{ settings.description_template }}</textarea>
-  <div class="hint">Use {title}, {description}, {credit}, {hashtags} and {campaign}. The AI fills {description}.</div>
+  <div class="hint">Use {title}, {description}, {credit}, {hashtags} and {campaign}. {description} is written for each clip.</div>
 </div>
 
 <div class="card">
@@ -90,23 +92,68 @@
         {% endfor %}
       </select>
     </div>
-    <div>
-      <label for="crop_mode">Framing</label>
-      <select id="crop_mode" name="crop_mode">
-        <option value="auto" {{ 'selected' if settings.crop_mode == 'auto' }}>Automatic: follow the face on sharp videos, full frame on low-quality ones</option>
-        <option value="face" {{ 'selected' if settings.crop_mode == 'face' }}>Always follow the speaker's face</option>
-        <option value="fit" {{ 'selected' if settings.crop_mode == 'fit' }}>Full frame with blurred background</option>
-      </select>
-    </div>
   </div>
-  <label class="check"><input type="checkbox" name="show_title" {{ 'checked' if settings.show_title == '1' }}> Show a hook line at the top of each clip</label>
-  <label class="check"><input type="checkbox" name="caption_uppercase" {{ 'checked' if settings.caption_uppercase == '1' }}> Captions in CAPITAL letters</label>
+</div>
+
+<div class="card">
+  <h2>Editing style</h2>
+  <p class="small muted" style="margin-top:-6px">How new clips are edited. You can still change each clip in its editor.</p>
+  <div class="grid2">
+    <div><label class="tight" for="caption_style">Captions</label>
+      <select id="caption_style" name="caption_style">{% for k, v in STYLES.items() %}<option value="{{ k }}" {{ 'selected' if settings.caption_style == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label class="tight" for="caption_position">Caption position</label>
+      <select id="caption_position" name="caption_position">{% for k, v in POSITIONS.items() %}<option value="{{ k }}" {{ 'selected' if settings.caption_position == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label for="crop_mode">Framing</label>
+      <select id="crop_mode" name="crop_mode">
+        <option value="auto" {{ 'selected' if settings.crop_mode == 'auto' }}>Automatic: follow the speaker, split screen for two people</option>
+        <option value="face" {{ 'selected' if settings.crop_mode == 'face' }}>Always follow the speaker</option>
+        <option value="split" {{ 'selected' if settings.crop_mode == 'split' }}>Two speakers, one above the other</option>
+        <option value="fit" {{ 'selected' if settings.crop_mode == 'fit' }}>Full frame with blurred background</option>
+      </select></div>
+    <div><label for="hook_show">Hook line at the top</label>
+      <select id="hook_show" name="hook_show">{% for k, v in HOOK_SHOW.items() %}<option value="{{ k }}" {{ 'selected' if (settings.hook_show if settings.show_title == '1' else 'off') == k }}>{{ v }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Highlight color</label>
+  <div class="swatches">{% for k, hex in COLORS.items() %}
+    <label title="{{ k | capitalize }}"><input type="radio" name="caption_color" value="{{ k }}" {{ 'checked' if settings.caption_color == k }}><i style="background:#{{ hex }}"></i></label>{% endfor %}
+  </div>
+  <div class="checks" style="margin-top:4px">
+    <label class="check"><input type="checkbox" name="caption_uppercase" {{ 'checked' if settings.caption_uppercase == '1' }}> CAPITAL letters</label>
+    <label class="check"><input type="checkbox" name="fx_emoji" {{ 'checked' if settings.fx_emoji == '1' }}> Emojis on key words</label>
+    <label class="check"><input type="checkbox" name="fx_zoom" {{ 'checked' if settings.fx_zoom == '1' }}> Zoom punch-ins</label>
+    <label class="check"><input type="checkbox" name="fx_progress" {{ 'checked' if settings.fx_progress == '1' }}> Progress bar</label>
+    <label class="check"><input type="checkbox" name="fx_fillers" {{ 'checked' if settings.fx_fillers == '1' }}> Remove "um" and "uh"</label>
+    <label class="check"><input type="checkbox" name="fx_jumpcuts" {{ 'checked' if settings.fx_jumpcuts == '1' }}> Jump cuts (remove pauses)</label>
+  </div>
+  {% if tracks %}
+  <div class="grid2">
+    <div><label for="music_default">Background music</label>
+      <select id="music_default" name="music_default"><option value="">No music</option>
+        {% for t in tracks %}<option value="{{ t }}" {{ 'selected' if settings.music_default == t }}>{{ t }}</option>{% endfor %}</select></div>
+    <div><label for="music_volume">Music volume <span class="hint" id="mv-out">{{ settings.music_volume }}%</span></label>
+      <input id="music_volume" type="range" name="music_volume" min="0" max="40" value="{{ settings.music_volume }}"
+        oninput="document.getElementById('mv-out').textContent=this.value+'%'"></div>
+  </div>
+  {% endif %}
 </div>
 
 
 
 <button class="btn">Save settings</button>
 </form>
+
+<div class="card" id="music" style="margin-top:20px">
+  <h2>Music library</h2>
+  <p class="small muted" style="margin-top:-6px">Tracks you can put under clips. Only add music you have the rights to, like the YouTube Audio Library.</p>
+  {% if tracks %}<div class="table tracks">{% for t in tracks %}
+    <div class="tr"><div class="grow small">{{ t }}</div>
+      <form method="post" action="/settings/music/delete"><input type="hidden" name="name" value="{{ t }}"><button class="link danger">Remove</button></form></div>{% endfor %}
+  </div>{% endif %}
+  <form method="post" action="/settings/music" enctype="multipart/form-data" class="row" style="margin-top:12px">
+    <input type="file" name="file" accept=".mp3,.m4a,.aac,.wav,.ogg,audio/*" aria-label="Music file" required>
+    <button class="btn ghost sm">Add track</button>
+  </form>
+</div>
 
 {% if user.password %}
 <div class="card" id="password" style="margin-top:20px">

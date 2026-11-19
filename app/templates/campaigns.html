@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Campaigns{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div><h1>Campaigns</h1><p>Save each clipping campaign's rules once. Clips made for it follow them and are checked before posting.</p></div>
+  <a class="btn" href="/campaigns/new">New campaign</a>
+</div>
+{% if msg == 'deleted' %}<div class="alert ok">Campaign deleted.</div>{% endif %}
+<div class="card">
+  {% if not campaigns %}
+    <p class="muted" style="margin:0">No campaigns yet. Add one, paste its rules, and pick it when you make clips.</p>
+  {% endif %}
+  <div class="table">
+  {% for c in campaigns %}
+    <a class="tr" href="/campaigns/{{ c.id }}">
+      <div class="grow" style="min-width:0">
+        <div class="t">{{ c.name }}</div>
+        <div class="meta">
+          {% if c.min_len or c.max_len %}{{ c.min_len or 'any' }} to {{ c.max_len or 'any' }} s · {% endif %}
+          {% if c.country %}{{ COUNTRIES[c.country][0] }} · {% endif %}
+          {{ c.hashtags or 'no required hashtags' }}</div>
+      </div>
+      {% for p in c.platforms or [] %}<span class="chip">{{ NAMES[p] }}</span>{% endfor %}
+    </a>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}

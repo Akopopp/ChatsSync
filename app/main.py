@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -11,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, auth, db, media, pipeline, platforms
+from . import agent, ai, auth, db, edits, media, pipeline, platforms
 
 ROOT = Path(__file__).resolve().parent
 PKT = timezone(timedelta(hours=5))
@@ -48,7 +49,9 @@ def eta(sec):
 
 
 templates.env.filters.update(when=when, day=day, dur=dur, eta=eta)
-templates.env.globals.update(APP_NAME=APP_NAME, NAMES=platforms.NAMES)
+templates.env.globals.update(APP_NAME=APP_NAME, NAMES=platforms.NAMES, STYLES=edits.STYLES, COLORS=edits.COLORS,
+                             POSITIONS=edits.POSITIONS, LAYOUTS=edits.LAYOUTS, HOOK_SHOW=edits.HOOK_SHOW,
+                             COUNTRIES=agent.COUNTRIES, LANGUAGES=agent.LANGUAGES)
 
 
 @app.on_event('startup')
@@ -173,7 +176,7 @@ def home(request: Request):
         return page(request, 'pending.html')
     return page(request, 'home.html', jobs=user_jobs(user['id'], 5), timers=pipeline.timers(),
                 problem=auth.access_problem(user), used=auth.videos_this_month(user['id']),
-                error=request.query_params.get('error', ''))
+                error=request.query_params.get('error', ''), campaigns=db.campaigns(user['id']))
 
 
 @app.get('/videos', response_class=HTMLResponse)
@@ -185,13 +188,14 @@ def videos(request: Request):
 
 
 @app.post('/jobs')
-async def new_job(request: Request, url: str = Form(''), file: UploadFile | None = File(None)):
+async def new_job(request: Request, url: str = Form(''), file: UploadFile | None = File(None), campaign_id: int = Form(0)):
     user = need_user(request)
     problem = auth.access_problem(user)
     if problem:
         return RedirectResponse('/?error=limit', status_code=303)
     url = url.strip()
     now = time.time()
+    campaign_id = campaign_id if db.campaign(campaign_id, user['id']) else 0
     if file is not None and file.filename:
         job_id = db.run('insert into jobs(user_id, source, source_type, title, status, step, created_at, updated_at) '
                         'values(?,?,?,?,?,?,?,?)', (user['id'], file.filename, 'upload', Path(file.filename).stem[:150],
@@ -215,6 +219,8 @@ async def new_job(request: Request, url: str = Form(''), file: UploadFile | None
             threading.Thread(target=pipeline.prefetch, args=(job_id,), daemon=True).start()
     else:
         return RedirectResponse('/?error=link', status_code=303)
+    if campaign_id:
+        db.update_job(job_id, campaign_id=campaign_id)
     pipeline.wake()
     return RedirectResponse(f'/jobs/{job_id}', status_code=303)
 
@@ -234,9 +240,13 @@ def job_page(request: Request, job_id: int):
         return RedirectResponse('/login', status_code=303)
     job = own_job(user, job_id)
     clips = clip_rows(job_id)
+    settings, campaign = pipeline.job_settings(job)
     for clip in clips:
-        clip['text'] = platforms.post_text({**clip, 'meta': json.dumps(clip['meta'])}, db.settings(job['user_id']))
-    return page(request, 'job.html', job=job, clips=clips, timer=pipeline.timers().get(job_id))
+        clip['text'] = platforms.post_text({**clip, 'meta': json.dumps(clip['meta'])}, settings)
+        clip['editable'] = clip['status'] in ('ready', 'failed', 'expired') and pipeline.can_edit_video(clip, job)
+        clip['checks'] = pipeline.clip_checks(clip, settings, campaign) if clip['status'] == 'ready' else []
+        clip['blocked'] = any(must and not ok for ok, must, _ in clip['checks'])
+    return page(request, 'job.html', job=job, clips=clips, timer=pipeline.timers().get(job_id), campaign=campaign)
 
 
 @app.get('/jobs/{job_id}/status')
@@ -278,9 +288,10 @@ async def save_clip(request: Request, clip_id: int):
     meta = json.loads(clip['meta'] or '{}')
     meta['description'] = str(form.get('description', meta.get('description', ''))).strip()[:1500]
     db.update_clip(clip_id, title=str(form.get('title', clip['title'])).strip()[:100], meta=json.dumps(meta))
-    if form.get('post'):
-        if not pipeline.approve(clip_id):
-            return RedirectResponse(f'/jobs/{clip["job_id"]}?nolink=1#clip-{clip_id}', status_code=303)
+    if form.get('post') and not pipeline.approve(clip_id):
+        error = db.one('select error from clips where id=?', (clip_id,))['error']
+        flag = '?nolink=1' if error.startswith('Connect') else ''
+        return RedirectResponse(f'/jobs/{clip["job_id"]}{flag}#clip-{clip_id}', status_code=303)
     return RedirectResponse(f'/jobs/{clip["job_id"]}#clip-{clip_id}', status_code=303)
 
 
@@ -292,7 +303,94 @@ def reject_clip(request: Request, clip_id: int):
         Path(clip['file']).unlink(missing_ok=True)
     db.run('delete from posts where clip_id=? and status="waiting"', (clip_id,))
     db.update_clip(clip_id, status='rejected', file='')
+    pipeline.drop_raw(clip_id)
     return RedirectResponse(f'/jobs/{clip["job_id"]}', status_code=303)
+
+
+def music_tracks(user_id):
+    folder = db.DATA / 'music' / str(user_id)
+    return sorted(f.name for f in folder.iterdir() if f.is_file()) if folder.exists() else []
+
+
+def edit_window(clip, job, edit):
+    """Seconds of the original video the editor may use: 30 s around a linked clip, or the saved footage."""
+    if job['source_type'] == 'link':
+        return max(edit['start'] - 30, 0), (min(edit['end'] + 30, job['duration']) if job['duration'] else edit['end'] + 30)
+    raw = edits.meta_of(clip).get('raw') or {}
+    if raw.get('file') and Path(raw['file']).exists():
+        return raw['offset'], raw['end']
+    return edit['start'], edit['end']
+
+
+def job_words(job_id):
+    path = pipeline.job_dir(job_id) / 'words.json'
+    return json.loads(path.read_text()) if path.exists() else []
+
+
+@app.get('/clips/{clip_id}/edit', response_class=HTMLResponse)
+def clip_editor(request: Request, clip_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse('/login', status_code=303)
+    clip = own_clip(user, clip_id)
+    job = own_job(user, clip['job_id'])
+    edit = edits.get(clip, db.settings(clip['user_id']))
+    words = job_words(job['id'])
+    lo, hi = edit_window(clip, job, edit)
+    meta = edits.meta_of(clip)
+    return page(request, 'editor.html', clip=clip, job=job, edit=edit, meta=meta, lo=round(lo, 2), hi=round(hi, 2),
+                window=edits.caption_words(words, {**edit, 'start': lo, 'end': hi}),
+                caption_text=' '.join(w['w'] for w in edits.caption_words(words, edit)),
+                can_video=pipeline.can_edit_video(clip, job) and bool(words), tracks=music_tracks(clip['user_id']),
+                why=meta.get('why'), msg=request.query_params.get('msg', ''))
+
+
+def _num(value, default):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@app.post('/clips/{clip_id}/edit')
+async def save_edit(request: Request, clip_id: int):
+    user = need_user(request)
+    clip = own_clip(user, clip_id)
+    job = own_job(user, clip['job_id'])
+    if clip['status'] in ('reedit', 'rendering', 'approved', 'posted') or not pipeline.can_edit_video(clip, job):
+        return RedirectResponse(f'/clips/{clip_id}/edit?msg=busy', status_code=303)
+    form = await request.form()
+    before = edits.get(clip, db.settings(clip['user_id']))
+    lo, hi = edit_window(clip, job, before)
+    start = round(min(max(_num(form.get('start'), before['start']), lo), hi), 2)
+    end = round(min(max(_num(form.get('end'), before['end']), lo), hi), 2)
+    if not 3 <= end - start <= 180:
+        return RedirectResponse(f'/clips/{clip_id}/edit?msg=bad_length', status_code=303)
+    try:
+        cuts = [[round(float(a), 2), round(float(b), 2)] for a, b in json.loads(str(form.get('cuts') or '[]'))[:300]]
+    except (ValueError, TypeError):
+        cuts = []
+    pick = lambda key, options: (str(form.get(key)) if str(form.get(key)) in options else before[key])  # noqa: E731
+    edit = {**before, 'start': start, 'end': end, 'cuts': [c for c in cuts if start <= c[0] < c[1] <= end],
+            'hook': str(form.get('hook', before['hook'])).strip()[:80], 'hook_show': pick('hook_show', edits.HOOK_SHOW),
+            'style': pick('style', edits.STYLES), 'color': pick('color', edits.COLORS),
+            'position': pick('position', edits.POSITIONS), 'layout': pick('layout', edits.LAYOUTS),
+            'music': str(form.get('music') or '') if str(form.get('music') or '') in music_tracks(clip['user_id']) else '',
+            'music_volume': int(min(max(_num(form.get('music_volume'), before['music_volume']), 0), 40))}
+    for flag in edits.FLAGS:
+        edit[flag] = bool(form.get(flag))
+    text = form.get('caption_text')
+    words = job_words(job['id'])
+    if text is not None and words:
+        a, b = _num(form.get('text_from'), before['start']), _num(form.get('text_to'), before['end'])
+        everything = edits.caption_words(words, {**before, 'start': lo, 'end': hi})
+        middle = [w for w in everything if w['s'] >= a - 0.05 and w['e'] <= b + 0.3]
+        if ' '.join(str(text).split()) != ' '.join(w['w'] for w in middle):
+            edit['words'] = sorted([w for w in everything if w not in middle] + edits.realign(middle, str(text)),
+                                   key=lambda w: w['s'])
+            edit['words_range'] = [lo, hi]
+    pipeline.request_edit(clip_id, edit)
+    return RedirectResponse(f'/clips/{clip_id}/edit', status_code=303)
 
 
 @app.post('/posts/{post_id}/retry')
@@ -344,7 +442,7 @@ def settings_page(request: Request):
     user = current_user(request)
     accounts = {p: platforms.account(user['id'], p) for p in platforms.NAMES} if user else {}
     return page(request, 'settings.html', msg=request.query_params.get('msg', ''), accounts=accounts,
-                ready={p: platforms.configured(p) for p in platforms.NAMES},
+                ready={p: platforms.configured(p) for p in platforms.NAMES}, tracks=music_tracks(user['id']) if user else [],
                 has_cookies=(db.DATA / 'cookies.txt').exists(), has_ai=ai.ai_ready())
 
 
@@ -352,12 +450,14 @@ def settings_page(request: Request):
 async def save_settings(request: Request):
     user = need_user(request)
     form = await request.form()
-    checks = ('show_title', 'caption_uppercase', 'post_youtube', 'post_instagram', 'post_facebook')
+    checks = ('caption_uppercase', 'post_youtube', 'post_instagram', 'post_facebook',
+              'fx_zoom', 'fx_emoji', 'fx_progress', 'fx_fillers', 'fx_jumpcuts')
     for key in db.DEFAULT_SETTINGS:
         if key in checks:
             db.set_setting(user['id'], key, '1' if form.get(key) else '0')
         elif key in form:
             db.set_setting(user['id'], key, str(form.get(key)).strip()[:3000])
+    db.set_setting(user['id'], 'show_title', '0' if form.get('hook_show') == 'off' else '1')
     for key, low, high in (('clip_min', 10, 170), ('clip_max', 15, 180), ('clips_per_video', 1, 15)):
         value = db.settings(user['id'])[key]
         try:
@@ -367,6 +467,39 @@ async def save_settings(request: Request):
     if form.get('page_id'):
         platforms.choose_page(user['id'], str(form.get('page_id')))
     return RedirectResponse('/settings?msg=saved', status_code=303)
+
+
+MUSIC_TYPES = ('.mp3', '.m4a', '.aac', '.wav', '.ogg')
+
+
+@app.post('/settings/music')
+async def add_music(request: Request, file: UploadFile = File(...)):
+    user = need_user(request)
+    ext = Path(file.filename or '').suffix.lower()
+    stem = re.sub(r'[^\w\- ]', '', Path(file.filename or 'track').stem).strip()[:60] or 'track'
+    if ext not in MUSIC_TYPES or len(music_tracks(user['id'])) >= 30:
+        return RedirectResponse('/settings?msg=music_bad#music', status_code=303)
+    folder = db.DATA / 'music' / str(user['id'])
+    folder.mkdir(parents=True, exist_ok=True)
+    dest, size = folder / f'{stem}{ext}', 0
+    with dest.open('wb') as fh:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > 25 * 1024 * 1024:
+                break
+            fh.write(chunk)
+    if size > 25 * 1024 * 1024:
+        dest.unlink(missing_ok=True)
+        return RedirectResponse('/settings?msg=music_bad#music', status_code=303)
+    return RedirectResponse('/settings?msg=music_ok#music', status_code=303)
+
+
+@app.post('/settings/music/delete')
+def delete_music(request: Request, name: str = Form(...)):
+    user = need_user(request)
+    if name in music_tracks(user['id']):
+        (db.DATA / 'music' / str(user['id']) / name).unlink(missing_ok=True)
+    return RedirectResponse('/settings#music', status_code=303)
 
 
 @app.post('/admin/server')
@@ -449,6 +582,9 @@ def admin_home(request: Request):
 async def admin_site(request: Request):
     need_user(request, admin=True)
     form = await request.form()
+    if 'picker' in form:
+        db.set_setting(0, 'picker', 'rules' if form.get('picker') == 'rules' else 'mix')
+        return RedirectResponse('/admin?msg=server_ok#server', status_code=303)
     mode = str(form.get('signup_mode', 'approval'))
     db.set_setting(0, 'signup_mode', mode if mode in ('approval', 'trial', 'closed') else 'approval')
     for key in ('trial_days', 'trial_videos', 'trial_minutes'):
@@ -545,6 +681,86 @@ def admin_cancel(request: Request, job_id: int):
     if job and job['status'] == 'queued':
         db.update_job(job_id, status='failed', error='Cancelled by admin.', finished_at=time.time())
     return RedirectResponse('/admin#queue', status_code=303)
+
+
+# ---------- campaigns ----------
+
+CAMPAIGN_FIELDS = ('link', 'rules_text', 'credit', 'mentions', 'hashtags', 'phrases', 'banned', 'title_suffix', 'keywords',
+                   'country', 'language')
+
+
+def campaign_from_form(form):
+    data = {k: str(form.get(k, '')).strip()[:4000] for k in CAMPAIGN_FIELDS}
+    data['hashtags'] = ' '.join(t if t.startswith('#') else '#' + t for t in data['hashtags'].replace(',', ' ').split())
+    data['mentions'] = ' '.join(t if t.startswith('@') else '@' + t for t in data['mentions'].replace(',', ' ').split())
+    data['country'] = data['country'] if data['country'] in agent.COUNTRIES else ''
+    data['language'] = data['language'] if data['language'] in agent.LANGUAGES else ''
+    for key in ('min_len', 'max_len'):
+        value = _num(form.get(key), 0)
+        data[key] = int(min(max(value, 0), 180)) if value else 0
+    data['platforms'] = [p for p in platforms.NAMES if form.get(f'on_{p}')]
+    return str(form.get('name', '')).strip()[:80] or 'Campaign', data
+
+
+@app.get('/campaigns', response_class=HTMLResponse)
+def campaigns_page(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse('/login', status_code=303)
+    return page(request, 'campaigns.html', campaigns=db.campaigns(user['id']), msg=request.query_params.get('msg', ''))
+
+
+@app.get('/campaigns/{campaign_id}', response_class=HTMLResponse)
+def campaign_page(request: Request, campaign_id: str):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse('/login', status_code=303)
+    found = None if campaign_id == 'new' else db.campaign(int(campaign_id) if campaign_id.isdigit() else -1, user['id'])
+    if campaign_id != 'new' and not found:
+        return RedirectResponse('/campaigns', status_code=303)
+    data = found or {'name': '', 'platforms': list(platforms.NAMES)}
+    country = data.get('country', '')
+    return page(request, 'campaign.html', c=data, findings=[], trends=agent.trends(country, db) if country else [],
+                peak=agent.peak_text(country), msg=request.query_params.get('msg', ''))
+
+
+@app.post('/campaigns/read')
+async def campaign_read(request: Request):
+    """Fill the form from pasted campaign rules (nothing is saved yet)."""
+    need_user(request)
+    form = await request.form()
+    name, data = campaign_from_form(form)
+    fields, findings = agent.parse_rules(data['rules_text'])
+    for key, value in fields.items():
+        if key == 'platforms' or not data.get(key):
+            data[key] = value
+    data.update(name=name, id=int(form.get('id') or 0))
+    country = data.get('country', '')
+    return page(request, 'campaign.html', c=data, findings=findings, trends=agent.trends(country, db) if country else [],
+                peak=agent.peak_text(country), msg='read')
+
+
+@app.post('/campaigns/save')
+async def campaign_save(request: Request):
+    user = need_user(request)
+    form = await request.form()
+    name, data = campaign_from_form(form)
+    campaign_id = int(form.get('id') or 0)
+    if campaign_id and db.campaign(campaign_id, user['id']):
+        db.run('update campaigns set name=?, data=? where id=?', (name, json.dumps(data), campaign_id))
+    else:
+        campaign_id = db.run('insert into campaigns(user_id, name, data, created_at) values(?,?,?,?)',
+                             (user['id'], name, json.dumps(data), time.time()))
+    return RedirectResponse(f'/campaigns/{campaign_id}?msg=saved', status_code=303)
+
+
+@app.post('/campaigns/{campaign_id}/delete')
+def campaign_delete(request: Request, campaign_id: int):
+    user = need_user(request)
+    if db.campaign(campaign_id, user['id']):
+        db.run('delete from campaigns where id=?', (campaign_id,))
+        db.run('update jobs set campaign_id=0 where campaign_id=? and status in ("queued", "uploading")', (campaign_id,))
+    return RedirectResponse('/campaigns?msg=deleted', status_code=303)
 
 
 @app.get('/welcome', response_class=HTMLResponse)

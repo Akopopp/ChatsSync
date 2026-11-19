@@ -24,6 +24,13 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8z"/></svg>
         Make clips</button>
     </div>
+    {% if campaigns %}
+    <label for="campaign_id">Campaign</label>
+    <select id="campaign_id" name="campaign_id" {{ 'disabled' if problem }}>
+      <option value="0">No campaign (my default rules)</option>
+      {% for c in campaigns %}<option value="{{ c.id }}" {{ 'selected' if loop.first }}>{{ c.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
     <div class="or">or upload a file</div>
     <div class="drop"><input id="file" type="file" name="file" accept="video/*" aria-label="Video file" {{ 'disabled' if problem }}
       onchange="if(this.files.length){this.form.querySelector('button').textContent='Uploading…';this.form.submit()}"></div>

@@ -6,8 +6,12 @@ import statistics
 import subprocess
 from pathlib import Path
 
+from . import edits
+
 THREADS = os.environ.get('CPU_THREADS', '2')
 FONTS = Path(__file__).resolve().parent.parent / 'fonts'
+MODELS = Path(__file__).resolve().parent / 'models'
+EMOJI_DIR = Path(__file__).resolve().parent / 'emoji'
 W, H = 1080, 1920
 _model = None
 
@@ -130,10 +134,13 @@ def probe(path):
     if not video:
         raise JobError('File has no video track.')
     rotate = int((video.get('tags') or {}).get('rotate', 0) or 0)
+    for side in video.get('side_data_list') or []:
+        rotate = rotate or abs(int(side.get('rotation', 0) or 0))
     w, h = int(video['width']), int(video['height'])
     if rotate in (90, 270):
         w, h = h, w
-    return {'width': w, 'height': h, 'duration': float(out['format'].get('duration', 0))}
+    return {'width': w, 'height': h, 'duration': float(out['format'].get('duration', 0)),
+            'audio': any(s['codec_type'] == 'audio' for s in out['streams'])}
 
 
 # ---------- transcription ----------
@@ -162,37 +169,137 @@ def transcribe(path: Path, language='', on_progress=None, duration=0):
             text = w.word.strip()
             if text:
                 words.append({'s': round(w.start, 2), 'e': round(w.end, 2), 'w': text})
+    # Loudness of every second (RMS), used to find high-energy moments without AI.
+    loud = [round(float(np.sqrt(np.mean(np.square(samples[i:i + 16000], dtype=np.float64)))), 4)
+            for i in range(0, len(samples), 16000)]
+    del samples
     audio.unlink(missing_ok=True)
-    return words, info.language
+    return words, info.language, loud
+
+
+# ---------- faces ----------
+
+SAMPLE_FPS = 2.5
+
+
+def _detector(w, h):
+    import cv2
+    model = MODELS / 'yunet.onnx'
+    if model.exists():
+        net = cv2.FaceDetectorYN.create(str(model), '', (w, h), 0.75)
+
+        def find(frame):
+            _, faces = net.detect(frame)
+            return [] if faces is None else [tuple(float(v) for v in f[:4]) for f in faces]
+        return find
+    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+    def find(frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return [tuple(float(v) for v in f) for f in cascade.detectMultiScale(gray, 1.15, 6, minSize=(40, 40))]
+    return find
+
+
+def face_samples(path: Path, t0, t1, src, offset=0.0):
+    """Faces 2.5 times a second between t0 and t1 (seconds in the file).
+    Returns [[time, [[cx, cy, w, h], ...]], ...] with time = file time + offset and sizes in source pixels."""
+    import numpy as np
+    sw = 640
+    sh = int(round(src['height'] * sw / src['width'] / 2)) * 2
+    proc = subprocess.Popen(['nice', '-n', '15', 'ffmpeg', '-v', 'error', '-ss', f'{t0:.2f}', '-to', f'{t1:.2f}',
+                             '-i', str(path), '-vf', f'fps={SAMPLE_FPS},scale={sw}:{sh}', '-f', 'rawvideo',
+                             '-pix_fmt', 'bgr24', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    find = _detector(sw, sh)
+    k = src['width'] / sw
+    size, out, i = sw * sh * 3, [], 0
+    while True:
+        buf = proc.stdout.read(size)
+        if len(buf) < size:
+            break
+        frame = np.frombuffer(buf, np.uint8).reshape(sh, sw, 3)
+        faces = [[round((x + w / 2) * k), round((y + h / 2) * k), round(w * k), round(h * k)]
+                 for x, y, w, h in find(frame) if w >= sw * 0.035]
+        out.append([round(offset + t0 + i / SAMPLE_FPS, 2), faces])
+        i += 1
+    proc.wait()
+    return out
+
+
+def _area(f):
+    return f[2] * f[3]
+
+
+def camera_keys(samples, cw, width, start, end):
+    """Keyframes [(t from clip start, crop left x)] following the main face, or None without a steady face.
+    The camera holds still until the face leaves the middle of the frame, then glides there."""
+    pts, prev = [], None
+    for t, faces in samples:
+        if not faces or t < start - 0.5 or t > end + 0.5:
+            continue
+        big = max(faces, key=_area)
+        if prev is None:
+            face = big
+        else:
+            near = min(faces, key=lambda f: abs(f[0] - prev))
+            face = near if _area(near) >= 0.55 * _area(big) else big
+        prev = face[0]
+        pts.append((t - start, face[0]))
+    inside = sum(1 for t, _ in samples if start <= t <= end) or 1
+    if len(pts) < max(3, 0.3 * inside):
+        return None
+    xs = [x for _, x in pts]
+    smooth = [statistics.median(xs[max(0, i - 2):i + 3]) for i in range(len(xs))]
+    cam = smooth[0]
+    keys = [(0.0, cam)]
+    for (t, _), x in zip(pts, smooth):
+        if abs(x - cam) > cw * 0.12:
+            t = max(t, keys[-1][0])
+            keys += [(t, cam), (t + 0.45, x)]
+            cam = x
+    keys.append((max(end - start, keys[-1][0]) + 1, cam))
+    left = [(round(t, 2), int(min(max(x - cw / 2, 0), width - cw)) // 2 * 2) for t, x in keys]
+    out = [left[0]]
+    for i, key in enumerate(left[1:], 1):  # drop points in the middle of a still stretch
+        if not (key[1] == out[-1][1] and i + 1 < len(left) and left[i + 1][1] == key[1]):
+            out.append(key)
+    return out
+
+
+def path_expr(keys):
+    """ffmpeg expression of t that eases (smoothstep) between keyframes."""
+    terms = []
+    for (ta, xa), (tb, xb) in zip(keys, keys[1:]):
+        if tb - ta < 0.01:
+            continue
+        if xa == xb:
+            seg = f'{xa}'
+        else:
+            p = f'((t-{ta})/{tb - ta:.2f})'
+            seg = f'({xa}+({xb - xa})*(3*{p}*{p}-2*{p}*{p}*{p}))'
+        terms.append(f'gte(t,{ta})*lt(t,{tb})*{seg}')
+    terms.append(f'gte(t,{keys[-1][0]})*{keys[-1][1]}')
+    return '+'.join(terms)
+
+
+def two_speakers(samples, width, start, end):
+    """((cx, cy, face size) left, right) when two people sit side by side most of the clip, else None."""
+    window = [faces for t, faces in samples if start <= t <= end]
+    xs = sorted(f[0] for faces in window for f in faces)
+    if len(window) < 4 or len(xs) < 4:
+        return None
+    gap, i = max((xs[i + 1] - xs[i], i) for i in range(len(xs) - 1))
+    if gap < width * 0.2:
+        return None
+    cut = (xs[i] + xs[i + 1]) / 2
+    sides = ([f for faces in window for f in faces if f[0] < cut], [f for faces in window for f in faces if f[0] >= cut])
+    seen = [sum(1 for faces in window if any((f[0] < cut) == (n == 0) for f in faces)) for n in (0, 1)]
+    if min(seen) < 0.35 * len(window):
+        return None
+    return tuple((statistics.median(f[0] for f in g), statistics.median(f[1] for f in g), statistics.median(f[3] for f in g))
+                 for g in sides)
 
 
 # ---------- framing ----------
-
-def face_center(path: Path, start, end, src):
-    """Median x of the largest face across the clip, or None."""
-    import cv2
-    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    cap = cv2.VideoCapture(str(path))
-    xs = []
-    t = start + 0.3
-    step = max(0.7, (end - start) / 24)
-    while t < end:
-        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-        ok, frame = cap.read()
-        t += step
-        if not ok:
-            continue
-        small = cv2.resize(frame, (640, int(640 * frame.shape[0] / frame.shape[1])))
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=6, minSize=(40, 40))
-        if len(faces):
-            x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
-            xs.append((x + fw / 2) / small.shape[1] * src['width'])
-    cap.release()
-    if len(xs) < 3:
-        return None
-    return statistics.median(xs)
-
 
 def _sharpen(scale):
     """Light sharpening when the picture is blown up, so upscaled crops look less soft."""
@@ -202,21 +309,40 @@ def _sharpen(scale):
     return f',unsharp=5:5:{amount:.2f}:5:5:0'
 
 
-def video_filter(path, start, end, src, crop_mode):
+def _split(pair, w, h):
+    """Two speakers stacked: each gets a 1080x960 panel cropped around their face."""
+    chains = []
+    for i, (cx, cy, size) in enumerate(pair):
+        ch = min(h, max(size * 2.8, h * 0.5))
+        cw = min(w, ch * W / (H / 2))
+        ch = cw * (H / 2) / W
+        x = min(max(cx - cw / 2, 0), w - cw)
+        y = min(max(cy - ch * 0.42, 0), h - ch)
+        chains.append(f'[s{i}]crop={int(cw) // 2 * 2}:{int(ch) // 2 * 2}:{int(x) // 2 * 2}:{int(y) // 2 * 2},'
+                      f'scale={W}:{H // 2}:flags=lanczos{_sharpen(H / 2 / ch)}[p{i}]')
+    return 'split[s0][s1];' + ';'.join(chains) + ';[p0][p1]vstack,setsar=1'
+
+
+def framing(src, layout, samples, start, end):
+    """Filter chain that turns the footage into 1080x1920, and the layout it ended up using."""
     w, h = src['width'], src['height']
-    if h >= w * 1.5:  # already vertical
-        return (f'scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}'
-                f'{_sharpen(H / h)},setsar=1')
-    # "auto": follow the face when the video is sharp enough (1080p+), otherwise keep the full frame
-    want_face = crop_mode == 'face' or (crop_mode == 'auto' and h >= 1000)
-    cx = face_center(path, start, end, src) if want_face else None
-    if cx is not None:
+    if h >= w * 1.5:
+        return (f'scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}{_sharpen(H / h)},setsar=1',
+                'vertical')
+    sharp = h >= 1000
+    if samples and (layout == 'split' or (layout == 'auto' and sharp)):
+        pair = two_speakers(samples, w, start, end)
+        if pair:
+            return _split(pair, w, h), 'split'
+    if samples and (layout in ('face', 'split') or (layout == 'auto' and sharp)):
         cw = int(h * 9 / 16) // 2 * 2
-        x = int(min(max(cx - cw / 2, 0), w - cw))
-        return f'crop={cw}:{h}:{x}:0,scale={W}:{H}:flags=lanczos{_sharpen(H / h)},setsar=1'
+        keys = camera_keys(samples, cw, w, start, end)
+        if keys:
+            x = path_expr(keys) if len({k[1] for k in keys}) > 1 else str(keys[0][1])
+            return f"crop=w={cw}:h={h}:x='{x}':y=0,scale={W}:{H}:flags=lanczos{_sharpen(H / h)},setsar=1", 'face'
     return (f'split[a][b];[a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},'
             f'boxblur=8:2,scale={W}:{H}[bg];[b]scale={W}:-2:flags=lanczos{_sharpen(W / w)}[fg];'
-            f'[bg][fg]overlay=0:(H-h)/2,setsar=1')
+            f'[bg][fg]overlay=0:(H-h)/2,setsar=1', 'fit')
 
 
 # ---------- captions ----------
@@ -232,8 +358,48 @@ def ass_escape(text):
     return text.replace('\\', '').replace('{', '(').replace('}', ')').replace('\n', ' ')
 
 
-def build_ass(words, start, end, title, settings):
-    upper = settings.get('caption_uppercase') == '1'
+def bgr(hex6):
+    return f'&H{hex6[4:6]}{hex6[2:4]}{hex6[0:2]}&'
+
+
+# font, size, outline, shadow, border style, most words on screen, most characters on screen
+STYLE_SPEC = {
+    'bold': ('Montserrat Black', 90, 7, 3, 1, 3, 20),
+    'pop': ('Montserrat Black', 124, 8, 4, 1, 1, 14),
+    'boxed': ('Montserrat ExtraBold', 74, 16, 0, 3, 4, 24),
+    'clean': ('Montserrat ExtraBold', 68, 4, 2, 1, 6, 32),
+}
+
+
+def caption_place(edit):
+    """ASS alignment, vertical margin, and where emojis go (top y) for the caption position."""
+    hook_on = bool(edit.get('hook')) and edit.get('hook_show') != 'off'
+    if edit.get('seam'):  # split screen: captions sit on the line between the two people
+        return 5, 0, 700
+    return {'bottom': (2, 560, 990), 'middle': (2, 780, 760),
+            'top': (8, 400 if hook_on else 220, 680 if hook_on else 500)}[edit.get('position', 'bottom')]
+
+
+def _groups(words, per_line, chars, sentences):
+    groups, cur = [], []
+    for w in words:
+        text = ' '.join(x['w'] for x in cur + [w])
+        if cur and (len(cur) >= per_line or w['s'] - cur[-1]['e'] > 0.6 or len(text) > chars
+                    or (sentences and re.search(r'[.!?]$', cur[-1]['w']))):
+            groups.append(cur)
+            cur = []
+        cur.append(w)
+    return groups + ([cur] if cur else [])
+
+
+def build_ass(words, dur, edit):
+    """Subtitles for the finished clip. words are in output time."""
+    style = edit.get('style', 'bold')
+    font, size, outline, shadow, border, per_line, chars = STYLE_SPEC.get(style, STYLE_SPEC['bold'])
+    hi = bgr(edits.COLORS.get(edit.get('color'), 'FFE500'))
+    align, margin, _ = caption_place(edit)
+    upper = edit.get('uppercase')
+    box = border == 3
     header = f'''[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
@@ -242,53 +408,124 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,Montserrat Black,92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,560,1
+Style: Cap,{font},{size},&H00FFFFFF,&H00FFFFFF,{'&H5A000000' if box else '&H00000000'},&H80000000,-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},70,70,{margin},1
 Style: Title,Montserrat ExtraBold,62,&H00111111,&H00111111,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,3,18,0,8,90,90,170,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
     lines = []
-    dur = end - start
-    if title and settings.get('show_title') == '1':
-        lines.append(f'Dialogue: 1,{ass_time(0)},{ass_time(dur)},Title,,0,0,0,,{ass_escape(title)}')
-    clip_words = [w for w in words if w['s'] >= start - 0.05 and w['e'] <= end + 0.3]
-    groups, cur = [], []
-    for w in clip_words:
-        if cur and (len(cur) >= 3 or w['s'] - cur[-1]['e'] > 0.6 or len(' '.join(x['w'] for x in cur + [w])) > 22):
-            groups.append(cur)
-            cur = []
-        cur.append(w)
-    if cur:
-        groups.append(cur)
+    hook = (edit.get('hook') or '').strip()
+    if hook and edit.get('hook_show') != 'off':
+        until = dur if edit.get('hook_show') == 'full' else min(3.2, dur)
+        lines.append(f'Dialogue: 1,{ass_time(0)},{ass_time(until)},Title,,0,0,0,,{ass_escape(hook)}')
+    if style == 'off':
+        return header + '\n'.join(lines) + '\n'
+
+    def txt(w):
+        return ass_escape(w['w'].upper() if upper else w['w'])
+
+    groups = _groups(words, per_line, chars, style == 'clean')
     for gi, group in enumerate(groups):
         g_end = groups[gi + 1][0]['s'] if gi + 1 < len(groups) else group[-1]['e'] + 0.4
-        g_end = min(g_end, group[-1]['e'] + 0.6)
+        g_end = min(g_end, group[-1]['e'] + 0.6, dur)
+        if style == 'clean':
+            lines.append(f'Dialogue: 0,{ass_time(group[0]["s"])},{ass_time(max(g_end, group[0]["s"] + 0.1))},Cap,,0,0,0,,'
+                         '{\\fad(80,0)}' + ' '.join(txt(w) for w in group))
+            continue
         for i, w in enumerate(group):
-            s = w['s'] - start
-            e = (group[i + 1]['s'] if i + 1 < len(group) else g_end) - start
-            parts = []
-            for j, x in enumerate(group):
-                txt = ass_escape(x['w'].upper() if upper else x['w'])
-                parts.append('{\\c&H00E5FF&}' + txt + '{\\c&HFFFFFF&}' if j == i else txt)
+            s = w['s']
+            e = max(group[i + 1]['s'] if i + 1 < len(group) else g_end, s + 0.05)
+            if style == 'pop':
+                strong = len(re.sub(r'[^\w]', '', w['w'])) >= 6 or edits.emoji_for(w['w'])
+                color = '{\\c' + hi + '}' if strong else ''
+                lines.append(f'Dialogue: 0,{ass_time(s)},{ass_time(min(e, s + 1.4))},Cap,,0,0,0,,'
+                             '{\\fscx128\\fscy128\\t(0,110,\\fscx100\\fscy100)}' + color + txt(w))
+                continue
+            parts = [('{\\c' + hi + '}' + txt(x) + '{\\c&HFFFFFF&}') if j == i else txt(x) for j, x in enumerate(group)]
             pop = '{\\fscx108\\fscy108\\t(0,90,\\fscx100\\fscy100)}' if i == 0 else ''
-            lines.append(f'Dialogue: 0,{ass_time(s)},{ass_time(max(e, s + 0.05))},Cap,,0,0,0,,{pop}{" ".join(parts)}')
+            lines.append(f'Dialogue: 0,{ass_time(s)},{ass_time(e)},Cap,,0,0,0,,{pop}{" ".join(parts)}')
     return header + '\n'.join(lines) + '\n'
 
 
 # ---------- render ----------
 
-def render(path: Path, out: Path, start, end, words, title, src, settings):
+def render(raw: Path, out: Path, edit, words, offset, src, samples=None, music=None):
+    """Edit one clip. raw is footage whose first frame is at `offset` seconds of the original video;
+    edit, words and face samples all use original-video seconds. Returns (thumbnail, layout used, output length)."""
+    start, end = edit['start'], edit['end']
+    t0, dur = max(start - offset, 0), end - start
+    rel = [{'s': round(w['s'] - start, 2), 'e': round(w['e'] - start, 2), 'w': w['w']} for w in words]
+    cuts = [(a - start, b - start) for a, b in edit.get('cuts') or []]
+    keep = edits.keep_ranges(rel, {**edit, 'cuts': cuts}, dur)
+    to_out, kept = edits.timeline(keep)
+    length = round(sum(b - a for a, b in keep), 2)
+    cap = [{'s': round(to_out(w['s']), 2), 'e': round(to_out(w['e']), 2), 'w': w['w']}
+           for w in rel if kept((w['s'] + w['e']) / 2)]
+    chain, layout = framing(src, edit.get('layout', 'auto'), samples, start, end)
+    if layout == 'split' and edit.get('position', 'bottom') != 'top':
+        edit = {**edit, 'seam': True}
+    graph, v, n = [f'[0:v]fps=30,{chain}[base]'], 'base', 1
+    inputs = ['-ss', f'{t0:.3f}', '-to', f'{t0 + dur:.3f}', '-i', str(raw)]
+    trimmed = len(keep) > 1 or keep[0][0] > 0.01 or keep[0][1] < dur - 0.01
+    select = '+'.join(f'between(t,{a},{b})' for a, b in keep)
+    if trimmed:
+        graph.append(f"[{v}]select='{select}',setpts=N/30/TB[cut]")
+        v = 'cut'
+    if edit.get('zoom'):
+        zoomed = edits.zoom_ranges(cap, keep, length)
+        if zoomed:
+            when = '+'.join(f'between(on/30,{a},{b - 0.02:.2f})' for a, b in zoomed)
+            graph.append(f"[{v}]zoompan=z='if({when},1.12,1)':x='iw/2-iw/zoom/2':y='(ih-ih/zoom)*0.4':d=1:"
+                         f"s={W}x{H}:fps=30[zoom]")
+            v = 'zoom'
     ass = out.with_suffix('.ass')
-    ass.write_text(build_ass(words, start, end, title, settings), encoding='utf-8')
-    vf = video_filter(path, start, end, src, settings.get('crop_mode', 'face'))
-    sub = f"subtitles=filename='{ass}':fontsdir='{FONTS}'"
-    graph = f'[0:v]{vf}[v0];[v0]{sub}[v]'
-    sh(['nice', '-n', '15', 'ffmpeg', '-y', '-v', 'error', '-ss', f'{start:.2f}', '-to', f'{end:.2f}', '-i', str(path),
-        '-filter_complex', graph, '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast',
-        '-crf', '18', '-r', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
-        '-threads', THREADS, '-movflags', '+faststart', str(out)], timeout=1800)
+    if edit.get('style') != 'off' or (edit.get('hook') and edit.get('hook_show') != 'off'):
+        ass.write_text(build_ass(cap, length, edit), encoding='utf-8')
+        graph.append(f"[{v}]subtitles=filename='{ass}':fontsdir='{FONTS}'[subs]")
+        v = 'subs'
+    if edit.get('emoji') and edit.get('style') != 'off':
+        events = edits.emoji_events(cap, length)
+        top = caption_place(edit)[2]
+        for code in dict.fromkeys(c for c, _, _ in events):
+            spans = [(a, b) for c, a, b in events if c == code]
+            inputs += ['-i', str(EMOJI_DIR / f'{code}.png')]
+            show = '+'.join(f'between(t,{a},{b})' for a, b in spans)
+            drop = '+'.join(f'between(t,{a},{b})*36*max(0,1-(t-{a})*7)' for a, b in spans)
+            graph.append(f"[{n}:v]scale=170:170[e{n}];[{v}][e{n}]overlay=x=(W-w)/2:y='{top}-{drop}':enable='{show}'[o{n}]")
+            v, n = f'o{n}', n + 1
+    if edit.get('progress'):
+        color = edits.COLORS.get(edit.get('color'), 'FFE500')
+        graph.append(f"color=c=0x{color}:s={W}x10:r=30:d={length}[bar];[{v}][bar]overlay=x='-w+w*t/{length}':y=0[prog]")
+        v = 'prog'
+    amap = []
+    if src.get('audio', True):
+        voice = '[0:a]aresample=48000'
+        if trimmed:
+            voice += f",asetnsamples=n=1600:p=1,aselect='{select}',asetpts=N/SR/TB"
+        graph.append(voice + '[voice]')
+        amap = ['-map', '[voice]']
+        if music and Path(music).exists():
+            inputs += ['-stream_loop', '-1', '-i', str(music)]
+            vol = max(0, min(int(edit.get('music_volume', 12)), 60)) / 100
+            graph.append(f'[{n}:a]aresample=48000,volume={vol},atrim=0:{length}[m];[voice]asplit[v1][v2];'
+                         f'[m][v1]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[duck];'
+                         f'[v2][duck]amix=inputs=2:duration=first:normalize=0[mix]')
+            amap = ['-map', '[mix]']
+    sh(['nice', '-n', '15', 'ffmpeg', '-y', '-v', 'error', *inputs, '-filter_complex', ';'.join(graph), '-map', f'[{v}]',
+        *amap, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-r', '30', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-t', f'{length}', '-threads', THREADS,
+        '-movflags', '+faststart', str(out)], timeout=2400)
     ass.unlink(missing_ok=True)
     thumb = out.with_suffix('.jpg')
-    sh(['ffmpeg', '-y', '-v', 'error', '-ss', '1', '-i', str(out), '-frames:v', '1', '-vf', 'scale=360:-2', str(thumb)])
-    return thumb
+    sh(['ffmpeg', '-y', '-v', 'error', '-ss', str(min(1, length / 2)), '-i', str(out), '-frames:v', '1',
+        '-vf', 'scale=360:-2', str(thumb)])
+    return thumb, layout, length
+
+
+def cut_raw(src: Path, out: Path, start, end):
+    """A clip's footage (with some extra on both sides) cut from a full video, so the clip can be edited later."""
+    sh(['nice', '-n', '15', 'ffmpeg', '-y', '-v', 'error', '-ss', f'{start:.3f}', '-to', f'{end:.3f}', '-i', str(src),
+        '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale='min(iw,2560)':-2", '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-crf', '16', '-c:a', 'aac', '-b:a', '192k', '-threads', THREADS, str(out)], timeout=1800)
+    return out
