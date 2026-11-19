@@ -388,6 +388,17 @@ def clip_media(request: Request, clip_id: int, ext: str):
     return FileResponse(path, media_type='video/mp4' if ext == 'mp4' else 'image/jpeg', filename=name)
 
 
+@app.post('/clips/{clip_id}/drop')
+def clip_drop(request: Request, clip_id: int):
+    """Copy this clip to the private GitHub release (for manual TikTok/Instagram uploads)."""
+    user = need_user(request)
+    clip = own_clip(user, clip_id)
+    if not clip['file'] or not Path(clip['file']).exists():
+        raise HTTPException(status_code=404)
+    platforms.drop_clip(clip_id, clip['file'])
+    return {'ok': True}
+
+
 @app.get('/clips/{clip_id}/sheet.jpg')
 def clip_sheet(request: Request, clip_id: int):
     """Eight small frames of the clip side by side, for a quick look without loading the video."""
