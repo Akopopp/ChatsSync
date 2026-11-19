@@ -427,19 +427,36 @@ Pick the layout that looks best and loses nothing important:
 - "full": the whole horizontal picture in the middle of the vertical frame, blurred background, title above and
   captions below. Best for gameplay, sports, wide shots, two or more people talking, screens, slides, text on screen,
   or anything where a crop would cut off what matters.
+- "split": the streamer's webcam box on top, a tall crop of the gameplay below it (about 47% of the frame width).
+  Best for a streamer playing a game with a clear webcam overlay, when the action sits in the middle of the screen
+  and the streamer's face and reaction matter. Not for wide cinematic shots or action spread across the whole screen.
 Also give:
 - "focus": for every frame, where the most important subject is across the width (0 = left edge, 1 = right edge).
+  For "split" this is the gameplay action, not the webcam.
+- "cam": for "split" only, the webcam overlay box as [x, y, width, height], shares of the frame (0 to 1), tight
+  around the webcam picture.
 - "captions": the best caption spot that covers nothing important. For "full": "below" or "above" the picture.
   For "crop": "low", "middle" or "high" (avoid faces, scoreboards, game HUD and any text already on screen).
+  For "split": "seam" (between webcam and gameplay) or "low".
 - "burned_subtitles": true only if the video already shows spoken-word subtitles in the picture.
 - "reason": one short sentence a user understands.
-Reply with JSON only: {{"layout": "full", "focus": [0.5], "captions": "below", "burned_subtitles": false, "reason": ""}}'''
+Reply with JSON only: {{"layout": "full", "focus": [0.5], "cam": [], "captions": "below", "burned_subtitles": false, "reason": ""}}'''
 
 
 def layout_advice(images, stats, brief=''):
     data = ask_json(LAYOUT_PROMPT.format(brief=_brief(brief), faces=stats.get('faces', 0), size=stats.get('size', 0),
                                          apart=stats.get('apart', 0)), 0.2, images=images)
-    layout = data.get('layout') if data.get('layout') in ('crop', 'full') else 'full'
+    layout = data.get('layout') if data.get('layout') in ('crop', 'full', 'split') else 'full'
+    cam = []
+    try:
+        x, y, w, h = [min(max(float(v), 0.0), 1.0) for v in data.get('cam') or []]
+        pad = 0.01  # a little room so a slightly tight box never cuts the face
+        x, y = max(x - pad, 0.0), max(y - pad, 0.0)
+        cam = [x, y, min(w + 2 * pad, 1 - x), min(h + 2 * pad, 1 - y)]
+    except (TypeError, ValueError):
+        pass
+    if layout == 'split' and (len(cam) != 4 or cam[2] < 0.08 or cam[3] < 0.08 or cam[2] * cam[3] > 0.4):
+        layout = 'full'
     focus = []
     for i in range(len(images)):
         try:
@@ -447,7 +464,7 @@ def layout_advice(images, stats, brief=''):
         except (IndexError, TypeError, ValueError):
             focus.append(focus[-1] if focus else 0.5)
     return {'layout': layout, 'focus': focus, 'captions': str(data.get('captions', '')).lower(),
-            'burned_subtitles': bool(data.get('burned_subtitles')), 'reason': str(data.get('reason', ''))[:200]}
+            'burned_subtitles': bool(data.get('burned_subtitles')), 'reason': str(data.get('reason', ''))[:200], 'cam': cam}
 
 
 REVIEW_PROMPT = '''You are checking a finished vertical Short before it is posted. The images are frames from it.
@@ -462,7 +479,8 @@ Reply with JSON only: {{"ok": true, "fix": "none", "reason": "one short sentence
 def review_edit(images, plan, brief=''):
     if not images:
         return None
-    what = 'whole picture in the middle, text above and below' if plan.get('layout') == 'full' else '9:16 crop of the subject'
+    what = {'full': 'whole picture in the middle, text above and below',
+            'split': "streamer's webcam on top, gameplay crop below"}.get(plan.get('layout'), '9:16 crop of the subject')
     data = ask_json(REVIEW_PROMPT.format(layout=plan.get('layout'), what=what, captions=plan.get('captions'),
                                          brief=_brief(brief)), 0.1, images=images)
     fix = str(data.get('fix', 'none'))

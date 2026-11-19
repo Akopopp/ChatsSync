@@ -61,7 +61,7 @@
         {% if clip.score %}<span title="How likely the AI thinks it is to do well">score {{ clip.score | int }}</span>{% endif %}
         {% if not clip.meta.get('ai') %}<span class="chip warn" title="Written without AI">basic text</span>{% endif %}
         {% set lay = clip.meta.get('layout') or {} %}
-        {% if lay.get('layout') %}<span class="chip blue" title="{{ lay.get('reason', '') }} {{ lay.get('checked', '') }}">{{ {'full': 'Whole picture', 'crop': '9:16 crop', 'vertical': 'Vertical'}.get(lay.layout, lay.layout) }}{{ ' · AI' if lay.get('by') == 'ai' }}</span>{% endif %}
+        {% if lay.get('layout') %}<span class="chip blue" title="{{ lay.get('reason', '') }} {{ lay.get('checked', '') }}">{{ {'full': 'Whole picture', 'crop': '9:16 crop', 'vertical': 'Vertical', 'split': 'Cam + gameplay'}.get(lay.layout, lay.layout) }}{{ ' · AI' if lay.get('by') == 'ai' }}</span>{% endif %}
       </div>
       {% if lay.get('reason') or lay.get('checked') %}<div class="hint" style="margin:0">{{ lay.get('reason', '') }} {{ lay.get('checked', '') }}</div>{% endif %}
       {% if clip.error %}<div class="hint" style="color:var(--bad)">{{ clip.error }}</div>{% endif %}

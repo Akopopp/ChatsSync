@@ -210,7 +210,9 @@ def grab_frames(path, start, end, n=6, width=512):
     return out
 
 
-CAPTION_SPOTS = {'full': ('below', 'above'), 'crop': ('low', 'middle', 'high'), 'vertical': ('low', 'middle', 'high')}
+CAPTION_SPOTS = {'full': ('below', 'above'), 'crop': ('low', 'middle', 'high'), 'vertical': ('low', 'middle', 'high'),
+                 'split': ('seam', 'low')}
+CAM_H = 768  # split layout: streamer's camera on top, gameplay fills the rest
 
 
 def plan_layout(path, start, end, src, s, brief=''):
@@ -248,9 +250,14 @@ def plan_layout(path, start, end, src, s, brief=''):
             print('AI layout failed:', str(err)[:200])
     if advice:
         layout = advice['layout']
-        spot = advice['captions'] if advice['captions'] in CAPTION_SPOTS['full' if layout == 'full' else 'crop'] else None
+        spot = advice['captions'] if advice['captions'] in CAPTION_SPOTS[layout] else None
         plan = {'layout': layout, 'by': 'ai', 'reason': advice.get('reason', ''), 'burned': advice.get('burned_subtitles', False)}
-        if layout == 'crop':
+        if layout == 'split':
+            points = list(zip(advice['times'], [f * w for f in advice['focus']]))
+            plan['keys'] = camera_path(points, w) or [(0.0, w / 2)]
+            plan['cam'] = advice['cam']
+            plan['captions'] = spot or 'seam'
+        elif layout == 'crop':
             if face_keys and stats['apart'] < 0.3:
                 plan['keys'] = face_keys
             else:
@@ -283,6 +290,15 @@ def framing(plan, src, s):
         cw = int(h * 9 / 16) // 2 * 2
         return (f"fps={FPS},crop={cw}:{h}:'{_path_expr(plan['keys'], cw, w)}':0,scale={W}:{H}:flags=lanczos"
                 f'{media._sharpen(H / h)},setsar=1{boost}')
+    if plan['layout'] == 'split':
+        x, y, cw, ch = plan['cam']
+        cx, cy = int(x * w) // 2 * 2, int(y * h) // 2 * 2
+        cw, ch = min(int(cw * w), w - cx) // 2 * 2, min(int(ch * h), h - cy) // 2 * 2
+        gw = min(int(h * W / (H - CAM_H)) // 2 * 2, w)
+        return (f'fps={FPS},split[sa][sb];[sa]crop={cw}:{ch}:{cx}:{cy},scale={W}:{CAM_H}:force_original_aspect_ratio=increase:'
+                f"flags=lanczos,crop={W}:{CAM_H}[scam];[sb]crop={gw}:{h}:'{_path_expr(plan['keys'], gw, w)}':0,"
+                f'scale={W}:{H - CAM_H}:flags=lanczos{media._sharpen((H - CAM_H) / h)}[sgame];'
+                f'[scam][sgame]vstack,setsar=1{boost}')
     top, _ = full_box(src)
     return (f'fps={FPS},split[fa][fb];[fa]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},'
             f'boxblur=10:2,eq=brightness=-0.12,scale={W}:{H}[fbg];[fb]scale={W}:-2:flags=lanczos{media._sharpen(W / w)}[ffg];'
@@ -318,6 +334,10 @@ def placement(plan, src):
         band = max(60, top // 2 - 90)
         return {'cap': (8, bottom + 44), 'hook': (8, band), 'intro': (8, band), 'outro': (8, bottom + 44),
                 'emoji_y': min(bottom + 300, H - 230)}
+    if plan.get('layout') == 'split':
+        cap = (2, 300) if plan.get('captions') == 'low' else (8, CAM_H - 80)
+        return {'cap': cap, 'hook': (2, 260) if cap[0] == 8 else (8, CAM_H - 80), 'intro': (2, 260), 'outro': (5, 0),
+                'emoji_y': CAM_H + 140}
     margin = CROP_MARGIN.get(plan.get('captions'), 330)
     return {'cap': (2, margin), 'hook': (8, 170), 'intro': (8, 230), 'outro': (5, 0),
             'emoji_y': max(40, H - margin - 360)}
@@ -567,7 +587,7 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
         s = {**s, 'caption_style': 'off'}
     spots = placement(plan, src)
     # zoom cuts would crop the sides of a whole-picture layout, so they are only used on crops
-    pieces = zoom_pieces(segs, clip_words, s if plan['layout'] != 'full' else {**s, 'zoom': '0'}, meta)
+    pieces = zoom_pieces(segs, clip_words, s if plan['layout'] not in ('full', 'split') else {**s, 'zoom': '0'}, meta)
 
     inputs = ['-ss', f'{start:.3f}', '-to', f'{end:.3f}', '-i', str(path)]
     n_in = 1
@@ -756,7 +776,7 @@ def fix_plan(plan, fix, path, start, end, src):
         return {'layout': 'crop', 'keys': keys or [(0.0, w / 2)], 'captions': 'low', 'by': 'ai',
                 'reason': 'AI check: a 9:16 crop works better.'}
     spot = fix.split('_', 1)[1] if fix.startswith('captions_') else ''
-    if spot in CAPTION_SPOTS['full' if plan['layout'] == 'full' else 'crop'] and spot != plan.get('captions'):
+    if spot in CAPTION_SPOTS.get(plan['layout'], ()) and spot != plan.get('captions'):
         return {**plan, 'captions': spot}
     return None
 
