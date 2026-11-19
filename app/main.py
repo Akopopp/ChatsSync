@@ -388,6 +388,21 @@ def clip_media(request: Request, clip_id: int, ext: str):
     return FileResponse(path, media_type='video/mp4' if ext == 'mp4' else 'image/jpeg', filename=name)
 
 
+@app.get('/clips/{clip_id}/sheet.jpg')
+def clip_sheet(request: Request, clip_id: int):
+    """Eight small frames of the clip side by side, for a quick look without loading the video."""
+    user = need_user(request)
+    clip = own_clip(user, clip_id)
+    if not clip['file'] or not Path(clip['file']).exists():
+        raise HTTPException(status_code=404)
+    out = Path(clip['file']).with_suffix('.sheet.jpg')
+    if not out.exists() or out.stat().st_mtime < Path(clip['file']).stat().st_mtime:
+        dur = media.media_duration(Path(clip['file'])) or 1
+        media.sh(['ffmpeg', '-y', '-v', 'error', '-i', clip['file'], '-vf', f'fps=8/{dur:.2f},scale=200:-2,tile=8x1',
+                  '-frames:v', '1', '-q:v', '4', str(out)])
+    return FileResponse(out, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
 @app.get('/p/{token}.mp4')
 def public_clip(token: str):
     try:
