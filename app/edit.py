@@ -1,5 +1,6 @@
 """Pro editing for one clip: silence and filler cuts, punch-in zooms, styled captions with colored keywords and emojis,
 hook and outro text, background music that ducks under the voice, sound effects, stock B-roll and a progress bar."""
+import hashlib
 import os
 import random
 import re
@@ -14,6 +15,7 @@ from .media import FONTS, H, THREADS, W, JobError, sh
 FPS = 30
 ASSETS = db.DATA / 'assets'
 MUSIC = db.DATA / 'music'
+LOGOS = db.DATA / 'logos'
 FILLERS = {'um', 'umm', 'uh', 'uhh', 'uhm', 'erm', 'er', 'hmm', 'hm', 'ah', 'aah', 'eh', 'mm', 'mmm'}
 EMOJI_FONTS = ['/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf', '/usr/share/fonts/noto/NotoColorEmoji.ttf']
 
@@ -465,6 +467,27 @@ def sfx(name):
     return out
 
 
+def logo_file(url):
+    """The campaign's required logo as a PNG, downloaded once from its link. None without a link."""
+    url = (url or '').strip()
+    if not url.startswith(('http://', 'https://')):
+        return None
+    LOGOS.mkdir(parents=True, exist_ok=True)
+    out = LOGOS / (hashlib.sha1(url.encode()).hexdigest()[:16] + '.png')
+    if not out.exists():
+        res = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+        res.raise_for_status()
+        if len(res.content) > 10 * 1024 * 1024:
+            return None
+        raw = out.with_suffix('.download')
+        raw.write_bytes(res.content)
+        try:
+            sh(['ffmpeg', '-y', '-v', 'error', '-i', str(raw), '-frames:v', '1', str(out)])
+        finally:
+            raw.unlink(missing_ok=True)
+    return out
+
+
 def music_file(campaign_id):
     files = []
     for folder in (MUSIC / f'c{campaign_id}', MUSIC / 'all'):
@@ -626,6 +649,23 @@ def render(path: Path, out: Path, start, end, words, meta, src, s, campaign_id=0
         graph.append(f'color=c=0xFFD400:s={W}x12:r={FPS}:d={new_dur}[pb]')
         graph.append(f"[{video}][pb]overlay=x='-w+w*t/{new_dur}':y=H-12[vp]")
         video = 'vp'
+
+    # the campaign's required logo, visible for the whole clip
+    try:
+        logo = logo_file(s.get('logo_url'))
+    except Exception as err:
+        print('logo failed:', str(err)[:200])
+        logo = None
+    if logo:
+        size = max(min(int(float(s.get('logo_size') or 24)), 45), 8)
+        corner = s.get('logo_position') or 'top_right'
+        x = '36' if corner.endswith('left') else 'W-w-36'
+        y = '36' if corner.startswith('top') else 'H-h-60'
+        inputs += ['-i', str(logo)]
+        graph.append(f'[{n_in}:v]scale={W * size // 100 // 2 * 2}:-2[logo]')
+        graph.append(f'[{video}][logo]overlay={x}:{y}[vl]')
+        video = 'vl'
+        n_in += 1
 
     # whoosh where the zoom jumps (spaced out), pop when an emoji appears
     if s.get('sfx') == '1' and not simple:

@@ -94,6 +94,12 @@ SECTIONS = [
         ('outro_text', 'Ending text', 'text', None, 'e.g. Follow for more'),
         ('watermark', 'Channel name on the video', 'switch', None, 'Small text in the top corner.'),
         ('watermark_text', 'Channel name text', 'text', None, 'e.g. @yourchannel'),
+        ('logo_url', 'Logo on every clip (image link)', 'text', None,
+         'Some campaigns require their logo or overlay on the whole clip. Paste the link to the image (PNG or WebP).'),
+        ('logo_position', 'Logo position', 'select',
+         [('top_right', 'Top right'), ('top_left', 'Top left'), ('bottom_right', 'Bottom right'), ('bottom_left', 'Bottom left')],
+         'Pick a corner where the logo covers nothing important.'),
+        ('logo_size', 'Logo size (% of the width)', 'number', (8, 45), '20 to 30 is usually right.'),
     ]),
     ('Auto-pilot', 'Watch the creators you clip. When they upload, clips are made (and posted, if posting is automatic) on their own.', [
         ('autopilot', 'Auto-pilot', 'switch', None, 'Checks the channels below every 20 minutes. Only new uploads are clipped.'),

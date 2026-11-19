@@ -90,6 +90,9 @@ CAMPAIGN_DEFAULTS = {
     'outro_text': 'Follow for more',
     'watermark': '0',
     'watermark_text': '',
+    'logo_url': '',
+    'logo_position': 'top_right',
+    'logo_size': '24',
     'translate_captions': '1',
     # auto-pilot
     'autopilot': '0',
