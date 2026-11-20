@@ -262,13 +262,18 @@ def process(job_id):
             words_file.write_text(json.dumps(words))
             lang_file.write_text(lang or '')
         # short sources (stream clips) are often reactions with few words; long videos need real talking
-        if len(words) < (8 if duration and duration <= 120 else 30):
+        whole = bool(duration) and duration <= 90  # a stream clip someone already cut: keep the whole moment
+        if not whole and len(words) < 30:
             raise media.JobError('Not enough speech in this video to make clips.')
 
         _check(job_id)
         _stage(job_id, 'pick', 'Finding the best moments')
         t0 = time.time()
-        picks, used_ai, problem = ai.pick_clips(words, s, camp['brief'])
+        if whole:
+            picks, used_ai, problem = [{'start': 0.0, 'end': round(duration, 2), 'hook': '', 'score': 80,
+                                        'reason': 'The whole stream clip, so the moment keeps its setup and payoff.'}], False, None
+        else:
+            picks, used_ai, problem = ai.pick_clips(words, s, camp['brief'])
         if not picks:
             raise media.JobError('No good clips found. Try different clip lengths in the campaign.')
         _check(job_id)
