@@ -410,6 +410,11 @@ def _post_facebook(ch, clip, text, s, public_url):
 
 def drop_clip(clip_id, path):
     """Copy a finished clip to a private GitHub release so it can be uploaded by hand elsewhere."""
+    drop_file(path, f'clip-{clip_id}.mp4')
+
+
+def drop_file(path, name, content_type='video/mp4'):
+    """Upload any file to the private GitHub release 'clips' under the given name."""
     token, repo = os.environ.get('CLIPDROP_TOKEN'), os.environ.get('CLIPDROP_REPO', 'Akopopp/clip-drop')
     if not token:
         return
@@ -422,8 +427,8 @@ def drop_clip(clip_id, path):
         res.raise_for_status()
         upload = res.json()['upload_url'].split('{')[0]
         with open(path, 'rb') as fh:
-            up = requests.post(f'{upload}?name=clip-{clip_id}.mp4', data=fh, timeout=600,
-                               headers={**head, 'Content-Type': 'video/mp4'})
+            up = requests.post(f'{upload}?name={name}', data=fh, timeout=600,
+                               headers={**head, 'Content-Type': content_type})
         if up.status_code not in (201, 422):  # 422: already there
             print('clip drop failed:', up.status_code, up.text[:200])
     except Exception as err:

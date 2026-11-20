@@ -694,3 +694,23 @@ def _cleanup_loop():
                 Path(clip['file']).unlink(missing_ok=True)
                 db.update_clip(clip['id'], file='', status='posted' if clip['status'] == 'posted' else 'expired')
         time.sleep(3600)
+
+
+def raw_drop(url, start, end, name):
+    """Unedited source part plus its word timings, dropped for hand editing."""
+    folder = Path('/tmp') / f'raw-{name}'
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    try:
+        if end > start:
+            src = media.download_section(url, folder / 'src', start, end)
+        else:
+            src, _ = media.download(url, 'video', folder, 30)
+        words = media.transcribe(src)
+        (folder / 'words.json').write_text(json.dumps(words))
+        platforms.drop_file(str(src), f'raw-{name}{src.suffix}', 'application/octet-stream')
+        platforms.drop_file(str(folder / 'words.json'), f'raw-{name}.json', 'application/json')
+    except Exception as err:
+        print('raw drop failed:', name, str(err)[:300])
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)

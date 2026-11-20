@@ -388,6 +388,14 @@ def clip_media(request: Request, clip_id: int, ext: str):
     return FileResponse(path, media_type='video/mp4' if ext == 'mp4' else 'image/jpeg', filename=name)
 
 
+@app.post('/raw')
+def raw(request: Request, url: str = Form(...), name: str = Form(...), start: float = Form(0), end: float = Form(0)):
+    """Drop an unedited source part and its transcript to the private release, for hand editing."""
+    need_user(request)
+    threading.Thread(target=pipeline.raw_drop, args=(url, start, end, name), daemon=True).start()
+    return {'ok': True}
+
+
 @app.post('/clips/{clip_id}/drop')
 def clip_drop(request: Request, clip_id: int):
     """Copy this clip to the private GitHub release (for manual TikTok/Instagram uploads)."""
