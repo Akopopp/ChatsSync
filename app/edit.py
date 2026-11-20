@@ -13,7 +13,7 @@ from . import db, media
 from .media import FONTS, H, THREADS, W, JobError, sh
 
 FPS = 60
-OUT_W, OUT_H = 1440, 2560  # uploads at 1440p get YouTube's sharper VP9 encode
+OUT_W, OUT_H = 1080, 1920
 ASSETS = db.DATA / 'assets'
 MUSIC = db.DATA / 'music'
 LOGOS = db.DATA / 'logos'
