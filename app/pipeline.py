@@ -703,7 +703,7 @@ def raw_drop(url, start, end, name, low=False):
     folder.mkdir(parents=True)
     try:
         if end > start:
-            src = media.download_section(url, folder / 'src', start, end, fmt='best[height<=480]/worst' if low else None)
+            src = media.download_section(url, folder / 'src', start, end, fmt='bv*[height<=480]+ba/b[height<=480]/b' if low else None)
         else:
             src, _ = media.download(url, 'video', folder, 30)
         words, _lang = media.transcribe(src)
