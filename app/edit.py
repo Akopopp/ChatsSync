@@ -392,7 +392,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,{font},{size},{prim},{prim},{outl},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{ca},70,70,{cm},1
-Style: Title,Montserrat ExtraBold,62,&H00111111,&H00111111,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,3,18,0,{ha},90,90,{hm},1
+Style: Title,Montserrat Black,84,&H00111111,&H00111111,&H0000D4FF,&H0000D4FF,-1,0,0,0,100,100,0,0,3,22,0,{ha},70,70,{hm},1
 Style: Hook,Montserrat Black,{110 if ia == 5 else 96},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,10,4,{ia},80,80,{im},1
 Style: Outro,Montserrat Black,86,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,9,3,{oa},80,80,{om},1
 Style: Mark,Montserrat ExtraBold,40,&H66FFFFFF,&H66FFFFFF,&H99000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,40,40,60,1
@@ -405,7 +405,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if s.get('censor_captions', '1') == '1':
         hook = censor(hook)
     if hook and s.get('hook') == 'top':
-        lines.append(f'Dialogue: 1,{ass_time(0)},{ass_time(dur)},Title,,0,0,0,,{esc(hook)}')
+        lines.append(f'Dialogue: 1,{ass_time(0)},{ass_time(dur)},Title,,0,0,0,,{esc(hook.upper())}')
     elif hook and s.get('hook') == 'intro':
         lines.append(f'Dialogue: 2,{ass_time(0)},{ass_time(min(2.4, dur))},Hook,,0,0,0,,'
                      '{\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)\\fad(0,250)}' + esc(hook.upper()))
