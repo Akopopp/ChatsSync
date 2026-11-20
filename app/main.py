@@ -389,10 +389,11 @@ def clip_media(request: Request, clip_id: int, ext: str):
 
 
 @app.post('/raw')
-def raw(request: Request, url: str = Form(...), name: str = Form(...), start: float = Form(0), end: float = Form(0)):
+def raw(request: Request, url: str = Form(...), name: str = Form(...), start: float = Form(0), end: float = Form(0),
+        low: int = Form(0)):
     """Drop an unedited source part and its transcript to the private release, for hand editing."""
     need_user(request)
-    threading.Thread(target=pipeline.raw_drop, args=(url, start, end, name), daemon=True).start()
+    threading.Thread(target=pipeline.raw_drop, args=(url, start, end, name, bool(low)), daemon=True).start()
     return {'ok': True}
 
 

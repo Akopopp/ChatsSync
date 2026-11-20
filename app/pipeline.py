@@ -696,14 +696,14 @@ def _cleanup_loop():
         time.sleep(3600)
 
 
-def raw_drop(url, start, end, name):
+def raw_drop(url, start, end, name, low=False):
     """Unedited source part plus its word timings, dropped for hand editing."""
     folder = Path('/tmp') / f'raw-{name}'
     shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir(parents=True)
     try:
         if end > start:
-            src = media.download_section(url, folder / 'src', start, end)
+            src = media.download_section(url, folder / 'src', start, end, fmt='best[height<=480]/worst' if low else None)
         else:
             src, _ = media.download(url, 'video', folder, 30)
         words = media.transcribe(src)

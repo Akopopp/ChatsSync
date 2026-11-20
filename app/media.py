@@ -110,10 +110,10 @@ def download_audio(url, folder: Path, max_minutes, session=''):
     return files[0], (lines[-1] if lines else '')
 
 
-def download_section(url, out_base: Path, start, end, session=''):
+def download_section(url, out_base: Path, start, end, session='', fmt=None):
     """Just one clip's part of the video in up to 1080p, cut exactly at start and end."""
     _ytdlp(ytdlp_base(session) + [
-        '-f', PART_FORMAT, '--merge-output-format', 'mkv', '--download-sections', f'*{start:.2f}-{end:.2f}',
+        '-f', fmt or PART_FORMAT, '--merge-output-format', 'mkv', '--download-sections', f'*{start:.2f}-{end:.2f}',
         '--force-keyframes-at-cuts', '-o', f'{out_base}.%(ext)s', url], timeout=1800)
     files = sorted(out_base.parent.glob(out_base.name + '.*'))
     if not files:
