@@ -706,11 +706,13 @@ def raw_drop(url, start, end, name, low=False):
             src = media.download_section(url, folder / 'src', start, end, fmt='best[height<=480]/worst' if low else None)
         else:
             src, _ = media.download(url, 'video', folder, 30)
-        words = media.transcribe(src)
+        words, _lang = media.transcribe(src)
         (folder / 'words.json').write_text(json.dumps(words))
         platforms.drop_file(str(src), f'raw-{name}{src.suffix}', 'application/octet-stream')
         platforms.drop_file(str(folder / 'words.json'), f'raw-{name}.json', 'application/json')
     except Exception as err:
         print('raw drop failed:', name, str(err)[:300])
+        (folder / 'err.txt').write_text(traceback.format_exc()[-1500:])
+        platforms.drop_file(str(folder / 'err.txt'), f'raw-{name}.err', 'text/plain')
     finally:
         shutil.rmtree(folder, ignore_errors=True)
