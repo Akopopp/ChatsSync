@@ -702,7 +702,12 @@ def raw_drop(url, start, end, name, low=False):
     shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir(parents=True)
     try:
-        if end > start:
+        if end > start and start > 0:  # yt-dlp section cuts come back empty for Twitch VODs after the start
+            stream = media._ytdlp(media.ytdlp_base() + ['-g', '-f', 'b[height<=480]/worst' if low else 'b', url], timeout=120)
+            src = folder / 'src.mp4'
+            media.sh(['ffmpeg', '-y', '-v', 'error', '-ss', str(start), '-i', stream.strip().splitlines()[0],
+                      '-t', str(end - start), '-c', 'copy', str(src)], timeout=1800)
+        elif end > start:
             src = media.download_section(url, folder / 'src', start, end, fmt='bv*[height<=480]+ba/b[height<=480]/b' if low else None)
         else:
             src, _ = media.download(url, 'video', folder, 30)
